@@ -71,7 +71,8 @@ python test_deal_skill.py
 ### 导出
 
 ```bash
-godot --headless --path . --export-release "Windows Desktop" build/Tianma.exe
+# 预设名（export_presets.cfg 里的 name 字段）：天才麻将少女！
+godot --headless --path . --export-release "天才麻将少女！" build/Tianma.exe
 ```
 
 导出后把 `net.cfg` 和 `skin/` 一起发给朋友即可。

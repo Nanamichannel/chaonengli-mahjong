@@ -323,8 +323,12 @@ func _build_ui() -> void:
 func _join_lobby() -> void:
 	var r: Dictionary = srv.request({"op": "lobby_join", "seat": -1})
 	if not bool(r.get("ok", false)):
-		_set_hint("连不上服务端，正在重试…（%s）" % String(r.get("error", "未知错误")))
-		print("initial_menu: 加入大厅失败，0.5 秒后重试：", r.get("error", ""))
+		var why := String(r.get("error", "未知错误"))
+		if why.find("已满") >= 0:
+			_set_hint("房间已满（4/4）—— 有人退出后会自动加入")
+		else:
+			_set_hint("连不上服务端，正在重试…（%s）" % why)
+		print("initial_menu: 加入大厅失败，0.5 秒后重试：", why)
 		return
 	my_seat = clampi(int(r.get("seat", 0)), 0, 3)
 	if cs != null:

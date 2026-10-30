@@ -192,13 +192,18 @@ def op_join(db, req: dict) -> dict:
     with db.tx():
         humans = _human_seats(db)
         if raw is None or int(raw) < 0 or int(raw) > 3:
-            seat = next((s for s in range(4) if s not in humans), 0)
+            seat = next((s for s in range(4) if s not in humans), None)
         else:
             want = int(raw) % 4
             if want in humans and not req.get("force"):
-                seat = next((s for s in range(4) if s not in humans), want)
+                seat = next((s for s in range(4) if s not in humans), None)
             else:
                 seat = want
+        # ★ 四家都被活人占着 → 拒绝。绝不能再退回 0 号位：
+        #   旧写法 next(..., 0) 会让第 5 个窗口顶到 0 号位，两边都以为自己是 0 号位，
+        #   互相看到对方的牌、互相替对方出牌，还会互相顶掉租约。
+        if seat is None:
+            return _error("房间已满（4/4），有人退出后会自动加入")
 
         lobby = load(db)
         # 之前四个窗口全都关了（一个活跃租约都没有）→ 当作全新开始

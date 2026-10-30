@@ -112,6 +112,41 @@ def room_of(name: str) -> str:
         return name
 
 
+# 房间是按需自动建的（room_<名字>.db），但从来没人删过 → 打错的房间号、
+# 一次性测试房都会留下 180KB 起的库，越用越多。这里在启动时扫一遍：
+#   · 只动 data/room_*.db（默认房间是 mahjong.db，碰不到）
+#   · net_config.json 里显式配过的房间不删（那是"正式房间"）
+#   · 只删超过 STALE_HOURS 小时没被写过的（启动时没人在玩，安全）
+STALE_HOURS = 72.0
+
+
+def purge_stale_rooms() -> None:
+    data_dir = os.path.join(HERE, "data")
+    if not os.path.isdir(data_dir):
+        return
+    now = time.time()
+    configured = set(ROOMS.keys())
+    freed = 0
+    for fn in os.listdir(data_dir):
+        if not fn.startswith("room_") or ".db" not in fn:
+            continue
+        base = fn.split(".db")[0] + ".db"
+        name = base[len("room_"):-len(".db")]
+        if not name or name in configured or name == DEFAULT_ROOM:
+            continue
+        p = os.path.join(data_dir, fn)
+        try:
+            if now - os.path.getmtime(p) < STALE_HOURS * 3600:
+                continue
+            freed += os.path.getsize(p)
+            os.remove(p)
+            log("[clean] 删除陈旧房间库 %s" % fn)
+        except OSError:
+            pass                    # 被占用/权限问题就算了，下次再说
+    if freed:
+        log("[clean] 共回收 %.1f KB" % (freed / 1024.0))
+
+
 def log(text: str) -> None:
     line = "[%s] %s" % (time.strftime("%m-%d %H:%M:%S"), text)
     print(line, flush=True)
@@ -271,6 +306,7 @@ def main() -> int:
     log("  数据：%s" % os.path.join(HERE, "data"))
     log("  日志：%s" % LOG_PATH)
     log("=" * 64)
+    purge_stale_rooms()          # 清掉长期没人用的房间库（见 STALE_HOURS）
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

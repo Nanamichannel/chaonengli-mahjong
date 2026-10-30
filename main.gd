@@ -285,8 +285,8 @@ var my_seat := 0                                # 0..3
 var waiting_for_others := false                 # 现在是不是在等别人出牌（等的时候要轮询）
 var poll_accum := 0.0
 const POLL_SEC := 0.35                          # 等别人时的轮询间隔（秒）
-                                                # 配合 https 长连接复用（每次请求 2~3ms），
-                                                # 从 0.6 压到 0.35：别人出牌后肉眼几乎同步
+												# 配合 https 长连接复用（每次请求 2~3ms），
+												# 从 0.6 压到 0.35：别人出牌后肉眼几乎同步
 const POLL_IDLE_SEC := 1.0                      # 轮到我 / 结算后也慢一点问一次（别人可能开了新局）
 const SEAT_LABEL_POS := Vector2(18.0, 8.0)      # 「本窗口 = 几号位」显示位置
 var seat_label: Label

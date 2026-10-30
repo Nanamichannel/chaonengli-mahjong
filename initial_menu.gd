@@ -178,6 +178,7 @@ func _ready() -> void:
 	bank = get_node_or_null("CardBank") as Node2D
 	_prepare_cards()
 	_build_ui()
+	_build_room_ui()
 	if start_btn != null and not start_btn.pressed.is_connected(_on_start_pressed):
 		start_btn.pressed.connect(_on_start_pressed)
 	_wipe_if_fresh()                    # 上一次记录没清干净 → 这里补一刀，从「准备」重新开始
@@ -317,6 +318,131 @@ func _build_ui() -> void:
 	ready_frame.visible = false
 	ready_frame.z_index = 20
 	ui.add_child(ready_frame)
+
+
+# ── 房间号（只在联机模式出现）：改完点「進入」立刻换桌，本机会记住 ──────
+var room_edit: LineEdit = null
+var room_btn: Button = null
+var _room_flash := 0
+
+
+func _build_room_ui() -> void:
+	if srv == null or srv.net == null or not bool(srv.net.enabled):
+		return                                  # 单机：没有房间概念
+
+	var tag := Label.new()
+	tag.name = "RoomTag"
+	tag.text = "房間"
+	tag.position = Vector2(1418, 34)
+	tag.size = Vector2(74, 34)
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.add_theme_font_size_override("font_size", 22)
+	tag.add_theme_color_override("font_color", Color(1, 0.93, 0.8))
+	tag.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1))
+	tag.add_theme_constant_override("outline_size", 5)
+	add_child(tag)
+
+	room_edit = LineEdit.new()
+	room_edit.name = "RoomEdit"
+	room_edit.text = String(srv.net.room)
+	room_edit.placeholder_text = "房間號"
+	room_edit.max_length = 24
+	room_edit.position = Vector2(1496, 28)
+	room_edit.size = Vector2(228, 44)
+	room_edit.add_theme_font_size_override("font_size", 22)
+	# 跟初始菜单同一套粉金配色（默认 LineEdit 是灰底，太出戏）
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.16, 0.06, 0.12, 0.80)
+	sb.border_color = Color(0.965, 0.616, 0.749, 0.85)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(9)
+	sb.content_margin_left = 10.0
+	sb.content_margin_right = 10.0
+	room_edit.add_theme_stylebox_override("normal", sb)
+	room_edit.add_theme_stylebox_override("read_only", sb)
+	var sbf := sb.duplicate() as StyleBoxFlat
+	sbf.border_color = Color(1.0, 0.79, 0.86, 1.0)
+	sbf.set_border_width_all(2)
+	room_edit.add_theme_stylebox_override("focus", sbf)
+	room_edit.add_theme_color_override("font_color", Color(1.0, 0.96, 0.98))
+	room_edit.add_theme_color_override("font_placeholder_color", Color(1.0, 0.85, 0.90, 0.55))
+	room_edit.add_theme_color_override("caret_color", Color(1.0, 0.79, 0.86))
+	room_edit.add_theme_color_override("selection_color", Color(0.965, 0.616, 0.749, 0.45))
+	room_edit.text_submitted.connect(_on_room_submitted)
+	add_child(room_edit)
+
+	room_btn = Button.new()
+	room_btn.name = "RoomBtn"
+	room_btn.text = "進入"
+	room_btn.position = Vector2(1734, 28)
+	room_btn.size = Vector2(140, 44)
+	room_btn.add_theme_font_size_override("font_size", 22)
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color(0.965, 0.616, 0.749, 0.92)
+	bsb.set_corner_radius_all(9)
+	room_btn.add_theme_stylebox_override("normal", bsb)
+	var bsbh := bsb.duplicate() as StyleBoxFlat
+	bsbh.bg_color = Color(1.0, 0.72, 0.83, 1.0)
+	room_btn.add_theme_stylebox_override("hover", bsbh)
+	var bsbd := bsb.duplicate() as StyleBoxFlat
+	bsbd.bg_color = Color(0.85, 0.50, 0.62, 1.0)
+	room_btn.add_theme_stylebox_override("pressed", bsbd)
+	room_btn.add_theme_stylebox_override("focus", bsb)
+	room_btn.add_theme_color_override("font_color", Color(0.24, 0.05, 0.13))
+	room_btn.add_theme_color_override("font_hover_color", Color(0.24, 0.05, 0.13))
+	room_btn.add_theme_color_override("font_pressed_color", Color(0.24, 0.05, 0.13))
+	room_btn.pressed.connect(_on_room_apply)
+	add_child(room_btn)
+
+
+func _on_room_submitted(_t: String) -> void:
+	_on_room_apply()
+	if room_edit != null:
+		room_edit.release_focus()
+
+
+func _on_room_apply() -> void:
+	if srv == null or srv.net == null or room_edit == null:
+		return
+	var want := room_edit.text.strip_edges()
+	if want == "":
+		want = "default"
+	if want == String(srv.net.room):
+		_flash_room_btn("已在此房間")
+		return
+	if not srv.net.set_room(want):
+		_flash_room_btn("房間號不合法")
+		return
+	# 换房间 = 换一张四人桌：本地座位/大厅/选卡状态全部清掉，再重新入座
+	my_seat = -1
+	lobby = {}
+	phase = "waiting"
+	entered = false
+	order.clear()
+	selected_no = -1
+	order_inited = false
+	my_ready = false
+	room_edit.text = String(srv.net.room)
+	if cs != null:
+		cs.seat = -1
+		cs.lobby = {}
+		cs.orders = []
+		cs.picks = []
+	_set_hint("正在進入房間「%s」…" % String(srv.net.room))
+	_flash_room_btn("進入中…")
+	_join_lobby()
+	_refresh_seats()
+
+
+func _flash_room_btn(t: String) -> void:
+	if room_btn == null or not is_instance_valid(room_btn):
+		return
+	room_btn.text = t
+	_room_flash += 1
+	var tok := _room_flash
+	await get_tree().create_timer(1.4).timeout
+	if is_instance_valid(room_btn) and tok == _room_flash:
+		room_btn.text = "進入"
 
 
 # ── 和服务端说话 ───────────────────────────────────────────────────

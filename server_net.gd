@@ -20,6 +20,8 @@ extends RefCounted
 
 const CFG_EXE := "net.cfg"
 const CFG_USER := "user://net.cfg"
+# 本机记住玩家选的房间号（初始菜单里改），优先级高于 net.cfg 的 room
+const ROOM_MEMO := "user://room.txt"
 # 内置默认服务器：导出版「双击就联机」，朋友不用写 net.cfg。
 #   · 编辑器里不生效（OS.has_feature("template") == false）→ 单机调试不受影响
 #   · exe 同目录放 net.cfg 会覆盖这里（想连别的服务器/单机就放一个）
@@ -81,6 +83,15 @@ func _load_cfg() -> void:
 	timeout_ms = int(dd.get("timeout_ms", timeout_ms))
 	if timeout_ms < 1000:
 		timeout_ms = 1000
+	# 玩家在初始菜单里选过的房间号（本机记忆）优先级最高
+	if FileAccess.file_exists(ROOM_MEMO):
+		var rf := FileAccess.open(ROOM_MEMO, FileAccess.READ)
+		if rf != null:
+			var memo := rf.get_as_text().strip_edges()
+			rf.close()
+			if room_ok(memo) or memo == "":
+				if memo != "":
+					room = memo
 	enabled = _parse_url()
 	if enabled:
 		# 调试的时候一眼能看出来现在连的是谁
@@ -116,6 +127,45 @@ func _parse_url() -> bool:
 	return _host != "" and _port > 0
 
 
+# ── 房间号（运行时切换用）───────────────────────────────────────────
+# 房间号只做「一张四人桌」的隔离键：服务端按 /rpc/<房间号> 建独立库、独立 4 个座位。
+# 玩家在初始菜单里选的房间会记进 user://room.txt（本机记忆，优先级高于 net.cfg 的 room），
+# 这样既不用改 net.cfg，也不会把 exe 目录里的配置写脏。
+# （常量 ROOM_MEMO 定义在文件顶部）
+
+
+# 房间号会直接拼进 URL 路径，只放行字母/数字/-/_/中文，别的一律拒。
+func room_ok(r: String) -> bool:
+	if r == "" or r.length() > 24:
+		return false
+	for i in range(r.length()):
+		var ch := r.unicode_at(i)
+		var pass_ch := (ch >= 0x30 and ch <= 0x39) \
+			or (ch >= 0x41 and ch <= 0x5A) \
+			or (ch >= 0x61 and ch <= 0x7A) \
+			or ch == 0x2D or ch == 0x5F \
+			or (ch >= 0x4E00 and ch <= 0x9FFF)
+		if not pass_ch:
+			return false
+	return true
+
+
+func set_room(r: String) -> bool:
+	var want := r.strip_edges()
+	if want == "":
+		want = "default"
+	if not room_ok(want):
+		return false
+	room = want
+	var f := FileAccess.open(ROOM_MEMO, FileAccess.WRITE)
+	if f != null:
+		f.store_string(want)
+		f.close()
+	if enabled:
+		print("[net] 换房间：%s" % room)
+	return true
+
+
 # 对外唯一入口：和 ServerBridge.request() 同一个契约（成功 → 服务端那份 JSON）
 #   ★ 不带 pid：服务端的座位租约靠「多久没发请求」判断（12 秒），
 #     进程号在别的机器上毫无意义，带上反而会被当成「窗口已经关了」。
@@ -131,7 +181,7 @@ func request(req: Dictionary) -> Dictionary:
 
 func _post(req: Dictionary) -> Dictionary:
 	var body := JSON.stringify(req)
-	var path := "/rpc/" + room
+	var path := "/rpc/" + room.uri_encode()
 	if token != "":
 		path += "?token=" + token.uri_encode()
 	var deadline := Time.get_ticks_msec() + timeout_ms

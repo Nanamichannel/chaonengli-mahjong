@@ -27,13 +27,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import sys
 import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -96,7 +97,12 @@ def room_of(name: str) -> str:
     """'abc' → 已配置的房间；没配置过 → 自动建一个（多房间开箱即用）。"""
     if not name:
         return DEFAULT_ROOM
-    name = str(name).strip().lower()[:32]
+    # ★ 先 URL 解码（客户端会把房间号 uri_encode，中文房间号才认得出来）
+    # ★ 再净化：房间名要直接当文件名用，只留字母/数字/下划线/连字符/中文，
+    #   否则 /rpc/../../x 这种就能把 db 写到 data 目录外面去。
+    name = re.sub(r"[^0-9a-z_\-\u4e00-\u9fff]", "", unquote(str(name)).strip().lower())[:32]
+    if not name:
+        return DEFAULT_ROOM
     with _lock_guard:
         if name not in ROOMS:
             db = os.path.join(HERE, "data", "room_%s.db" % name)

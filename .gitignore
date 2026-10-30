@@ -1,0 +1,33 @@
+# Godot 4+
+.godot/
+/android/
+*.translation
+
+# 构建产物（exe / pck / 发布目录）
+build/
+*.exe
+*.pck
+
+# 服务器运行时数据
+server/data/
+__pycache__/
+*.pyc
+server/logs/
+*.log
+
+# 历史备份文件
+*.swbak
+*.pre_rules.bak
+*.clickbak
+*.bak
+
+# 本机联机配置（含内网地址，别公开）
+net.cfg
+
+# 本地测试配置：这个文件只要存在，客户端就会跳过菜单直接进牌桌
+test_seats.cfg
+
+# 临时文件
+*.tmp
+/_*.png
+server/_tl.txt

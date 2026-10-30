@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://x6oicmk8fsb"]
+
+[ext_resource type="Script" uid="uid://cuka5uxj2d3aj" path="res://yaku_test.gd" id="1_fblqs"]
+
+[node name="yaku_test" type="Control" unique_id=1971113959]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_fblqs")

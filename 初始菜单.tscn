@@ -1,0 +1,539 @@
+[gd_scene format=3 uid="uid://crs74bb15657a"]
+
+[ext_resource type="Script" uid="uid://igaeytyjy1pg" path="res://initial_menu.gd" id="1_2xdih"]
+[ext_resource type="Texture2D" uid="uid://b1pcg0fvwgaw1" path="res://Cailiao/UI/初始界面.png" id="1_4qvfu"]
+[ext_resource type="Texture2D" uid="uid://b70qx1g0hd2yk" path="res://Cailiao/UI/tiaoguo.png" id="2_xj0qp"]
+[ext_resource type="Script" uid="uid://b4b3xqoyn3fm1" path="res://start_button_safe.gd" id="4_a8c4q"]
+[ext_resource type="Texture2D" uid="uid://c34u4ddvfstr5" path="res://Cailiao/skill/cards/card_01.png" id="5_5r2iw"]
+[ext_resource type="Script" uid="uid://b4llio34f0hld" path="res://card_button.gd" id="6_67xu7"]
+[ext_resource type="Texture2D" uid="uid://dpw7ptw47x117" path="res://Cailiao/skill/cards/card_02.png" id="7_t064m"]
+[ext_resource type="Texture2D" uid="uid://c7ko3ubxt8t1b" path="res://Cailiao/skill/cards/card_03.png" id="8_43fhs"]
+[ext_resource type="Texture2D" uid="uid://dr8jmxqcx7g4a" path="res://Cailiao/skill/cards/card_04.png" id="9_r18yw"]
+[ext_resource type="Texture2D" uid="uid://dr7xka1j7in4y" path="res://Cailiao/skill/cards/card_05.png" id="10_awjsu"]
+[ext_resource type="Texture2D" uid="uid://c3ni86rtvdg2w" path="res://Cailiao/skill/cards/card_06.png" id="11_04tn8"]
+[ext_resource type="Texture2D" uid="uid://b34ycahgjyxoh" path="res://Cailiao/skill/cards/card_07.png" id="12_ww8rw"]
+[ext_resource type="Texture2D" uid="uid://bfo2k6n0l8lur" path="res://Cailiao/skill/cards/card_08.png" id="13_bkxqf"]
+[ext_resource type="Texture2D" uid="uid://dc4v8hcorfcp3" path="res://Cailiao/skill/cards/card_09.png" id="14_h8unc"]
+[ext_resource type="Texture2D" uid="uid://nrpe2s8wqy6w" path="res://Cailiao/skill/cards/card_10.png" id="15_l4c35"]
+[ext_resource type="Texture2D" uid="uid://bw0a7gu35rc4h" path="res://Cailiao/skill/cards/card_11.png" id="16_tj0pp"]
+[ext_resource type="Texture2D" uid="uid://botqfrynoyl05" path="res://Cailiao/skill/cards/card_12.png" id="17_qbsq3"]
+[ext_resource type="Texture2D" uid="uid://h8l5lm08giao" path="res://Cailiao/skill/cards/card_13.png" id="18_npp5w"]
+[ext_resource type="Texture2D" uid="uid://c284ogbek3av6" path="res://Cailiao/skill/cards/card_14.png" id="19_km7km"]
+[ext_resource type="Texture2D" uid="uid://cxgami4fyedwk" path="res://Cailiao/skill/cards/card_15.png" id="20_dnm7a"]
+[ext_resource type="Texture2D" uid="uid://cphsecrsmpg1p" path="res://Cailiao/skill/cards/card_16.png" id="21_3jgmb"]
+[ext_resource type="Texture2D" uid="uid://dgeuq2oe7n4bb" path="res://Cailiao/skill/cards/card_17.png" id="22_fbym3"]
+[ext_resource type="Texture2D" uid="uid://gg2hnxmfvgf3" path="res://Cailiao/skill/cards/card_18.png" id="23_6nnda"]
+[ext_resource type="Texture2D" uid="uid://lscyj6umb8il" path="res://Cailiao/skill/cards/card_19.png" id="24_i866l"]
+[ext_resource type="Texture2D" uid="uid://bv0j2axjsdxxo" path="res://Cailiao/skill/cards/card_20.png" id="25_sw77x"]
+[ext_resource type="Texture2D" uid="uid://dm6qcmbb2ialb" path="res://Cailiao/skill/cards/card_21.png" id="26_cbfi0"]
+[ext_resource type="Texture2D" uid="uid://66udsj7q5wx" path="res://Cailiao/skill/cards/card_22.png" id="27_tbd41"]
+[ext_resource type="Texture2D" uid="uid://3gk6q8uujvp1" path="res://Cailiao/skill/cards/card_23.png" id="28_ewqnt"]
+[ext_resource type="Texture2D" uid="uid://5yya5sn6te3u" path="res://Cailiao/skill/cards/card_24.png" id="29_kma7j"]
+[ext_resource type="Texture2D" uid="uid://bs1377hiiw4w0" path="res://Cailiao/skill/cards/card_25.png" id="30_u07aa"]
+[ext_resource type="Texture2D" uid="uid://3ggfrrnio25x" path="res://Cailiao/skill/cards/card_26.png" id="31_6okqd"]
+[ext_resource type="Texture2D" uid="uid://bcfw2p81wy0c8" path="res://Cailiao/skill/cards/card_27.png" id="32_mso23"]
+[ext_resource type="Texture2D" uid="uid://degjxmvfi3ii6" path="res://Cailiao/skill/cards/card_28.png" id="33_7834u"]
+[ext_resource type="Texture2D" uid="uid://rg00kdnajj7h" path="res://Cailiao/skill/cards/card_29.png" id="34_ef3o1"]
+[ext_resource type="Texture2D" uid="uid://dnnnb3ri5leqi" path="res://Cailiao/skill/cards/card_30.png" id="35_to72q"]
+[ext_resource type="Texture2D" uid="uid://dpu8qi13h30ul" path="res://Cailiao/skill/cards/card_31.png" id="36_7l1o3"]
+[ext_resource type="Texture2D" uid="uid://cv5ff3tc06lcg" path="res://Cailiao/skill/cards/card_32.png" id="37_lespf"]
+[ext_resource type="Texture2D" uid="uid://h364hwwlbsbq" path="res://Cailiao/skill/cards/card_33.png" id="38_t01gi"]
+[ext_resource type="Texture2D" uid="uid://cpwqay6buxayl" path="res://Cailiao/skill/cards/card_34.png" id="39_b67c5"]
+[ext_resource type="Texture2D" uid="uid://begd3gumyo47h" path="res://Cailiao/skill/cards/card_35.png" id="40_2n04t"]
+[ext_resource type="Texture2D" uid="uid://d0kyhcnjrscll" path="res://Cailiao/skill/cards/card_36.png" id="41_5r1rn"]
+[ext_resource type="Texture2D" uid="uid://dwfeutebhqeap" path="res://Cailiao/skill/cards/card_37.png" id="42_1t0j7"]
+[ext_resource type="Texture2D" uid="uid://ddsitfxjjhqvg" path="res://Cailiao/skill/cards/card_38.png" id="43_dc7ja"]
+[ext_resource type="Texture2D" uid="uid://dj0w4yrwrdala" path="res://Cailiao/skill/cards/card_39.png" id="44_13cbc"]
+[ext_resource type="Texture2D" uid="uid://civyfptw78jnc" path="res://Cailiao/skill/cards/card_40.png" id="45_ga5mb"]
+[ext_resource type="Texture2D" uid="uid://cqcbnvvfjgb5v" path="res://Cailiao/skill/cards/card_41.png" id="46_gcyc5"]
+[ext_resource type="Texture2D" uid="uid://cj2mmsqt7bgut" path="res://Cailiao/skill/cards/card_42.png" id="47_in6tl"]
+[ext_resource type="Texture2D" uid="uid://dgt3r1c3ixu87" path="res://Cailiao/skill/cards/card_43.png" id="48_u52xi"]
+[ext_resource type="Texture2D" uid="uid://dp37bsvtmcnfv" path="res://Cailiao/skill/cards/card_44.png" id="49_vd742"]
+[ext_resource type="Texture2D" uid="uid://cdirvomxjdhwb" path="res://Cailiao/skill/cards/card_45.png" id="50_ayyga"]
+[ext_resource type="Texture2D" uid="uid://rxttbt2clcfx" path="res://Cailiao/skill/cards/card_46.png" id="51_vo38m"]
+
+[node name="Node2D" type="Node2D" unique_id=1333151142]
+script = ExtResource("1_2xdih")
+
+[node name="初始界面" type="Sprite2D" parent="." unique_id=237989109]
+position = Vector2(783, 461)
+scale = Vector2(1.0036223, 0.98855215)
+texture = ExtResource("1_4qvfu")
+offset = Vector2(169.01, 84.435)
+
+[node name="开始按钮" type="TextureButton" parent="." unique_id=217962645]
+offset_left = 839.105
+offset_top = 824.035
+offset_right = 1733.1052
+offset_bottom = 1798.0359
+scale = Vector2(0.25, 0.25)
+texture_normal = ExtResource("2_xj0qp")
+stretch_mode = 1
+script = ExtResource("4_a8c4q")
+
+[node name="Node2D" type="Node2D" parent="." unique_id=1097362066]
+
+[node name="Row" type="Node2D" parent="." unique_id=951985093]
+
+[node name="CardBank" type="Node2D" parent="." unique_id=1912382728]
+visible = false
+
+[node name="Card01" type="TextureButton" parent="CardBank" unique_id=691241658]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("5_5r2iw")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card02" type="TextureButton" parent="CardBank" unique_id=1614486937]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("7_t064m")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card03" type="TextureButton" parent="CardBank" unique_id=1677102064]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("8_43fhs")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card04" type="TextureButton" parent="CardBank" unique_id=134785004]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("9_r18yw")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card05" type="TextureButton" parent="CardBank" unique_id=96775966]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("10_awjsu")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card06" type="TextureButton" parent="CardBank" unique_id=799608416]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("11_04tn8")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card07" type="TextureButton" parent="CardBank" unique_id=1957778737]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("12_ww8rw")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card08" type="TextureButton" parent="CardBank" unique_id=2101919484]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("13_bkxqf")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card09" type="TextureButton" parent="CardBank" unique_id=1027259619]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("14_h8unc")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card10" type="TextureButton" parent="CardBank" unique_id=1769751768]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("15_l4c35")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card11" type="TextureButton" parent="CardBank" unique_id=1047667031]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("16_tj0pp")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card12" type="TextureButton" parent="CardBank" unique_id=836180435]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("17_qbsq3")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card13" type="TextureButton" parent="CardBank" unique_id=584480992]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("18_npp5w")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card14" type="TextureButton" parent="CardBank" unique_id=651484293]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("19_km7km")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card15" type="TextureButton" parent="CardBank" unique_id=320734924]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("20_dnm7a")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card16" type="TextureButton" parent="CardBank" unique_id=1218329498]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("21_3jgmb")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card17" type="TextureButton" parent="CardBank" unique_id=1972155842]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("22_fbym3")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card18" type="TextureButton" parent="CardBank" unique_id=1576556793]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("23_6nnda")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card19" type="TextureButton" parent="CardBank" unique_id=1167436998]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("24_i866l")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card20" type="TextureButton" parent="CardBank" unique_id=1926494619]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("25_sw77x")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card21" type="TextureButton" parent="CardBank" unique_id=1046650231]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("26_cbfi0")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card22" type="TextureButton" parent="CardBank" unique_id=1184719369]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("27_tbd41")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card23" type="TextureButton" parent="CardBank" unique_id=429984241]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("28_ewqnt")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card24" type="TextureButton" parent="CardBank" unique_id=968893433]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("29_kma7j")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card25" type="TextureButton" parent="CardBank" unique_id=445729155]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("30_u07aa")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card26" type="TextureButton" parent="CardBank" unique_id=1683370490]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("31_6okqd")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card27" type="TextureButton" parent="CardBank" unique_id=847415950]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("32_mso23")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card28" type="TextureButton" parent="CardBank" unique_id=1463212944]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("33_7834u")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card29" type="TextureButton" parent="CardBank" unique_id=145211298]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("34_ef3o1")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card30" type="TextureButton" parent="CardBank" unique_id=2064620241]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("35_to72q")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card31" type="TextureButton" parent="CardBank" unique_id=974402670]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("36_7l1o3")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card32" type="TextureButton" parent="CardBank" unique_id=955886064]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("37_lespf")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card33" type="TextureButton" parent="CardBank" unique_id=1061646546]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("38_t01gi")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card34" type="TextureButton" parent="CardBank" unique_id=1312011338]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("39_b67c5")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card35" type="TextureButton" parent="CardBank" unique_id=211229484]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("40_2n04t")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card36" type="TextureButton" parent="CardBank" unique_id=1664787230]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("41_5r1rn")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card37" type="TextureButton" parent="CardBank" unique_id=2140775041]
+visible = false
+custom_minimum_size = Vector2(511, 744)
+offset_right = 511.0
+offset_bottom = 744.0
+texture_normal = ExtResource("42_1t0j7")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card38" type="TextureButton" parent="CardBank" unique_id=117722671]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("43_dc7ja")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card39" type="TextureButton" parent="CardBank" unique_id=1193332776]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("44_13cbc")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card40" type="TextureButton" parent="CardBank" unique_id=638289246]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("45_ga5mb")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card41" type="TextureButton" parent="CardBank" unique_id=238158790]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("46_gcyc5")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card42" type="TextureButton" parent="CardBank" unique_id=1777598862]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("47_in6tl")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card43" type="TextureButton" parent="CardBank" unique_id=934867478]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("48_u52xi")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card44" type="TextureButton" parent="CardBank" unique_id=1241628383]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("49_vd742")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card45" type="TextureButton" parent="CardBank" unique_id=451166375]
+visible = false
+custom_minimum_size = Vector2(512, 746)
+offset_right = 512.0
+offset_bottom = 746.0
+texture_normal = ExtResource("50_ayyga")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")
+
+[node name="Card46" type="TextureButton" parent="CardBank" unique_id=227740028]
+visible = false
+custom_minimum_size = Vector2(511, 744)
+offset_right = 511.0
+offset_bottom = 744.0
+texture_normal = ExtResource("51_vo38m")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("6_67xu7")

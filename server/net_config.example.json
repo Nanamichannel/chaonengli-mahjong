@@ -1,0 +1,14 @@
+{
+  "_说明": "复制成 net_config.json 再改。db 相对 server/ 目录；token 留空 = 不校验（只适合局域网/Tailscale）。",
+  "default_room": "default",
+  "rooms": {
+    "default": {
+      "token": "",
+      "db": "data/mahjong.db"
+    },
+    "friends": {
+      "token": "把这里换成你自己的口令",
+      "db": "data/room_friends.db"
+    }
+  }
+}

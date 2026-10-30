@@ -65,7 +65,7 @@ H_DAWA = parse_hand("123m456m222s678p") + ["5s"]
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card13（破发 / 渣和）")
+    print(" 天才麻将少女 · Card13（破发 / 渣和）")
     print("=" * 70)
 
     print("\n◆ 技能登记")

@@ -53,7 +53,7 @@ H_OTHER = parse_hand("234m567p678s") + ["2p", "2p", "9m"]
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card12（海神 / X神）")
+    print(" 天才麻将少女 · Card12（海神 / X神）")
     print("=" * 70)
 
     print("\n◆ 技能登记")

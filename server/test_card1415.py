@@ -74,7 +74,7 @@ def fake_dice(seq):
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card14 / Card15")
+    print(" 天才麻将少女 · Card14 / Card15")
     print("=" * 70)
 
     print("\n◆ 登记")

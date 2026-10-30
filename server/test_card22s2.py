@@ -64,7 +64,7 @@ def into_claim(db, rid):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · Card22 S2（副露连锁 + 四副露换牌）")
+    print(" 天才麻将少女 · Card22 S2（副露连锁 + 四副露换牌）")
     print("=" * 66)
 
     # ① 鸣牌窗口里能 arm

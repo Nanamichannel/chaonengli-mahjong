@@ -165,7 +165,7 @@ def play_round(db: DB, rid: int, claim_prob: float = 0.6, seed: int = 0):
 
 def main():
     print("=" * 70)
-    print(" 天马麻将 · 对局流程自测")
+    print(" 天才麻将少女 · 对局流程自测")
     print("=" * 70)
 
     # ── 1. 机器人连打 20 局 ────────────────────────────────────────────────

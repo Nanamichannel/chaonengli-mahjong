@@ -93,7 +93,7 @@ def make(tag, seed):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · 传承：16 号卡变成被复制的技能")
+    print(" 天才麻将少女 · 传承：16 号卡变成被复制的技能")
     print("=" * 66)
 
     # ① 发动

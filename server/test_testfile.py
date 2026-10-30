@@ -42,7 +42,7 @@ def clear_spec() -> None:
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Test.txt 指定内容")
+    print(" 天才麻将少女 · Test.txt 指定内容")
     print("=" * 70)
 
     # ── 1. 牌名写法 ────────────────────────────────────────────────

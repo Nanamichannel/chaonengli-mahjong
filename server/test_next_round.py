@@ -42,7 +42,7 @@ def check(name, got, want):
 
 def main() -> int:
     print("=" * 74)
-    print(" 天马麻将 · 下一局怎么开（op=next）")
+    print(" 天才麻将少女 · 下一局怎么开（op=next）")
     print("=" * 74)
 
     db = tg.fresh_db("next_round")

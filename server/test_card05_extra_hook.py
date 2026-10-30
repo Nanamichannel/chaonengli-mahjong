@@ -48,7 +48,7 @@ def setup(tag, seed, drawn="bai"):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · 策略「额外摸切」要走公共摸牌钩子")
+    print(" 天才麻将少女 · 策略「额外摸切」要走公共摸牌钩子")
     print("=" * 66)
 
     # ① 海神：额外摸到万子 → 必须弹借牌窗（以前不会）

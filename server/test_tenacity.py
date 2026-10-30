@@ -86,7 +86,7 @@ H_TSUMO = parse_hand("123m456m789m123p55z")                 # 自摸（摸白）
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card06 Skill2「坚韧」")
+    print(" 天才麻将少女 · Card06 Skill2「坚韧」")
     print("=" * 70)
 
     # ── ① 登记 ──────────────────────────────────────────────────

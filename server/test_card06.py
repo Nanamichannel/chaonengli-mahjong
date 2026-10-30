@@ -65,7 +65,7 @@ def rich_hand(g: Game, seat: int) -> list[str]:
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card06 Skill1「南风」")
+    print(" 天才麻将少女 · Card06 Skill1「南风」")
     print("=" * 70)
 
     print("\n① 技能登记")

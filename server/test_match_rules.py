@@ -55,7 +55,7 @@ NOTEN_13 = ["1m", "4m", "7m", "1p", "4p", "7p", "1s", "4s", "7s",
 
 def main() -> int:
     print("=" * 74)
-    print(" 天马麻将 · 立直供托 / 流局连庄 / 东风战终局")
+    print(" 天才麻将少女 · 立直供托 / 流局连庄 / 东风战终局")
     print("=" * 74)
 
     db = tg.fresh_db("match_rules")

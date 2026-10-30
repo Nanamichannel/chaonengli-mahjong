@@ -67,7 +67,7 @@ H = parse_hand("123m456p789s") + ["1p", "2p", "3s", "4s"]
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card19 ~ Card23")
+    print(" 天才麻将少女 · Card19 ~ Card23")
     print("=" * 70)
 
     for c in (19, 20, 21, 22, 23):

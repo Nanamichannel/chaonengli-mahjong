@@ -46,7 +46,7 @@ def patterns_of(hand: str) -> list:
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · 角色卡技能（Card01 Skill1「国标」）")
+    print(" 天才麻将少女 · 角色卡技能（Card01 Skill1「国标」）")
     print("=" * 70)
 
     # ── 1. 三种番种本身 ─────────────────────────────────────────────

@@ -93,7 +93,7 @@ def any_discard(db, seat):
 
 def main() -> int:
     print("=" * 74)
-    print(" 天马麻将 · 四个客户端各坐一家")
+    print(" 天才麻将少女 · 四个客户端各坐一家")
     print("=" * 74)
 
     db = tg.fresh_db("multi_seat")

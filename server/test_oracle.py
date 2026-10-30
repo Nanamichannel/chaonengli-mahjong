@@ -71,7 +71,7 @@ def force_dice(total: int):
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card07 Skill1「降神」")
+    print(" 天才麻将少女 · Card07 Skill1「降神」")
     print("=" * 70)
 
     # ── ① 登记 ──────────────────────────────────────────────────

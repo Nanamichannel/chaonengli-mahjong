@@ -57,7 +57,7 @@ def hand_of(g: Game, seat: int) -> list[str]:
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card04 Skill1「风神」")
+    print(" 天才麻将少女 · Card04 Skill1「风神」")
     print("=" * 70)
 
     # ── 1. 登记 / 时机 ──────────────────────────────────────────

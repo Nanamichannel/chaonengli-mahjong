@@ -52,7 +52,7 @@ def make(tag, seed, gift_lv=2):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · Card21 S2 段2（馈赠换牌 · 每巡摸牌前询问）")
+    print(" 天才麻将少女 · Card21 S2 段2（馈赠换牌 · 每巡摸牌前询问）")
     print("=" * 66)
 
     # ① 摸牌前自动问

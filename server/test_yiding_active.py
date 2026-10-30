@@ -52,7 +52,7 @@ def make(tag, seed, others):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · 一定和牌（主动宣言）")
+    print(" 天才麻将少女 · 一定和牌（主动宣言）")
     print("=" * 66)
 
     # ① 没有权限 → 不能宣言

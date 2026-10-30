@@ -80,7 +80,7 @@ H_OTHER = parse_hand("123m456p789s123p1z")
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card08 Skill1「决斗」")
+    print(" 天才麻将少女 · Card08 Skill1「决斗」")
     print("=" * 70)
 
     # ── ① 登记 ──────────────────────────────────────────────────

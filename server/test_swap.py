@@ -51,7 +51,7 @@ def put_river(db, rid, rows):
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card02 Skill2「换牌」")
+    print(" 天才麻将少女 · Card02 Skill2「换牌」")
     print("=" * 70)
 
     # ── 1. 正常换牌 ───────────────────────────────────────────────

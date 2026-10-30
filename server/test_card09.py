@@ -78,7 +78,7 @@ def next_turn(g, keep_next: bool = True):
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card09 S1 / S2（摸牌前换牌河）")
+    print(" 天才麻将少女 · Card09 S1 / S2（摸牌前换牌河）")
     print("=" * 70)
 
     # ── ① 登记 ──────────────────────────────────────────────────

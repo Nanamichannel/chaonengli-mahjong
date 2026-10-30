@@ -51,7 +51,7 @@ def make(tag, seed, others):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · Card01 S1「国标」= 一定和牌")
+    print(" 天才麻将少女 · Card01 S1「国标」= 一定和牌")
     print("=" * 66)
 
     # ① 没满足条件不能发动

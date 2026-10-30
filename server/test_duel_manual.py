@@ -52,7 +52,7 @@ def make(tag, seed, seat2_cards=(), seat3_cards=()):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · 决斗：手动摸切 + 暗置牌只有压制能荣")
+    print(" 天才麻将少女 · 决斗：手动摸切 + 暗置牌只有压制能荣")
     print("=" * 66)
 
     # ① 只能打刚摸到的那张

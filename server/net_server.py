@@ -195,7 +195,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         u = urlparse(self.path)
         if u.path in ("/", "/index.html"):
-            self._text(200, "天马麻将 联机服务端在跑。\n"
+            self._text(200, "天才麻将少女 联机服务端在跑。\n"
                             "接口：POST /rpc/<房间号>（body = 请求 JSON）\n"
                             "健康检查：GET /health\n")
             return
@@ -263,7 +263,7 @@ def main() -> int:
     srv.daemon_threads = True
     ip = lan_ip()
     log("=" * 64)
-    log("天马麻将 联机服务端已启动")
+    log("天才麻将少女 联机服务端已启动")
     log("  监听：%s:%d" % (args.host, args.port))
     log("  本机局域网地址：http://%s:%d   （同一路由器的朋友填这个）" % (ip, args.port))
     log("  公网访问：先在路由器把 %d 端口映射到这台机器，或挂 frp / cloudflare tunnel" % args.port)

@@ -52,7 +52,7 @@ def make(tag, seed, others):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · 结算结果（result）要能被别的进程读到")
+    print(" 天才麻将少女 · 结算结果（result）要能被别的进程读到")
     print("=" * 66)
 
     # ① 没结算的局：result 是 None

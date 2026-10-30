@@ -56,7 +56,7 @@ def setup(db, rid, owner=0):
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card04 Skill2「自风」")
+    print(" 天才麻将少女 · Card04 Skill2「自风」")
     print("=" * 70)
 
     # ── 1. 登记 ──────────────────────────────────────────────────

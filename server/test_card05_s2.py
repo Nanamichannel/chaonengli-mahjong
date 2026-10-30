@@ -61,7 +61,7 @@ def at_discard(g: Game) -> Game:
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card05 Skill2「拔北」")
+    print(" 天才麻将少女 · Card05 Skill2「拔北」")
     print("=" * 70)
 
     print("\n① 技能登记")

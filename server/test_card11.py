@@ -101,7 +101,7 @@ def add_discard(db, rid: int, seat: int, seq: int, tile: str, face_down: int = 0
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card11 Skill1「魔术」")
+    print(" 天才麻将少女 · Card11 Skill1「魔术」")
     print("=" * 70)
 
     # ── 1 登记 ────────────────────────────────────────────

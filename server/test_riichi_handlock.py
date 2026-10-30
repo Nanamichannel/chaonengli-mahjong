@@ -66,7 +66,7 @@ def hand_of(db, rid, seat):
 
 def main() -> int:
     print("=" * 66)
-    print(" 天马麻将 · 立直后手牌锁定")
+    print(" 天才麻将少女 · 立直后手牌锁定")
     print("=" * 66)
 
     # ① 钓鱼

@@ -70,7 +70,7 @@ def add_river(db, rid, seq, seat, tile, wseq, down=False, called=0, riichi=0):
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card05 Skill1「策略」")
+    print(" 天才麻将少女 · Card05 Skill1「策略」")
     print("=" * 70)
 
     # ── 1. 登记 ──────────────────────────────────────────────────

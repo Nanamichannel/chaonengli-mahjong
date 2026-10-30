@@ -72,7 +72,7 @@ def to_discard(g: Game, seat: int) -> Game:
 
 def main() -> int:
     print("=" * 70)
-    print(" 天马麻将 · Card10 Skill2「四喜」")
+    print(" 天才麻将少女 · Card10 Skill2「四喜」")
     print("=" * 70)
 
     # ── ① 登记 ──────────────────────────────────────────────────

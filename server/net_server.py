@@ -147,6 +147,16 @@ class Handler(BaseHTTPRequestHandler):
     # 让 Godot 那边不用等 DNS/连接超时
     timeout = 30
 
+    def setup(self) -> None:
+        super().setup()
+        # ★ 关掉 Nagle。响应是「header 一段 + body 一段」两个小包，开着 Nagle 时
+        #   第二段会等对方的 delayed ACK，实测本机直连都要多 75 ms（连续请求只要 4 ms），
+        #   表现出来就是「点了牌要等一下」。
+        try:
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+
     def log_message(self, fmt, *args):                           # noqa: D401
         pass                                                     # 自己记日志
 
@@ -248,6 +258,7 @@ def main() -> int:
     args = ap.parse_args()
 
     load_config(args.config)
+    api_cli.CACHE_CONN = True          # 常驻服务：复用 SQLite 连接（见 api_cli._open_db）
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     srv.daemon_threads = True
     ip = lan_ip()
@@ -264,6 +275,8 @@ def main() -> int:
         srv.serve_forever()
     except KeyboardInterrupt:
         log("收到 Ctrl+C，服务端关闭")
+    finally:
+        api_cli.close_cached_dbs()
     return 0
 
 

@@ -13,7 +13,7 @@ extends Node2D
 # 状态/校验全在服务端，客户端只负责显示和把点击发上去。
 
 const CARD_COUNT := 46
-const POLL_SEC := 0.5
+const POLL_SEC := 0.35
 
 const CARD_SCALE := 0.70        # 手里的牌（传递选卡 / 调序）
 const PICK_SCALE := 0.22        # 已经留到自己名下的牌（左下角）

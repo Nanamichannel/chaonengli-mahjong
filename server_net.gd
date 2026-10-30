@@ -34,6 +34,10 @@ var token := ""
 var timeout_ms := 10000
 var last_error := ""
 var calls := 0
+# ★ 长连接复用：原来每次请求都 new HTTPClient + connect + TLS 握手，
+#   实测 Funnel 下这一次握手要 42 ms（46.7 → 4.5）。改成复用同一条连接。
+var _http: HTTPClient = null
+var _retry_safe := false      # 本次失败能不能安全重发（只有「还没发出去」才算安全）
 
 var _host := ""
 var _port := 80
@@ -173,11 +177,55 @@ func request(req: Dictionary) -> Dictionary:
 	if not enabled:
 		return {"ok": false, "error": last_error}
 	var r := _post(req)
+	# 长连接可能被中间层悄悄掐断：这种「请求根本没发出去」的情况可以安全重来一次。
+	# （一旦 request() 已经返回 OK，动作就可能已经执行了，绝不能重发 —— 会重复打牌。）
+	if r.is_empty() and _retry_safe:
+		_reset_conn()
+		r = _post(req)
 	if r.is_empty():
 		return {"ok": false, "error": last_error}
 	last_error = ""
 	calls += 1
 	return r
+
+func _reset_conn() -> void:
+	if _http != null:
+		_http.close()
+	_http = null
+
+
+# 复用已有连接；状态不对（被掐断 / 从没连过）就重连一次。
+func _ensure_connected() -> bool:
+	if _http != null:
+		if _http.get_status() == HTTPClient.STATUS_CONNECTED:
+			return true
+		_http.poll()                       # 空闲时状态不会自己更新，poll 一下让断连暴露出来
+		if _http.get_status() == HTTPClient.STATUS_CONNECTED:
+			return true
+		_reset_conn()
+	var http := HTTPClient.new()
+	var tls_opt: TLSOptions = null
+	if _tls:
+		tls_opt = TLSOptions.client()
+	var err := http.connect_to_host(_host, _port, tls_opt)
+	if err != OK:
+		last_error = "连不上 %s:%d（错误码 %d）" % [_host, _port, err]
+		return false
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while http.get_status() in [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING]:
+		http.poll()
+		if Time.get_ticks_msec() > deadline:
+			last_error = "连接超时：%s:%d" % [_host, _port]
+			http.close()
+			return false
+		OS.delay_msec(2)
+	if http.get_status() != HTTPClient.STATUS_CONNECTED:
+		last_error = "连接失败（状态 %d）：%s:%d" % [http.get_status(), _host, _port]
+		http.close()
+		return false
+	_http = http
+	return true
+
 
 func _post(req: Dictionary) -> Dictionary:
 	var body := JSON.stringify(req)
@@ -186,42 +234,38 @@ func _post(req: Dictionary) -> Dictionary:
 		path += "?token=" + token.uri_encode()
 	var deadline := Time.get_ticks_msec() + timeout_ms
 
-	var http := HTTPClient.new()
-	var tls_opt: TLSOptions = null
-	if _tls:
-		tls_opt = TLSOptions.client()
-	var err := http.connect_to_host(_host, _port, tls_opt)
-	if err != OK:
-		last_error = "连不上 %s:%d（错误码 %d）" % [_host, _port, err]
+	if not _ensure_connected():
+		_retry_safe = true                 # 连接都没建起来，动作肯定没执行
 		return {}
-	while http.get_status() in [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING]:
-		http.poll()
-		if Time.get_ticks_msec() > deadline:
-			last_error = "连接超时：%s:%d" % [_host, _port]
-			return {}
-		OS.delay_msec(2)
-	if http.get_status() != HTTPClient.STATUS_CONNECTED:
-		last_error = "连接失败（状态 %d）：%s:%d" % [http.get_status(), _host, _port]
-		return {}
+	var http := _http
 
+	# ★ Connection: keep-alive —— 服务端是 HTTP/1.1 + 带 Content-Length，支持复用
 	var headers := PackedStringArray([
 		"Content-Type: application/json",
 		"Accept: application/json",
-		"Connection: close",
+		"Connection: keep-alive",
 		"User-Agent: TianmaGodot/1.0",
 	])
-	err = http.request(HTTPClient.METHOD_POST, _base_path + path, headers, body)
+	var err := http.request(HTTPClient.METHOD_POST, _base_path + path, headers, body)
 	if err != OK:
 		last_error = "发不出去（错误码 %d）" % err
+		_retry_safe = true
+		_reset_conn()
 		return {}
+
+	# ↓ 从这里开始请求已经离开本机，失败一律不重发（可能已经执行）
+	_retry_safe = false
+
 	while http.get_status() == HTTPClient.STATUS_REQUESTING:
 		http.poll()
 		if Time.get_ticks_msec() > deadline:
 			last_error = "等响应超时（%d ms）" % timeout_ms
+			_reset_conn()
 			return {}
 		OS.delay_msec(2)
 	if not http.has_response():
 		last_error = "服务端没有响应（状态 %d）" % http.get_status()
+		_reset_conn()
 		return {}
 
 	var code := http.get_response_code()
@@ -235,8 +279,12 @@ func _post(req: Dictionary) -> Dictionary:
 			OS.delay_msec(2)
 		if Time.get_ticks_msec() > deadline:
 			last_error = "读响应超时（%d ms）" % timeout_ms
+			_reset_conn()
 			return {}
-	http.close()
+
+	# 读完不主动 close：状态回到 CONNECTED 就留着下次用，断了就丢掉
+	if http.get_status() != HTTPClient.STATUS_CONNECTED:
+		_reset_conn()
 
 	var text := raw.get_string_from_utf8()
 	var data = JSON.parse_string(text)

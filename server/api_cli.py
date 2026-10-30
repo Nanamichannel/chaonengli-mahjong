@@ -2322,6 +2322,41 @@ if set(OPS) - _GATE_KNOWN or _GATE_KNOWN - set(OPS) or _gate_dup:
 
 
 
+# ★ 常驻服务端复用连接：原来每个请求都 DB(db_path) 新建连接，连 PRAGMA journal_mode=WAL
+#   （这是个写操作）也要重跑一遍。实测带 0.6 秒间隔的请求要 73 ms，连续请求只要 4 ms
+#   —— 时间全花在重新开连接/碰磁盘上。缓存后每次只剩业务查询。
+#   · 只给 net_server 打开（CACHE_CONN=True）；测试脚本保持默认 False，
+#     否则测试里删库文件会撞到未关闭的连接（WinError 32）。
+CACHE_CONN = False
+_DB_CACHE: dict = {}
+
+
+def _open_db(db_path: str):
+    """缓存模式：连接建好时就初始化 schema，之后每个请求不用再查一次库。
+
+    原来 handle() 每次都 db.init_schema()（查 meta 表 = 碰磁盘），
+    实测这就是「空闲 200ms 后第一个请求要 57~72ms」的来源。
+    """
+    if not CACHE_CONN:
+        return DB(db_path)
+    key = os.path.abspath(db_path)
+    d = _DB_CACHE.get(key)
+    if d is None:
+        d = DB(key)
+        d.init_schema()
+        _DB_CACHE[key] = d
+    return d
+
+
+def close_cached_dbs() -> None:
+    for d in list(_DB_CACHE.values()):
+        try:
+            d.close()
+        except Exception:                                     # noqa: BLE001
+            pass
+    _DB_CACHE.clear()
+
+
 def handle(req: dict, db_path: str = DB_PATH) -> dict:
     op = str(req.get("op", "state"))
     fn = OPS.get(op)
@@ -2330,8 +2365,9 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                 "error": f"不认识的 op: {op}"}
     db = None
     try:
-        db = DB(db_path)
-        db.init_schema()                       # 失败也要回 JSON，不能让客户端「没回话」
+        db = _open_db(db_path)
+        if not CACHE_CONN:
+            db.init_schema()       # 缓存连接在 _open_db 里已经初始化过了                       # 失败也要回 JSON，不能让客户端「没回话」
         seat = req.get("seat")
         # Card34 S1【厄运】：静默期内其他三家不能使用任何技能
         if (op not in _C34_FREE_OPS and isinstance(seat, int)
@@ -2526,7 +2562,7 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
         return {"ok": False, "state": None, "events": [], "result": None,
                 "error": f"{type(e).__name__}: {e}"}
     finally:
-        if db is not None:
+        if db is not None and not CACHE_CONN:
             db.close()
 
 

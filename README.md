@@ -9,17 +9,11 @@ Godot 4.7 客户端 + Python/SQLite 服务端的**日本麻将（立直麻将）
 
 ## 下载
 
-到 [**Releases**](https://github.com/Nanamichannel/chaonengli-mahjong/releases) 下载：
+到 [**Releases**](https://github.com/Nanamichannel/chaonengli-mahjong/releases) 下载 **`Tianma.exe`**（约 188 MB，游戏资源已内嵌），**双击即玩**。
 
-| 文件 | 说明 |
-|---|---|
-| `Tianma.exe` | 客户端（Windows x86_64） |
-| `Tianma.pck` | 游戏资源，**必须和 exe 放在同一目录** |
-
-可选：
-
-- `net.cfg` —— 联机用，放 exe 同目录（格式见 `net.cfg.example`）
-- `skin/` —— 换图目录，把同名 png 丢进去重启即生效，不用重新导出
+- **不用装任何东西，也不用写配置文件** —— 服务器地址已内置在客户端里（`server_net.gd` 的 `DEFAULT_URL`）
+- 想连别的服务器 / 走单机：在 exe 同目录放一个 `net.cfg`，它会覆盖内置地址（格式见 `net.cfg.example`）
+- 换皮肤：exe 同目录建 `skin/`，放同名 png（`bg.png` / `chi.png` / `rong.png` / `zimo.png` …），重启即生效
 
 ---
 
@@ -89,10 +83,9 @@ python test_deal_skill.py
 
 ```bash
 # 预设名（export_presets.cfg 里的 name 字段）：天才麻将少女！
+# binary_format/embed_pck=true → 产物只有一个 exe（资源内嵌），不用带 pck
 godot --headless --path . --export-release "天才麻将少女！" build/Tianma.exe
 ```
-
-导出后把 `Tianma.exe` + `Tianma.pck` + `net.cfg` + `skin/` 一起打包发给朋友即可。
 
 ---
 

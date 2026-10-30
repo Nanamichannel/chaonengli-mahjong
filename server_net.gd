@@ -20,6 +20,10 @@ extends RefCounted
 
 const CFG_EXE := "net.cfg"
 const CFG_USER := "user://net.cfg"
+# 内置默认服务器：导出版「双击就联机」，朋友不用写 net.cfg。
+#   · 编辑器里不生效（OS.has_feature("template") == false）→ 单机调试不受影响
+#   · exe 同目录放 net.cfg 会覆盖这里（想连别的服务器/单机就放一个）
+const DEFAULT_URL := "https://desktop-an1ub6a.tail7ef5a6.ts.net"
 
 var enabled := false
 var url := ""
@@ -50,7 +54,18 @@ func _load_cfg() -> void:
 		if txt.strip_edges() != "":
 			break
 	if txt.strip_edges() == "":
-		return                                   # 没有配置文件 = 单机模式
+		if DEFAULT_URL == "" or not OS.has_feature("template"):
+			return                               # 没有配置文件（且无内置地址 / 在编辑器里）= 单机模式
+		url = DEFAULT_URL
+		room = "default"
+		token = ""
+		enabled = _parse_url()
+		if enabled:
+			print("[net] 联机模式（内置地址）：%s  房间=%s" % [url, room])
+		else:
+			last_error = "内置地址认不出来：%s" % url
+			push_warning("[net] " + last_error)
+		return
 	var d = JSON.parse_string(txt)
 	if typeof(d) != TYPE_DICTIONARY:
 		last_error = "net.cfg 不是合法 JSON"

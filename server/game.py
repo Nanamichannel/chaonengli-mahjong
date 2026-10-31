@@ -149,6 +149,11 @@ class Game:
         self._skill_cache = None
         # 一次性技能（本小局用过就不能再用）："card-skill-seat"
         self.used_skills: set[str] = set()
+        # 复制来的技能（Card41 复制 / Card16 传承）：每个复制品有**自己一份**一次性配额。
+        # key 与 used_skills 同形（"card-skill-seat"）：在 cc_grants 里 = 这是复制来的技能，
+        # 「用过没有」看 used_copy，不看原技能那份 used_skills。
+        self.cc_grants: set[str] = set()
+        self.used_copy: set[str] = set()
         # 画板（Card02 Skill1）：seat -> {"tiles":[3] 指定的牌种,
         #                               "delivered":[已给过我的],
         #                               "pending":[{"tile","seq"}] 压在我卡下、等我摸的明牌}
@@ -410,6 +415,8 @@ class Game:
         self.win_pending = _wp if isinstance(_wp, dict) and _wp else None
         self._skill_cache = None
         self.used_skills = set(f.get("used_skills") or [])
+        self.cc_grants = {str(x) for x in (f.get("cc_grants") or [])}
+        self.used_copy = {str(x) for x in (f.get("used_copy") or [])}
         self.swaps = {int(k): v for k, v in (f.get("swaps") or {}).items()
                       if isinstance(v, dict)}
         self.confident = {int(x) for x in (f.get("confident") or [])
@@ -807,6 +814,8 @@ class Game:
             "armed_skill": self.armed_skill,
             "win_pending": self.win_pending,
             "used_skills": sorted(self.used_skills),
+            "cc_grants": sorted(self.cc_grants),
+            "used_copy": sorted(self.used_copy),
             "boards": {str(k): v for k, v in self.boards.items()},
             "swaps": {str(k): v for k, v in (self.swaps or {}).items()},
             "confident": sorted(self.confident),
@@ -1195,7 +1204,7 @@ class Game:
                        "poked_cards": sorted({
                            int(k.split(":")[1]) for k in self.poked
                            if k.count(":") == 1 and k.startswith("%d:" % int(seat or 0))}),
-                       "used_skills": [k for k in sorted(self.used_skills)
+                       "used_skills": [k for k in sorted(self.used_skills | self.used_copy)
                                        if k.endswith("-%d" % seat)],
                        # 自信：本小局是不是已经发动（客户端给图标套红框）
                        "confident": seat in self.confident,
@@ -2329,7 +2338,10 @@ class Game:
 
     # ── 一次性技能 / 画板（Card02 Skill1）────────────────────────────
     def skill_used(self, seat: int, card: int, skill: int) -> bool:
-        return f"{int(card)}-{int(skill)}-{int(seat)}" in self.used_skills
+        key = f"{int(card)}-{int(skill)}-{int(seat)}"
+        if key in self.cc_grants:
+            return key in self.used_copy          # 复制来的：看它自己那份配额
+        return key in self.used_skills
 
     def _char_states(self, viewer: int = -1) -> list[dict]:
         """主战 / 协战 的遮罩状态。open = 发动过技能（之后一直开着），
@@ -2566,7 +2578,11 @@ class Game:
         """
         s, c, k = int(seat), int(card), int(skill)
         if once:
-            self.used_skills.add(f"{c}-{k}-{s}")
+            key = f"{c}-{k}-{s}"
+            if key in self.cc_grants:
+                self.used_copy.add(key)           # 复制品：记自己的配额
+            else:
+                self.used_skills.add(key)
         # 传承：发动的是「复制来的技能」→ 起作用的是 16 号卡，卡面翻 16
         cp = self.cc_copy.get(s) or {}
         face = 16 if (int(cp.get("card", 0)) == c and int(cp.get("skill", 0)) == k) else c
@@ -4695,6 +4711,7 @@ class Game:
             self.c41_ask.pop(s, None)
         # 让技能的条件判定认这张卡；并清掉「已经用掉」的痕迹 → 复制来的能再用一次
         self.granted.setdefault(s, set()).add(int(card))
+        self.cc_grants.add(f"{int(card)}-{int(skill)}-{s}")   # 复制品：独立配额
         self._cc_reset_skill(s, int(card), int(skill))
         lst = self.c41_copies.setdefault(s, [])
         if not any(int(x.get("card", 0)) == card and int(x.get("skill", 0)) == skill
@@ -9328,6 +9345,7 @@ class Game:
         # granted 让 skills.owns_card() 认这张卡，发动时走原技能的 op。
         self.cc_copy[s] = {"card": int(card), "skill": int(skill)}
         self.granted.setdefault(s, set()).add(int(card))
+        self.cc_grants.add(f"{int(card)}-{int(skill)}-{s}")   # 复制品：独立配额
         # 复制来的技能要能**再用一次**：这个技能本来因为「已经用掉」才进了复制清单，
         # 不清掉 used_skills 的话，can 判定会一直是「本局已经用过了」。
         self._cc_reset_skill(s, int(card), int(skill))
@@ -9338,7 +9356,7 @@ class Game:
     def _cc_reset_skill(self, seat: int, card: int, skill: int) -> None:
         """传承复制过来的技能：把「已用过」的痕迹清掉，让它重新可用一次。"""
         s = int(seat)
-        self.used_skills.discard(f"{int(card)}-{int(skill)}-{s}")
+        # 不再 discard 原技能那条记录：复制品有自己的配额（cc_grants/used_copy）
         # 各技能自己的一次性 / 每回合状态
         if (int(card), int(skill)) == (7, 1):        # 降神：可以重新掷骰
             self.oracle.pop(s, None)

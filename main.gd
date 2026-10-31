@@ -4602,11 +4602,21 @@ func _cg_show_cards(title: String, lst: Array, cb: Callable) -> void:
 		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(lbl)
 		i += 1
-	var cl := Button.new()
-	cl.text = "关闭"
+	# 跳过 / 关闭：用牌桌统一的「跳过」贴图（场景节点 BtnTiaoguo），不要黑色文字按钮
+	var cl := TextureButton.new()
+	cl.name = "CgSkip"
+	cl.texture_normal = btn_tex("pass")
+	cl.ignore_texture_size = true
+	cl.stretch_mode = TextureButton.STRETCH_SCALE
 	cl.focus_mode = Control.FOCUS_NONE
+	var sk_w := 116.0
+	var sk_h := 64.0
+	var sk_tex := cl.texture_normal
+	if sk_tex != null and sk_tex.get_width() > 0:
+		sk_h = sk_w * float(sk_tex.get_height()) / float(sk_tex.get_width())
+	cl.size = Vector2(sk_w, sk_h)
 	cl.position = Vector2(40, 90.0 + float((i + 5) / 6) * 215.0 + 10.0)
-	cl.size = Vector2(160, 44)
+	cl.tooltip_text = "跳过（不传承）"
 	cl.pressed.connect(_cg_close)
 	cg_ui.add_child(cl)
 

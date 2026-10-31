@@ -36,6 +36,13 @@ var last_error := ""
 var calls := 0
 # ★ 长连接复用：原来每次请求都 new HTTPClient + connect + TLS 握手，
 #   实测 Funnel 下这一次握手要 42 ms（46.7 → 4.5）。改成复用同一条连接。
+# ★ 连不上服务端时，**绝不能**把主线程按在 TCP 连接里 —— 那会让窗口变成
+#   「未响应」，玩家看到的就是「一打开就卡死」。
+#   单次建连接最多等 CONNECT_MS；失败后 DOWN_MS 之内 request() 直接回错误，
+#   一次都不去碰网络（主线程这段时间完全自由）。连上就清零。
+const CONNECT_MS := 900
+const DOWN_MS := 3000
+var _down_until := 0                 # Time.get_ticks_msec() 之前不再尝试连接
 var _http: HTTPClient = null
 var _retry_safe := false      # 本次失败能不能安全重发（只有「还没发出去」才算安全）
 
@@ -176,6 +183,11 @@ func set_room(r: String) -> bool:
 func request(req: Dictionary) -> Dictionary:
 	if not enabled:
 		return {"ok": false, "error": last_error}
+	if Time.get_ticks_msec() < _down_until:
+		# 刚确认连不上 → 这一小段别再阻塞主线程，立刻把错误还回去
+		if last_error == "":
+			last_error = "连不上服务端（%s:%d）" % [_host, _port]
+		return {"ok": false, "error": last_error}
 	var r := _post(req)
 	# 长连接可能被中间层悄悄掐断：这种「请求根本没发出去」的情况可以安全重来一次。
 	# （一旦 request() 已经返回 OK，动作就可能已经执行了，绝不能重发 —— 会重复打牌。）
@@ -185,6 +197,7 @@ func request(req: Dictionary) -> Dictionary:
 	if r.is_empty():
 		return {"ok": false, "error": last_error}
 	last_error = ""
+	_down_until = 0
 	calls += 1
 	return r
 
@@ -203,6 +216,8 @@ func _ensure_connected() -> bool:
 		if _http.get_status() == HTTPClient.STATUS_CONNECTED:
 			return true
 		_reset_conn()
+	if Time.get_ticks_msec() < _down_until:
+		return false                       # 掉线窗口内：不碰网络，让主线程喘口气
 	var http := HTTPClient.new()
 	var tls_opt: TLSOptions = null
 	if _tls:
@@ -210,22 +225,27 @@ func _ensure_connected() -> bool:
 	var err := http.connect_to_host(_host, _port, tls_opt)
 	if err != OK:
 		last_error = "连不上 %s:%d（错误码 %d）" % [_host, _port, err]
+		_down_until = Time.get_ticks_msec() + DOWN_MS
 		return false
-	var deadline := Time.get_ticks_msec() + timeout_ms
+	# ★ 这里原来用 timeout_ms（10 秒）：主机不可达时窗口会整段「未响应」。
+	#   建连接只给 CONNECT_MS，连不上就迅速退回、过 DOWN_MS 再试。
+	var deadline := Time.get_ticks_msec() + mini(timeout_ms, CONNECT_MS)
 	while http.get_status() in [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING]:
 		http.poll()
 		if Time.get_ticks_msec() > deadline:
-			last_error = "连接超时：%s:%d" % [_host, _port]
+			last_error = "连不上服务端 %s:%d（连接超时）" % [_host, _port]
 			http.close()
+			_down_until = Time.get_ticks_msec() + DOWN_MS
 			return false
 		OS.delay_msec(2)
 	if http.get_status() != HTTPClient.STATUS_CONNECTED:
-		last_error = "连接失败（状态 %d）：%s:%d" % [http.get_status(), _host, _port]
+		last_error = "连不上服务端 %s:%d（状态 %d）" % [_host, _port, http.get_status()]
 		http.close()
+		_down_until = Time.get_ticks_msec() + DOWN_MS
 		return false
 	_http = http
+	_down_until = 0
 	return true
-
 
 func _post(req: Dictionary) -> Dictionary:
 	var body := JSON.stringify(req)
@@ -295,6 +315,11 @@ func _post(req: Dictionary) -> Dictionary:
 		last_error = "HTTP %d" % code
 		return {}
 	return data as Dictionary
+
+
+# 现在是不是「刚确认连不上」的冷却期（界面据此显示提示、别再催）
+func offline() -> bool:
+	return Time.get_ticks_msec() < _down_until
 
 
 # 给界面显示用的一句话

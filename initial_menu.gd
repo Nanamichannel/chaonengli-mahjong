@@ -326,9 +326,35 @@ var room_btn: Button = null
 var _room_flash := 0
 
 
+var net_badge: Label = null
+
+
+# 连不上服务端时的一行提示（放左上角，平时隐藏）
+func _make_net_badge() -> void:
+	net_badge = Label.new()
+	net_badge.name = "NetBadge"
+	net_badge.position = Vector2(24, 22)
+	net_badge.size = Vector2(900, 34)
+	net_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	net_badge.add_theme_font_size_override("font_size", 20)
+	net_badge.add_theme_color_override("font_color", Color(1.0, 0.72, 0.42))
+	net_badge.add_theme_color_override("font_outline_color", Color(0.06, 0.03, 0.02))
+	net_badge.add_theme_constant_override("outline_size", 4)
+	net_badge.visible = false
+	add_child(net_badge)
+
+
+func _net_badge_show(text: String) -> void:
+	if net_badge == null or not is_instance_valid(net_badge):
+		return
+	net_badge.text = text
+	net_badge.visible = text != ""
+
+
 func _build_room_ui() -> void:
 	if srv == null or srv.net == null or not bool(srv.net.enabled):
 		return                                  # 单机：没有房间概念
+	_make_net_badge()
 
 	var tag := Label.new()
 	tag.name = "RoomTag"
@@ -446,6 +472,9 @@ func _flash_room_btn(t: String) -> void:
 
 
 # ── 和服务端说话 ───────────────────────────────────────────────────
+var _last_join_err := ""
+
+
 func _join_lobby() -> void:
 	var r: Dictionary = srv.request({"op": "lobby_join", "seat": -1})
 	if not bool(r.get("ok", false)):
@@ -453,9 +482,15 @@ func _join_lobby() -> void:
 		if why.find("已满") >= 0:
 			_set_hint("房间已满（4/4）—— 有人退出后会自动加入")
 		else:
-			_set_hint("连不上服务端，正在重试…（%s）" % why)
-		print("initial_menu: 加入大厅失败，0.5 秒后重试：", why)
+			_set_hint("连不上服务端 —— 服务端开着吗？（server\\start_server.bat）")
+			_net_badge_show("连不上服务端 —— 双击 server\\start_server.bat 起来后再试")
+		if why != _last_join_err:
+			_last_join_err = why
+			print("initial_menu: 加入大厅失败，稍后自动重试：", why)
 		return
+	_last_join_err = ""
+	_set_hint("")
+	_net_badge_show("")
 	my_seat = clampi(int(r.get("seat", 0)), 0, 3)
 	if cs != null:
 		cs.seat = my_seat
@@ -471,6 +506,10 @@ func _poll() -> void:
 	var r: Dictionary = srv.request({"op": "lobby_state", "seat": my_seat})
 	if bool(r.get("ok", false)):
 		_apply_lobby(r.get("lobby", {}))
+	elif srv.net != null and bool(srv.net.enabled) and bool(srv.net.offline()):
+		_net_badge_show("连不上服务端 —— 双击 server\\start_server.bat 起来后再试")
+	else:
+		_net_badge_show("")
 
 
 func _apply_lobby(l) -> void:

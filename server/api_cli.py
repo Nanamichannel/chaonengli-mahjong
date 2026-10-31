@@ -2421,6 +2421,12 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
         if not CACHE_CONN:
             db.init_schema()       # 缓存连接在 _open_db 里已经初始化过了                       # 失败也要回 JSON，不能让客户端「没回话」
         seat = req.get("seat")
+        # ★ 每个「带座位的请求」都刷新一次租约。
+        #   以前只有 join 才刷：一个人在正常玩（12 秒内没再 join）租约就过期，
+        #   别人 join 时服务端把这个座位分给他 → 两个人操控同一个人。
+        #   现在他只要还活着、还在发请求，座位就一直归他（死窗口不再发请求，照样过期）。
+        if isinstance(seat, int) and 0 <= int(seat) <= 3:
+            _touch_lease(db, int(seat))
         # Card34 S1【厄运】：静默期内其他三家不能使用任何技能
         if (op not in _C34_FREE_OPS and isinstance(seat, int)
                 and 0 <= int(seat) <= 3):

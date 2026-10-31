@@ -44,6 +44,42 @@ def fit_font(draw, text, max_w, max_h, start=104):
     ft = ImageFont.truetype(FONT_NAME, 26)
     return ft, draw.textbbox((0, 0), text, font=ft, stroke_width=4)
 
+def _btn_lines(name, angle):
+    """竖版（±90）把技能名拆成多行：含空格按「词」拆，否则逐字拆。
+       例：风神 -> 风/神 ；NO MISS -> NO/MISS ；南风 -> 南/风
+       横版（0/180）保持一行。"""
+    if angle not in (90, -90):
+        return [name]
+    nm = name.strip()
+    parts = [w for w in nm.replace('\u3000', ' ').split(' ') if w]
+    if len(parts) > 1:
+        return parts
+    return list(nm)
+
+
+def _fit_lines(draw, lines, max_w, max_h, start=104, min_size=26):
+    """给多行文字挑一个统一字号：每行宽度 <= max_w，总高度 <= max_h。"""
+    size = start
+    while size > min_size:
+        ft = ImageFont.truetype(FONT_NAME, size)
+        ws, hs = [], []
+        for ln in lines:
+            b = draw.textbbox((0, 0), ln, font=ft, stroke_width=4)
+            ws.append(b[2] - b[0])
+            hs.append(b[3] - b[1])
+        gap = int(size * 0.12)
+        if max(ws) <= max_w and sum(hs) + gap * (len(lines) - 1) <= max_h:
+            return ft, ws, hs, gap
+        size -= 2
+    ft = ImageFont.truetype(FONT_NAME, min_size)
+    ws, hs = [], []
+    for ln in lines:
+        b = draw.textbbox((0, 0), ln, font=ft, stroke_width=4)
+        ws.append(b[2] - b[0])
+        hs.append(b[3] - b[1])
+    return ft, ws, hs, int(min_size * 0.12)
+
+
 def make_button(name, tag, angle):
     if angle in (90, -90):
         cw, ch = 250, 446
@@ -54,12 +90,16 @@ def make_button(name, tag, angle):
     bg = btn_base.rotate(angle, expand=True).resize((cw, ch), Image.LANCZOS)
     im = bg.copy()
     d = ImageDraw.Draw(im)
-    ft, box = fit_font(d, name, max_w, max_h)
-    tw, th = box[2] - box[0], box[3] - box[1]
-    x = (cw - tw) * 0.5 - box[0]
-    y = (ch - th) * 0.5 - box[1]
-    d.text((x, y), name, font=ft, fill=(240, 250, 255, 255),
-           stroke_width=4, stroke_fill=(8, 34, 72, 255))
+    lines = _btn_lines(name, angle)
+    ft, ws, hs, gap = _fit_lines(d, lines, max_w, max_h)
+    total_h = sum(hs) + gap * (len(lines) - 1)
+    y = (ch - total_h) * 0.5
+    for i, ln in enumerate(lines):
+        b = d.textbbox((0, 0), ln, font=ft, stroke_width=4)
+        x = (cw - ws[i]) * 0.5 - b[0]
+        d.text((x, y - b[1]), ln, font=ft, fill=(240, 250, 255, 255),
+               stroke_width=4, stroke_fill=(8, 34, 72, 255))
+        y += hs[i] + gap
     im.save(os.path.join(BTN_DIR, tag))
 
 def wrap_cn(draw, text, ft, max_w):

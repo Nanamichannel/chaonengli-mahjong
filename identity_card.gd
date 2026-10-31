@@ -97,26 +97,6 @@ func _ready() -> void:
 		#   牌河/副露的牌按 y 当 z（能到 1000+），面板 250~1600，所以给 2000。
 		#   技能按钮本身仍然是 0（抬 z 会跨卡覆盖，见文件头）。
 		bub.z_index = 2000
-	# 技能名文字：叠在技能图标上，按空格换行（"NO MISS" → NO / MISS 两行）。
-	# 图标自带的字在卡片横置/缩放后常挤成一条，这一层保证任何时候都读得出来。
-	_skill_labels.clear()
-	for i in range(2):
-		var sb0 := _skill_buttons[i] as TextureButton
-		if sb0 == null:
-			_skill_labels.append(null)
-			continue
-		var lb := Label.new()
-		lb.name = "SkillName%d" % i
-		lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lb.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		lb.add_theme_color_override("font_color", Color(1, 1, 1))
-		lb.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-		lb.add_theme_constant_override("outline_size", 6)
-		lb.visible = false
-		sb0.add_child(lb)
-		_skill_labels.append(lb)
-
 	# 卡面遮罩：作为**卡的子节点**，这样位置/旋转/缩放（含悬停放大）天然贴合；
 	# z 高于卡面、Skill1/2（z=2）、气泡（z=3）→ 盖住整张卡
 	_cover = TextureRect.new()
@@ -165,10 +145,8 @@ func set_character(card_no: int) -> void:
 				var suf := _variant_tag()
 				sb.texture_normal = load((BTN_DIR + "card_%02d_%d_%s.png") % [card_no, i + 1, suf])
 				sb.tooltip_text = String(s.get("name", ""))
-				_set_skill_name(i, String(s.get("name", "")))
 			else:
 				sb.texture_normal = null
-				_set_skill_name(i, "")
 		if bub != null:
 			if i < arr.size() and typeof(arr[i]) == TYPE_DICTIONARY:
 				bub.texture = load((BUB_DIR + "card_%02d_%d_%s.png") % [card_no, i + 1, _variant_tag()])
@@ -180,19 +158,7 @@ func set_character(card_no: int) -> void:
 
 # 传承（Card16 S1）：把某个技能图标换成「复制来的那个技能」（**只换图标，不换卡面**）
 var _icon_override := {}        # index(0/1) -> [card_no, skill_no(1 起)]
-var _skill_labels: Array = []   # index(0/1) -> Label（技能名，按空格换行）
 
-
-# 技能名写进按钮上的 Label：按空格拆词、一个词一行（"NO MISS" → NO / MISS）
-func _set_skill_name(index: int, nm: String) -> void:
-	if index < 0 or index >= _skill_labels.size():
-		return
-	var lb := _skill_labels[index] as Label
-	if lb == null:
-		return
-	var words := nm.strip_edges().split(" ", false)
-	lb.text = "\n".join(words)
-	lb.visible = not words.is_empty()
 
 
 func set_skill_icon(index: int, from_card: int, from_skill: int = 1) -> void:
@@ -217,12 +183,6 @@ func _apply_icon_override() -> void:
 		var sb := _skill_buttons[i] as TextureButton
 		if sb != null:
 			sb.texture_normal = load((BTN_DIR + "card_%02d_%d_%s.png") % [c, k, tag])
-			var ent: Dictionary = _skill_data.get(str(c), {})
-			var arr2: Array = ent.get("skills", []) if typeof(ent) == TYPE_DICTIONARY else []
-			var nm2 := ""
-			if k - 1 < arr2.size() and typeof(arr2[k - 1]) == TYPE_DICTIONARY:
-				nm2 = String((arr2[k - 1] as Dictionary).get("name", ""))
-			_set_skill_name(i, nm2)
 		var bub := _bubbles[i] as TextureRect
 		if bub != null:
 			bub.texture = load((BUB_DIR + "card_%02d_%d_%s.png") % [c, k, tag])
@@ -240,10 +200,17 @@ func set_hidden(v: bool) -> void:
 	_apply_skills()
 
 func _variant_tag() -> String:
-	# ★ 一律用正立版（r0）贴图。
-	#   以前按 rotation 挑 r90/rm90 的图，但 _layout_skill_ui 里又把按钮转 -rotation
-	#   「转回来」，两次旋转正好抵消 → 横置的卡上还是横排文字，长技能名（NO MISS）
-	#   就挤成一团。现在按钮跟着卡一起转，文字自然变成竖排。
+	# 四套图：r0 横框横字 / r90·rm90 竖框**竖排字**（gen_skill_ui.py 生成）/ r180。
+	# 按钮本身用 -rotation 抵消卡片旋转保持正立，所以横置的卡上看到的就是
+	# 「竖框 + 竖排字」，正好贴着卡的侧边。
+	var r := int(round(rotation_degrees))
+	r = ((r % 360) + 360) % 360
+	if r == 90:
+		return "r90"
+	if r == 180:
+		return "r180"
+	if r == 270:
+		return "rm90"
 	return "r0"
 
 
@@ -335,23 +302,6 @@ func _layout_skill_ui() -> void:
 		sb.stretch_mode = TextureButton.STRETCH_SCALE
 		# 牌墩的 z_index 是 15/16，技能按钮原来是 0 → 被牌山盖住点不到
 		sb.z_index = 20
-		var lb2: Label = null
-		if i < _skill_labels.size():
-			lb2 = _skill_labels[i] as Label
-		if lb2 != null:
-			lb2.position = Vector2.ZERO
-			lb2.size = sb.size
-			lb2.rotation_degrees = 0          # 相对按钮保持水平（按钮已抵消卡片旋转）
-			var maxlen := 1
-			var lines := 0
-			for w in lb2.text.split("\n", false):
-				maxlen = maxi(maxlen, String(w).length())
-				lines += 1
-			# 宽度和高度都要放得下：横置的卡上按钮很矮，光按宽度算会溢出去
-			var fs_w := int(sb.size.x / (float(maxlen) * 0.72))
-			var fs_h := int(sb.size.y / (float(maxi(lines, 1)) * 1.30))
-			var fs := clampi(mini(fs_w, fs_h), 9, 26)
-			lb2.add_theme_font_size_override("font_size", fs)
 		var ov := _muted_overlays.get(i, null) as ColorRect
 		if ov != null and is_instance_valid(ov):
 			ov.position = Vector2.ZERO

@@ -8457,28 +8457,7 @@ func _c41_pick_open(pool: Array, names: Array = []) -> void:
 		b.pressed.connect(_c41_do_copy2.bind(cd, sk))
 		b.pressed.connect(_c41_pick_close)
 		box.add_child(b)
-		# 技能名叠在图标上：按空格拆词、一个词一行竖排（"NO MISS" → NO / MISS），
-		# 否则长名字横着写在 112px 宽的按钮上会挤成一团。
-		var nm := String(d.get("name", ""))
-		var words := nm.split(" ", false)
-		if words.size() > 0:
-			var lb := Label.new()
-			lb.text = "\n".join(words)
-			lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			lb.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			lb.position = Vector2.ZERO
-			lb.size = C41_ICON
-			lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			var maxlen := 1
-			for w in words:
-				maxlen = maxi(maxlen, String(w).length())
-			# 自动缩字：按最长那个词算，别超出按钮宽度
-			var fs := clampi(int(C41_ICON.x / (float(maxlen) * 0.72)), 12, 26)
-			lb.add_theme_font_size_override("font_size", fs)
-			lb.add_theme_color_override("font_color", Color(1, 1, 1))
-			lb.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-			lb.add_theme_constant_override("outline_size", 6)
-			b.add_child(lb)
+		# 技能名已经在贴图里了（card_XX_Y_r0.png 自带），不再叠 Label
 
 	var sbtn := TextureButton.new()
 	sbtn.name = "C41Skip"
@@ -8530,15 +8509,22 @@ func _c41_refresh_btns(copies: Array) -> void:
 		var card := idn.get_node_or_null("Card41")
 		if card != null and card is Node2D:
 			base = (card as Node2D).global_position + Vector2(0, -52)
+	# 已经复制到的技能：直接画成「技能图标按钮」（和人物卡上的那个子节点同一套图）
+	const ICON := Vector2(96.0, 54.0)          # 横版技能按钮（446x250 等比缩小）
 	for i in range((copies as Array).size()):
 		var it: Dictionary = copies[i]
-		var b := Button.new()
-		b.text = "复制·%s" % String(it.get("name", ""))
-		b.focus_mode = Control.FOCUS_NONE
-		b.size = Vector2(148, 34)
-		b.position = base + Vector2(0, -float(i) * 40.0)
 		var card_no := int(it.get("card", 0))
 		var sk := int(it.get("skill", 1))
+		var b := TextureButton.new()
+		b.name = "C41Have%d" % i
+		var t := load("res://Cailiao/skill/ui/buttons/card_%02d_%d_r0.png" % [card_no, sk]) as Texture2D
+		b.texture_normal = t
+		b.ignore_texture_size = true
+		b.stretch_mode = TextureButton.STRETCH_SCALE
+		b.focus_mode = Control.FOCUS_NONE
+		b.size = ICON
+		b.position = base + Vector2(0, -float(i) * (ICON.y + 6.0))
+		b.tooltip_text = "复制到的技能：%s（点一下就用）" % String(it.get("name", ""))
 		b.pressed.connect(func(): _on_identity_skill(my_seat, card_no, sk - 1))
 		c41_layer.add_child(b)
 		c41_btns.append(b)

@@ -10347,7 +10347,8 @@ func set_start_btn_kind(btn: TextureButton, picked: bool) -> void:
 		btn.texture_normal = t
 	# 确认态整体放大 CONFIRM_BTN_SCALE 倍（用 scale + 居中 pivot：
 	# 不动 size/position，免得和 _sync_prompt_btns 的布局打架）
-	btn.pivot_offset = btn.size * 0.5
+	# 以「底边中心」为基准放大：底部始终和手牌底部对齐，只往上长
+	btn.pivot_offset = Vector2(btn.size.x * 0.5, btn.size.y)
 	var m := CONFIRM_BTN_SCALE if picked else 1.0
 	if btn.has_method("set_base_mult"):
 		btn.call("set_base_mult", m)

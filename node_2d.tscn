@@ -5856,6 +5856,6 @@ offset_top = 824.035
 offset_right = 1733.1052
 offset_bottom = 1798.0359
 scale = Vector2(0.25, 0.25)
-texture_normal = ExtResource("49_ywe1r")
+texture_normal = ExtResource("59_sfqef")
 stretch_mode = 1
 script = ExtResource("264_mfvrb")

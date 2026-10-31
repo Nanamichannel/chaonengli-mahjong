@@ -1,5 +1,6 @@
 [gd_scene format=3 uid="uid://crs74bb15657a"]
 
+[ext_resource type="Texture2D" uid="uid://dvnrxmgktef2m" path="res://Cailiao/UI/queren.png" id="9_queren"]
 [ext_resource type="Script" uid="uid://igaeytyjy1pg" path="res://initial_menu.gd" id="1_2xdih"]
 [ext_resource type="Texture2D" uid="uid://b1pcg0fvwgaw1" path="res://Cailiao/UI/初始界面.png" id="1_4qvfu"]
 [ext_resource type="Texture2D" uid="uid://b70qx1g0hd2yk" path="res://Cailiao/UI/tiaoguo.png" id="2_xj0qp"]
@@ -67,7 +68,7 @@ offset_top = 824.035
 offset_right = 1733.1052
 offset_bottom = 1798.0359
 scale = Vector2(0.25, 0.25)
-texture_normal = ExtResource("2_xj0qp")
+texture_normal = ExtResource("9_queren")
 stretch_mode = 1
 script = ExtResource("4_a8c4q")
 

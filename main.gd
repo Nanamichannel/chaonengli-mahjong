@@ -8457,6 +8457,28 @@ func _c41_pick_open(pool: Array, names: Array = []) -> void:
 		b.pressed.connect(_c41_do_copy2.bind(cd, sk))
 		b.pressed.connect(_c41_pick_close)
 		box.add_child(b)
+		# 技能名叠在图标上：按空格拆词、一个词一行竖排（"NO MISS" → NO / MISS），
+		# 否则长名字横着写在 112px 宽的按钮上会挤成一团。
+		var nm := String(d.get("name", ""))
+		var words := nm.split(" ", false)
+		if words.size() > 0:
+			var lb := Label.new()
+			lb.text = "\n".join(words)
+			lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			lb.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			lb.position = Vector2.ZERO
+			lb.size = C41_ICON
+			lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var maxlen := 1
+			for w in words:
+				maxlen = maxi(maxlen, String(w).length())
+			# 自动缩字：按最长那个词算，别超出按钮宽度
+			var fs := clampi(int(C41_ICON.x / (float(maxlen) * 0.72)), 12, 26)
+			lb.add_theme_font_size_override("font_size", fs)
+			lb.add_theme_color_override("font_color", Color(1, 1, 1))
+			lb.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+			lb.add_theme_constant_override("outline_size", 6)
+			b.add_child(lb)
 
 	var sbtn := TextureButton.new()
 	sbtn.name = "C41Skip"

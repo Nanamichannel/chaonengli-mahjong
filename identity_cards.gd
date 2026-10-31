@@ -27,11 +27,11 @@ const ORDERS_PATH := "user://player_orders.json"    # 四家各自的 5 张（se
 
 const MAIN_SLOTS := [1, 3, 5, 7]
 const SUPPORT_SLOTS := [2, 4, 6, 8]
-# 遮罩贴图：用户原来挂在场景 Identity/hidden 上的那张（睡.png）。
-# 场景节点已删，这里直接用同一张图，外观不变。
-const HIDDEN_CARD_TEX := "res://Cailiao/UI/睡.png"
+# 遮罩贴图：**不写死文件路径**，取场景里 Main/UI/CardCover 节点的贴图（睡2.png）。
+#   在编辑器里换 CardCover 的图就全局生效，不用改代码。
+const COVER_NODE_PATH := "../UI/CardCover"
 # ★ 遮罩样式可自定义：
-#   1) 换图：把 card_cover.png 放到 <exe 同目录>\skin\ 或 user://skin\（优先于上面这张）
+#   1) 换图：把 card_cover.png 放到 <exe 同目录>\skin\ 或 user://skin\（优先于 CardCover 节点）
 #   2) 颜色/透明度：identity_card.COVER_TINT（或运行时 identity_card.set_cover_tint()）
 #   3) 技能图标上那层半透明白：identity_card.SKILL_MUTE_COLOR
 const COVER_SKIN_FILES := ["card_cover.png", "card_cover.jpg", "card_cover.webp"]
@@ -119,7 +119,13 @@ func _load_cover_tex() -> Texture2D:
 		if img != null and not img.is_empty():
 			print("identity_cards: 遮罩 = %s（外部）" % ext)
 			return ImageTexture.create_from_image(img)
-	return load(HIDDEN_CARD_TEX) as Texture2D
+	var node := get_node_or_null(COVER_NODE_PATH)
+	if node != null and node is TextureRect:
+		var t := (node as TextureRect).texture
+		if t != null:
+			return t
+	push_warning("identity_cards: 场景里找不到 UI/CardCover（人物卡遮罩贴图缺失）")
+	return null
 
 
 # 运行时改完 skin/card_cover.png（或 COVER_TINT）后调一下，立刻重刷

@@ -76,7 +76,9 @@
 [ext_resource type="Texture2D" uid="uid://cb3ujw3oq763c" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f7s.png" id="56_5cr6e"]
 [ext_resource type="Texture2D" uid="uid://clgfm8x0ptsin" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f8s.png" id="57_fm8k7"]
 [ext_resource type="Texture2D" uid="uid://vcm5n58pe0m8" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f9s.png" id="58_n63ng"]
+[ext_resource type="Texture2D" uid="uid://dvnrxmgktef2m" path="res://Cailiao/UI/queren.png" id="59_sfqef"]
 [ext_resource type="Texture2D" uid="uid://chtb0gl3peh24" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f1p.png" id="59_wnn4a"]
+[ext_resource type="Texture2D" uid="uid://drlbl2og0j3ve" path="res://Cailiao/UI/睡2.png" id="60_0t0qg"]
 [ext_resource type="Texture2D" uid="uid://6r16ejpfuvdi" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f2p.png" id="60_1aygh"]
 [ext_resource type="Texture2D" uid="uid://fqmkiyxuj2ai" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f3p.png" id="61_td2a2"]
 [ext_resource type="Texture2D" uid="uid://bjxuxyud0bb6t" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f4p.png" id="62_c6xte"]
@@ -1236,6 +1238,18 @@ offset_bottom = 871.614
 texture_normal = ExtResource("49_ywe1r")
 ignore_texture_size = true
 stretch_mode = 5
+script = ExtResource("50_dibfd")
+
+[node name="BtnQueren" type="TextureButton" parent="Main/UI/Btn" unique_id=1920359150]
+visible = false
+offset_left = 1267.5
+offset_top = 743.5996
+offset_right = 1385.0
+offset_bottom = 871.5996
+focus_mode = 0
+texture_normal = ExtResource("59_sfqef")
+ignore_texture_size = true
+stretch_mode = 0
 script = ExtResource("50_dibfd")
 
 [node name="Pile" type="Node2D" parent="Main/UI" unique_id=1737307030]
@@ -2471,6 +2485,13 @@ theme_override_font_sizes/font_size = 46
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
+
+[node name="CardCover" type="TextureRect" parent="Main/UI" unique_id=1185805599]
+visible = false
+offset_right = 511.0
+offset_bottom = 744.0
+mouse_filter = 2
+texture = ExtResource("60_0t0qg")
 
 [node name="fPai" type="Node2D" parent="Main" unique_id=933442090]
 visible = false

@@ -2531,7 +2531,7 @@ func _oracle_open(suit: String) -> void:
 		oracle_ui.add_child(b)
 		oracle_frames[kind] = SelFrame.attach(b, b.size)     # 选中：彩框图
 
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -2557,7 +2557,9 @@ func _oracle_pick_kind(kind: String) -> void:
 		var f := oracle_frames[k] as Node2D
 		if f != null and is_instance_valid(f):
 			f.visible = String(k) == oracle_pick
+	# ★ 样板：没选牌 = 跳过（tiaoguo），选了牌 = 确认（queren）
 	if oracle_start_btn != null and is_instance_valid(oracle_start_btn):
+		set_start_btn_kind(oracle_start_btn, oracle_pick != "")
 		oracle_start_btn.visible = true
 
 
@@ -2799,7 +2801,7 @@ func _make_c09_ui() -> void:
 	c09_ui.z_index = 250
 	host.add_child(c09_ui)
 	c09_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -2936,7 +2938,7 @@ func _c10_make_ui() -> void:
 func _c10_make_start_btn(y: float) -> void:
 	if c10_btn != null:
 		return
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -3401,7 +3403,7 @@ func _make_c11_ui() -> void:
 	hint.position = Vector2(x0, y0 - 34.0)
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	c11_ui.add_child(hint)
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -3544,7 +3546,7 @@ func _make_c11s2_ui() -> void:
 	c11s2_ui.z_index = 250
 	host.add_child(c11s2_ui)
 	c11s2_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -3909,7 +3911,7 @@ func _make_sf_ui() -> void:
 	sf_ui.z_index = 260
 	host.add_child(sf_ui)
 	sf_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -4256,7 +4258,7 @@ func _asks_show(arr: Array) -> void:
 			kp_ui.add_child(cap)
 			bx += b.size.x + 14.0
 		# 跳过 / 放行：统一用「开始」那张图，同样按原比例
-		var stex := load(BOARD_START_TEX) as Texture2D
+		var stex := btn_tex("pass")
 		var sb := TextureButton.new()
 		sb.texture_normal = stex
 		sb.ignore_texture_size = true
@@ -4931,7 +4933,7 @@ func _make_zl_ui() -> void:
 	zl_ui.z_index = 250
 	host.add_child(zl_ui)
 	zl_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -5092,7 +5094,7 @@ func _make_dy_ui(kinds: Array) -> void:
 		var f := SelFrame.attach(b, b.size)
 		f.visible = false
 		dy_frames.append(f)
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -5215,7 +5217,7 @@ func _make_pofa_ui() -> void:
 	pofa_ui.z_index = 250
 	host.add_child(pofa_ui)
 	pofa_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -5375,7 +5377,7 @@ func _make_hs_ui() -> void:
 	hs_ui.z_index = 250
 	host.add_child(hs_ui)
 	hs_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -6172,7 +6174,7 @@ func _sw_open_picker() -> void:
 			sw_frames[kind] = []
 		(sw_frames[kind] as Array).append(f)
 
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -6250,7 +6252,7 @@ func _make_sw_hand_ui() -> void:
 	sw_hand_ui.z_index = 250
 	host.add_child(sw_hand_ui)
 	sw_hand_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -6458,7 +6460,7 @@ func _make_c05_ui() -> void:
 	host.add_child(c05_ui)
 	c05_ui.position = Vector2.ZERO
 
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -6744,7 +6746,7 @@ func _make_c05_hide_ui() -> void:
 	c05_hide_ui.z_index = 250
 	host.add_child(c05_hide_ui)
 	c05_hide_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -6868,7 +6870,7 @@ func _make_wind_ui() -> void:
 	host.add_child(wind_ui)
 	wind_ui.position = Vector2.ZERO
 
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -7052,7 +7054,7 @@ func _c25_confirm_make() -> void:
 	c25_ui.z_index = 1600                    # 牌面按 y 当 z_index（能到 1000+），必须压过它们
 	c25_ui.position = Vector2.ZERO
 	c25_layer.add_child(c25_ui)
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var aspect := 1.0
 	if tex != null and tex.get_width() > 0:
 		aspect = float(tex.get_width()) / float(tex.get_height())
@@ -8948,7 +8950,7 @@ func _make_flow_ui() -> void:
 	host.add_child(flow_ui)
 	flow_ui.position = Vector2.ZERO
 
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -9087,7 +9089,7 @@ func _make_deal_ui() -> void:
 	host.add_child(deal_ui)
 	deal_ui.position = Vector2.ZERO
 
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -9668,7 +9670,7 @@ func _future_ask_show() -> void:
 	future_ask_ui.z_index = 262
 	future_ask_ui.position = Vector2.ZERO
 	host.add_child(future_ask_ui)
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var aspect := 70.0 / 220.0
 	if tex != null and tex.get_width() > 0:
 		aspect = float(tex.get_height()) / float(tex.get_width())
@@ -9803,7 +9805,7 @@ func _future_make_ui() -> void:
 		num.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(num)
 		future_slots.append({"btn": b, "num": num})
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var aspect := 70.0 / 220.0
 	if tex != null and tex.get_width() > 0:
 		aspect = float(tex.get_height()) / float(tex.get_width())
@@ -10053,7 +10055,7 @@ func _c26_make_ui() -> void:
 		num.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(num)
 		c26_slots.append({"btn": b, "num": num})
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var aspect := 70.0 / 220.0
 	if tex != null and tex.get_width() > 0:
 		aspect = float(tex.get_height()) / float(tex.get_width())
@@ -10317,6 +10319,33 @@ const BOARD_TILE_W := 92.0
 const BOARD_TILE_H := 134.0
 const BOARD_START_TEX := "res://Cailiao/UI/tiaoguo.png"
 
+# ── 「开始/确认」按钮的贴图：统一取自场景节点，不直接 load 文件 ──────────────
+#   kind = "pass" → Main/UI/Btn/BtnTiaoguo（跳过）
+#   kind = "ok"   → Main/UI/Btn/BtnQueren （确认）
+# 在编辑器里换这两张图，所有技能面板的按钮一起变。
+const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
+
+
+func btn_tex(kind: String) -> Texture2D:
+	var nm: String = START_BTN_NODE.get(kind, "BtnTiaoguo")
+	var n := get_node_or_null("UI/Btn/" + nm)
+	if n == null or not (n is TextureButton):
+		return null
+	var t := (n as TextureButton).texture_normal
+	if t != null:
+		return t
+	return null
+
+
+# 给已经 new 出来的「开始按钮」换图：picked=false → 跳过，true → 确认
+func set_start_btn_kind(btn: TextureButton, picked: bool) -> void:
+	if btn == null or not is_instance_valid(btn):
+		return
+	var t := btn_tex("ok" if picked else "pass")
+	if t != null and btn.texture_normal != t:
+		btn.texture_normal = t
+
+
 
 func _board_open() -> void:
 	if board_ui != null or game_over:
@@ -10395,7 +10424,7 @@ func _board_open() -> void:
 			board_frames[kind] = []
 		(board_frames[kind] as Array).append(f)
 
-	var start_tex := load(BOARD_START_TEX) as Texture2D
+	var start_tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if start_tex != null and start_tex.get_width() > 0:
@@ -12894,7 +12923,7 @@ func _make_gb_ui() -> void:
 	gb_ui.z_index = 250
 	host.add_child(gb_ui)
 	gb_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
@@ -13037,7 +13066,7 @@ func _make_yd_ui() -> void:
 	yd_ui.z_index = 250
 	host.add_child(yd_ui)
 	yd_ui.position = Vector2.ZERO
-	var tex := load(BOARD_START_TEX) as Texture2D
+	var tex := btn_tex("pass")
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:

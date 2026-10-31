@@ -258,6 +258,18 @@ func is_covered() -> bool:
 	return _cover != null and is_instance_valid(_cover) and _cover.visible
 
 
+# 技能图标的等比放大倍数（复制模式等场景临时放大用；1.0 = 原始大小）
+var skill_scale_mult := 1.0
+
+
+func set_skill_scale_mult(m: float) -> void:
+	var v := maxf(0.5, m)
+	if is_equal_approx(v, skill_scale_mult):
+		return
+	skill_scale_mult = v
+	_layout_skill_ui()
+
+
 func _layout_skill_ui() -> void:
 	_layout_cover()
 	var target_len := size.x * SKILL_WIDTH_RATIO
@@ -271,7 +283,7 @@ func _layout_skill_ui() -> void:
 			continue
 		var dir_sign := -1.0 if i == 0 else 1.0
 		var cx := size.x * 0.5 + dir_sign * (target_len + gap) * 0.5
-		var k := target_len / 446.0
+		var k := target_len / 446.0 * skill_scale_mult
 		var stex := sb.texture_normal
 		var sw := 446.0
 		var sh := 250.0

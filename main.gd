@@ -5633,6 +5633,22 @@ func _skill_mute_apply() -> void:
 func _on_identity_skill(seat: int, card_no: int, index: int) -> void:
 	if game_over or seat != my_seat:
 		return
+	# ★ 复制模式：池里还有可复制的技能 → 点图标就是「复制这个技能」，不是发动
+	if not c41_pool.is_empty():
+		var hit := false
+		for it in c41_pool:
+			if typeof(it) != TYPE_DICTIONARY:
+				continue
+			var d0 := it as Dictionary
+			if int(d0.get("card", 0)) == int(card_no) and int(d0.get("skill", 0)) == int(index) + 1:
+				hit = true
+				break
+		if hit:
+			_c41_do_copy2(int(card_no), int(index) + 1)
+			_c41_pick_close()
+		else:
+			_toast("这张卡的技能不在可复制列表里（点「跳过」清空）")
+		return
 	# 协战卡被遮罩 → 这张卡的技能一律不发动（服务端也会拒，这里先给个说明）
 	if _card_is_support_muted(int(card_no)):
 		_toast("这张协战卡已经遮罩（长按人物卡可以取消）")
@@ -8313,6 +8329,9 @@ func _c43_confirm(picks: Array, rivers: Array) -> void:
 var c41_key := ""
 var c41_btns: Array = []
 var c41_layer: CanvasLayer = null
+var c41_pool: Array = []              # 当前可复制的技能池（非空时点技能图标 = 复制）
+var c41_pick_layer: CanvasLayer = null
+var c41_pick_btn: Control = null
 
 
 func _c41_sync(st: Dictionary) -> void:
@@ -8327,6 +8346,10 @@ func _c41_sync(st: Dictionary) -> void:
 	var pool: Array = ask if typeof(ask) == TYPE_ARRAY else []
 	if pool.is_empty():
 		c41_key = ""
+		# 只在「之前确实开着」时收一次（别每帧都 reset 图标缩放）
+		if not c41_pool.is_empty() or c41_pick_layer != null:
+			c41_pool = []
+			_c41_pick_close()
 	else:
 		var key := JSON.stringify(pool)
 		if key != c41_key:
@@ -8341,10 +8364,9 @@ func _c41_sync(st: Dictionary) -> void:
 				var sk := int((it as Dictionary).get("skill", 0))
 				items.append({"label": "复制【%s】（%s 发动）" % [nm, srv_name_of(tgt)],
 					"cb": Callable(self, "_c41_do_copy2").bind(cd, sk)})
-			items.append({"label": "都跳过（清空这一叠）",
-				"cb": func(): _c41_do_skip()})
-			_cg_show("复制：攒了 %d 个可以复制的技能（随时挑，不影响别人行动）"
-				% pool.size(), items)
+			c41_pool = pool
+			_c41_pick_open(pool)
+			_toast("复制：点技能图标复制（共 %d 个），点「跳过」全部取消" % pool.size())
 	_c41_refresh_btns(dd.get("copies", []))
 
 
@@ -8375,6 +8397,77 @@ func _c41_do_copy() -> void:
 	var d: Dictionary = r.get("c41", {})
 	srv_apply_state(r.get("state"), r.get("events"))
 	_toast("复制：拿到了【%s】—— 在【复制】图标上方点它就能用" % String(d.get("name", "")))
+
+
+# ── 复制「待选」界面：不弹黑色文字列表 ────────────────────────────────
+#   提示一行 + 一个「跳过」按钮（贴图取场景里的 BtnTiaoguo），
+#   同时把人物卡上的技能图标等比放大 → 点哪个图标就复制哪个技能。
+const C41_SKILL_SCALE := 1.35
+
+
+func _c41_pick_open(pool: Array) -> void:
+	_c41_pick_close()
+	var vp := get_viewport_rect().size
+	var host: Node = get_parent()
+	if host == null:
+		host = self
+	var layer := CanvasLayer.new()
+	layer.name = "C41Pick"
+	layer.layer = 61
+	host.add_child(layer)
+	c41_pick_layer = layer
+
+	var tip := Label.new()
+	tip.text = "复制：点技能图标复制（共 %d 个可选），点「跳过」全部取消" % pool.size()
+	tip.add_theme_font_size_override("font_size", 30)
+	tip.add_theme_color_override("font_color", Color(1.0, 0.96, 0.85))
+	tip.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	tip.add_theme_constant_override("outline_size", 7)
+	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tip.size = Vector2(vp.x, 44)
+	tip.position = Vector2(0, 26)
+	tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(tip)
+
+	# 跳过按钮：和牌桌统一的「跳过」贴图（场景节点 BtnTiaoguo）
+	var b := TextureButton.new()
+	b.name = "C41Skip"
+	var tex := btn_tex("pass")
+	b.texture_normal = tex
+	b.ignore_texture_size = true
+	b.stretch_mode = TextureButton.STRETCH_SCALE
+	b.focus_mode = Control.FOCUS_NONE
+	var bh := 120.0
+	var bw := 110.0
+	if tex != null and tex.get_width() > 0:
+		bw = 110.0
+		bh = bw * float(tex.get_height()) / float(tex.get_width())
+	b.size = Vector2(bw, bh)
+	b.position = Vector2(vp.x * 0.5 - bw * 0.5, vp.y - bh - 150.0)
+	b.pressed.connect(_c41_do_skip)
+	b.pressed.connect(_c41_pick_close)
+	layer.add_child(b)
+	c41_pick_btn = b
+
+	_c41_apply_skill_scale(C41_SKILL_SCALE)
+
+
+func _c41_pick_close() -> void:
+	if c41_pick_layer != null and is_instance_valid(c41_pick_layer):
+		c41_pick_layer.queue_free()
+	c41_pick_layer = null
+	c41_pick_btn = null
+	_c41_apply_skill_scale(1.0)
+
+
+# 把「我这一家」人物卡上的技能图标等比放大 / 还原
+func _c41_apply_skill_scale(m: float) -> void:
+	var idn := get_node_or_null("Identity")
+	if idn == null:
+		return
+	for c in idn.get_children():
+		if c.has_method("set_skill_scale_mult"):
+			c.call("set_skill_scale_mult", m)
 
 
 func _c41_do_skip() -> void:

@@ -340,6 +340,47 @@ var copy_hint := ""
 var _state_ver := ""      # 上一次 state 的版本号（服务端给的）
 
 
+# ── 调试 HUD（F3）：卡的时候让对方截图，一眼看出卡在哪一环 ──
+#   FPS / 帧时间（>16ms 就是在掉帧） / 最近一次请求耗时（大 = 网络等太久）
+#   推送频率（正常 1~3/s，飙高说明状态在被反复重建） / 状态应用频率
+var _hud: Label = null
+var _hud_show := false
+var _hud_acc := 0.0
+var last_req_ms := 0
+var _push_n := 0
+var _apply_n := 0
+
+
+func _hud_tick(delta: float) -> void:
+	_hud_acc += delta
+	if _hud == null and _hud_show:
+		_hud = Label.new()
+		_hud.name = "PerfHud"
+		_hud.position = Vector2(20, 56)
+		_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hud.add_theme_font_size_override("font_size", 20)
+		_hud.add_theme_color_override("font_color", Color(0.55, 1.0, 0.65))
+		_hud.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		_hud.add_theme_constant_override("outline_size", 5)
+		add_child(_hud)
+	if _hud != null:
+		_hud.visible = _hud_show
+	if not _hud_show:
+		_push_n = 0
+		_apply_n = 0
+		return
+	if _hud_acc < 0.5:
+		return
+	var fps := Engine.get_frames_per_second()
+	var win := get_viewport().get_visible_rect().size
+	_hud.text = "FPS %d | 帧 %.1fms | 最近请求 %dms | 推送 %.1f/s | 应用状态 %.1f/s | 视口 %dx%d" % [
+		fps, 1000.0 / maxf(float(fps), 1.0), last_req_ms,
+		float(_push_n) / _hud_acc, float(_apply_n) / _hud_acc, int(win.x), int(win.y)]
+	_push_n = 0
+	_apply_n = 0
+	_hud_acc = 0.0
+
+
 func srv_request(req: Dictionary) -> Dictionary:
 	if not use_server_rules:
 		return {}
@@ -349,7 +390,9 @@ func srv_request(req: Dictionary) -> Dictionary:
 			push_warning("main.gd: 找不到 python，规则退回本地兜底")
 			srv_note = "找不到 python"
 			return {}
+	var _t0 := Time.get_ticks_msec()
 	var r: Dictionary = srv.request(_srv_shape(req))
+	last_req_ms = Time.get_ticks_msec() - _t0
 	return _srv_handle(r)
 
 
@@ -13957,6 +14000,7 @@ func _process(delta: float) -> void:
 	c45_panel.tick()             # 神境
 	c46_panel.tick()             # 恶听
 	c24_panel.tick()             # 一发
+	_hud_tick(delta)
 	# ★ 先收上一次「非阻塞轮询」的结果（公网往返 100~300ms 也不冻画面）
 	if srv != null and srv.has_method("bg_poll") and bool(srv.call("bg_busy")):
 		var rb: Dictionary = srv.call("bg_poll")
@@ -13978,6 +14022,8 @@ func _process(delta: float) -> void:
 				# 推送里直接带了「按我这个座位裁好」的整份 state → 不用再拉
 				if pv != "":
 					_state_ver = pv
+				_push_n += 1
+				_apply_n += 1
 				srv_apply_state(pst, [])
 			elif pv != "" and pv != _state_ver:
 				poll_accum = 99999.0        # 只推了版本号 → 被叫醒，自己拉一次
@@ -14046,6 +14092,20 @@ func _input(event: InputEvent) -> void:
 	var _focus := get_viewport().gui_get_focus_owner() if get_viewport() != null else null
 	if _focus is LineEdit or _focus is TextEdit:
 		return
+	var _k := (event as InputEventKey)
+	if _k != null and _k.pressed and not _k.echo:
+		if _k.keycode == KEY_F3:
+			_hud_show = not _hud_show
+			get_viewport().set_input_as_handled()
+			return
+		if _k.keycode == KEY_F11:
+			var _m := DisplayServer.window_get_mode()
+			DisplayServer.window_set_mode(
+				DisplayServer.WINDOW_MODE_WINDOWED
+				if _m == DisplayServer.WINDOW_MODE_FULLSCREEN
+				else DisplayServer.WINDOW_MODE_FULLSCREEN)
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventKey:
 		var k0 := event as InputEventKey
 		if k0.pressed and not k0.echo:
@@ -14053,27 +14113,27 @@ func _input(event: InputEvent) -> void:
 			if k0.keycode >= KEY_1 and k0.keycode <= KEY_4:
 				# 手动切座位：这里才强占（调试用：想坐哪家就坐哪家）
 				srv_join_seat(int(k0.keycode - KEY_1), false, true, true)
-				get_viewport().set_input_as_handled()
+				get_viewport().get_viewport().set_input_as_handled()
 				return
 			if k0.keycode == KEY_F2:
 				srv_new_round()
-				get_viewport().set_input_as_handled()
+				get_viewport().get_viewport().set_input_as_handled()
 				return
 			# ── 手牌右侧按钮微调（**只在编辑器里**；导出的 exe 没有这套热键）──
 			if _btn_tune_dev() and k0.keycode == KEY_F9:
 				_btn_tune_report()
-				get_viewport().set_input_as_handled()
+				get_viewport().get_viewport().set_input_as_handled()
 				return
 			if _btn_tune_dev() and k0.keycode == KEY_F10:
 				_btn_tune_mode = not _btn_tune_mode
 				_toast("按钮微调模式：%s（方向键挪，F9 看数值）"
 					% ("开" if _btn_tune_mode else "关"))
-				get_viewport().set_input_as_handled()
+				get_viewport().get_viewport().set_input_as_handled()
 				return
 			if _btn_tune_dev() and k0.keycode == KEY_F12:
 				_btn_tune_load()
 				_btn_tune_report()
-				get_viewport().set_input_as_handled()
+				get_viewport().get_viewport().set_input_as_handled()
 				return
 			if _btn_tune_dev() and (k0.ctrl_pressed or _btn_tune_mode):
 				var step := 10.0 if k0.shift_pressed else 1.0
@@ -14087,12 +14147,12 @@ func _input(event: InputEvent) -> void:
 					prompt_btn_offset += d               # 确认 / 跳过 一起动
 					_btn_tune_save()
 					_btn_tune_report()
-					get_viewport().set_input_as_handled()
+					get_viewport().get_viewport().set_input_as_handled()
 					return
 				if k0.keycode == KEY_0:
 					_btn_tune_reset()
 					_btn_tune_report()
-					get_viewport().set_input_as_handled()
+					get_viewport().get_viewport().set_input_as_handled()
 					return
 	if game_over:
 		return
@@ -14100,7 +14160,7 @@ func _input(event: InputEvent) -> void:
 		var key := event as InputEventKey
 		if key.pressed and not key.echo and key.keycode == KEY_SPACE:
 			draw_tile()
-			get_viewport().set_input_as_handled()
+			get_viewport().get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
@@ -14126,7 +14186,7 @@ func _input(event: InputEvent) -> void:
 					_swap_close()               # 换牌进行中：右键 = 取消
 			else:
 				quick_discard_drawn()
-			get_viewport().set_input_as_handled()
+			get_viewport().get_viewport().set_input_as_handled()
 
 
 # 切出刚摸到的那张牌（还没摸牌时什么都不做）

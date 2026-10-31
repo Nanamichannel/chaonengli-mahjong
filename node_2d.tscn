@@ -1246,6 +1246,7 @@ offset_left = 1267.5
 offset_top = 743.5996
 offset_right = 1385.0
 offset_bottom = 871.5996
+scale = Vector2(1.665, 1.665)
 focus_mode = 0
 texture_normal = ExtResource("59_sfqef")
 ignore_texture_size = true

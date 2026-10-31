@@ -20,10 +20,11 @@ extends TextureButton
 var tween: Tween          # 只动 scale
 var fade: Tween           # 只动 modulate:a
 var _base_scale := Vector2.ONE
+var _base_mult := 1.0            # 基准倍数（确认按钮放大 1.5 倍时由外面设）
 
 
 func _ready() -> void:
-	_base_scale = scale
+	_base_scale = scale * _base_mult
 	resized.connect(_update_pivot)
 	_update_pivot()
 	pressed.connect(_on_clicked)
@@ -33,6 +34,18 @@ func _ready() -> void:
 
 func _update_pivot() -> void:
 	pivot_offset = size * 0.5
+
+
+# 外面改「基准大小」：动画（悬停/按下）都以这个为 1.0 基准，不会把放大覆盖掉
+func set_base_mult(m: float) -> void:
+	if is_equal_approx(m, _base_mult):
+		return
+	_base_mult = m
+	_base_scale = Vector2.ONE * m
+	_kill_tween()
+	_kill_fade()
+	scale = _base_scale
+	modulate.a = 1.0
 
 
 # 只在新出现时调用（main.gd 已保证同一按钮不会每帧重复调用）

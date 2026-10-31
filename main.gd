@@ -10324,6 +10324,7 @@ const BOARD_START_TEX := "res://Cailiao/UI/tiaoguo.png"
 #   kind = "ok"   → Main/UI/Btn/BtnQueren （确认）
 # 在编辑器里换这两张图，所有技能面板的按钮一起变。
 const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
+const CONFIRM_BTN_SCALE := 1.5      # 确认态按钮放大倍数
 
 
 func btn_tex(kind: String) -> Texture2D:
@@ -10344,6 +10345,14 @@ func set_start_btn_kind(btn: TextureButton, picked: bool) -> void:
 	var t := btn_tex("ok" if picked else "pass")
 	if t != null and btn.texture_normal != t:
 		btn.texture_normal = t
+	# 确认态整体放大 CONFIRM_BTN_SCALE 倍（用 scale + 居中 pivot：
+	# 不动 size/position，免得和 _sync_prompt_btns 的布局打架）
+	btn.pivot_offset = btn.size * 0.5
+	var m := CONFIRM_BTN_SCALE if picked else 1.0
+	if btn.has_method("set_base_mult"):
+		btn.call("set_base_mult", m)
+	elif not btn.scale.is_equal_approx(Vector2.ONE * m):
+		btn.scale = Vector2.ONE * m
 
 
 # ── 统一刷新：每个技能面板的「开始按钮」按「有没有选东西」切图 ──────────────

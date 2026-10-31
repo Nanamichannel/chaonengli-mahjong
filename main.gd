@@ -10549,8 +10549,9 @@ const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
 #      改完 Ctrl+S 存场景，值就写进 node_2d.tscn
 #   ② 运行时热键（面板开着就能调，立刻看到效果）
 #        F10                    进入/退出「微调模式」（进去后方向键直接挪，不用按 Ctrl）
-#        方向键                  平移 1px（按住 Shift = 10px）
-#        Alt + 方向键            只平移「确认态」（跳过态不动）
+#        方向键                  平移确认态 1px（按住 Shift = 10px）
+#        Alt + 方向键            在 confirm_btn_offset 上再叠一层（同样是确认态）
+#        ★ 跳过态（未选牌时的 BtnTiaoguo）固定用「一开始的位置」，调不动也不会动
 #        [ / ]                  确认态放大倍数 ∓/± 0.05
 #        Ctrl + 0               全部恢复默认
 #        F12                    重新读 user://btn_tune.cfg（手改那个文件后按一下）
@@ -10563,7 +10564,8 @@ const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
 # ══════════════════════════════════════════════════════════════════════════
 @export_group("开始按钮微调")
 @export var prompt_btn_gap := 12.0            # 按钮和手牌最右边的空隙（px）
-@export var prompt_btn_offset := Vector2(17, 24)  # 整体平移（右/下为正，px；2026-10-31 实调值）
+@export var prompt_btn_offset := Vector2(17, 24)  # 确认态整体平移（右/下为正；2026-10-31 实调值）
+                                                 # ★ 只影响「确认态」，跳过态永远在原位
 @export var confirm_btn_scale := 1.5          # 确认态放大倍数
 @export var confirm_btn_offset := Vector2.ZERO# 只在「确认态」额外平移（px）
 
@@ -10629,7 +10631,8 @@ func _btn_tune_report() -> void:
 	var aspect := 70.0 / 220.0
 	var r := prompt_btn_rect(aspect)
 	var s2 := r.size * confirm_btn_scale
-	var cp := Vector2(r.get_center().x - s2.x * 0.5, r.end.y - s2.y) + confirm_btn_offset
+	var cp := (Vector2(r.get_center().x - s2.x * 0.5, r.end.y - s2.y)
+		+ prompt_btn_offset + confirm_btn_offset)
 	var line := "gap=%.1f  offset=%s  scale=%.2f  confirm_offset=%s" % [
 		prompt_btn_gap, prompt_btn_offset, confirm_btn_scale, confirm_btn_offset]
 	print("[PROMPT_BTN] ", line)
@@ -12536,8 +12539,9 @@ func prompt_btn_rect(aspect: float) -> Rect2:
 	if x + sz.x > vp.x - 8.0:
 		x = maxf(8.0, vp.x - sz.x - 8.0)
 	var y := clampf(row_top, 8.0, maxf(8.0, vp.y - sz.y - 8.0))
-	# 微调接口：所有「开始/确认按钮」整体平移（检视面板 / Ctrl+方向键）
-	return Rect2(Vector2(x, y) + prompt_btn_offset, sz)
+	# ★ 这里只给「一开始的位置」：跳过态就用它，不再叠加任何偏移。
+	#   确认态的偏移在 _sync_prompt_btns 里加（用户口径：跳过按钮保持原位）
+	return Rect2(Vector2(x, y), sz)
 
 
 func prompt_btn_pos(bw: float, bh: float) -> Vector2:
@@ -12569,7 +12573,8 @@ func _sync_prompt_btns() -> void:
 			var cx := r.get_center().x
 			var bottom := r.end.y
 			r.size *= confirm_btn_scale
-			r.position = Vector2(cx - r.size.x * 0.5, bottom - r.size.y) + confirm_btn_offset
+			r.position = Vector2(cx - r.size.x * 0.5, bottom - r.size.y) \
+				+ prompt_btn_offset + confirm_btn_offset
 		if btn.size.distance_to(r.size) > 0.5:
 			btn.size = r.size
 		if btn.global_position.distance_to(r.position) > 0.5:

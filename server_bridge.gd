@@ -73,6 +73,28 @@ static func _find_python() -> String:
 # 不要每帧都问。
 # 对外入口：偶尔服务端正忙（四个窗口同时启动时抢写锁）会「没回话」，
 # 这种情况自动重试，别让界面直接卡在「连不上服务端」。
+# ── 联机时的「非阻塞轮询」：发出去就返回，主线程每帧推一点（见 server_net.gd）──
+#   单机（本地 python 子进程）没有网络延迟，不需要这套 → 一律返回 false，调用方走同步。
+func bg_ok() -> bool:
+	return net != null and bool(net.enabled)
+
+
+func bg_busy() -> bool:
+	return bg_ok() and bool(net.bg_busy())
+
+
+func bg_send(req: Dictionary) -> bool:
+	if not bg_ok():
+		return false
+	return bool(net.bg_send(req))
+
+
+func bg_poll() -> Dictionary:
+	if not bg_ok():
+		return {}
+	return net.bg_poll()
+
+
 func request(req: Dictionary) -> Dictionary:
 	if net != null and net.enabled:
 		var rn: Dictionary = net.request(req)

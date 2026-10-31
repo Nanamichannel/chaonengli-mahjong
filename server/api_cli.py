@@ -508,12 +508,13 @@ def op_poll(db: DB, req: dict) -> dict:
     seat = int(seat) if isinstance(seat, int) else None
     st = _state(db, rid, seat)
     ver = _state_ver(st)
+    humans = sorted(_human_seats(db))
     if str(req.get("ver", "")) == ver:
         return {"ok": True, "state": None, "events": [], "result": None,
-                "round_id": rid, "ver": ver, "same": True}
+                "round_id": rid, "ver": ver, "same": True, "humans": humans}
     g = _game(db, rid)
     return {"ok": True, "state": st, "events": [], "result": g.result,
-            "round_id": rid, "ver": ver, "same": False}
+            "round_id": rid, "ver": ver, "same": False, "humans": humans}
 
 
 def op_state(db: DB, req: dict) -> dict:

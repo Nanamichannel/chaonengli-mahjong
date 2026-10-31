@@ -223,6 +223,9 @@ func request(req: Dictionary) -> Dictionary:
 		if last_error == "":
 			last_error = "连不上服务端（%s:%d）" % [_host, _port]
 		return {"ok": false, "error": last_error}
+	# 有非阻塞轮询在飞 → 先把它收干净（同一个 keep-alive 连接不能并发）
+	if _bg_state != 0:
+		_bg_drain()
 	var r := _post(req)
 	# 长连接可能被中间层悄悄掐断：这种「请求根本没发出去」的情况可以安全重来一次。
 	# （一旦 request() 已经返回 OK，动作就可能已经执行了，绝不能重发 —— 会重复打牌。）
@@ -350,6 +353,115 @@ func _post(req: Dictionary) -> Dictionary:
 		last_error = "HTTP %d" % code
 		return {}
 	return data as Dictionary
+
+
+# ── 非阻塞轮询（只给「定时问 state」用）──────────────────────────────
+#   公网（Tailscale Funnel）往返 100~300ms，同步等待会把画面按住整段 RTT，
+#   0.35s 问一次 = 每 0.35 秒掉一次帧。这里发出去就返回，_process 每帧推一点。
+var _bg_state := 0                     # 0 空闲 / 1 等响应头 / 2 读 body
+var _bg_deadline := 0
+var _bg_raw := PackedByteArray()
+var _bg_code := 0
+
+func bg_busy() -> bool:
+	return _bg_state != 0
+
+
+func bg_send(req: Dictionary) -> bool:
+	if not enabled or _bg_state != 0:
+		return false
+	if Time.get_ticks_msec() < _down_until:
+		return false
+	if not _ensure_connected():
+		return false
+	var body := JSON.stringify(req)
+	var path := "/rpc/" + room.uri_encode()
+	if token != "":
+		path += "?token=" + token.uri_encode()
+	var headers := PackedStringArray([
+		"Content-Type: application/json",
+		"Accept: application/json",
+		"Connection: keep-alive",
+		"User-Agent: TianmaGodot/1.0",
+	])
+	var err := _http.request(HTTPClient.METHOD_POST, _base_path + path, headers, body)
+	if err != OK:
+		last_error = "发不出去（错误码 %d）" % err
+		_reset_conn()
+		return false
+	_bg_state = 1
+	_bg_raw = PackedByteArray()
+	_bg_code = 0
+	_bg_deadline = Time.get_ticks_msec() + timeout_ms
+	return true
+
+
+# 每帧调一次：还没完回 {}，收完回服务端那份 JSON
+func bg_poll() -> Dictionary:
+	if _bg_state == 0:
+		return {}
+	var http := _http
+	if http == null:
+		_bg_state = 0
+		return {}
+	http.poll()
+	if _bg_state == 1:
+		if http.get_status() == HTTPClient.STATUS_REQUESTING:
+			if Time.get_ticks_msec() > _bg_deadline:
+				last_error = "等响应超时（%d ms）" % timeout_ms
+				bg_reset()
+			return {}
+		if not http.has_response():
+			if Time.get_ticks_msec() > _bg_deadline:
+				last_error = "服务端没有响应（状态 %d）" % http.get_status()
+				bg_reset()
+			return {}
+		_bg_code = http.get_response_code()
+		_bg_state = 2
+	# 只在 STATUS_BODY 时读；读完状态会自己跳走，硬读会刷 ERROR
+	while http.get_status() == HTTPClient.STATUS_BODY:
+		var chunk := http.read_response_body_chunk()
+		if chunk.size() == 0:
+			break
+		_bg_raw += chunk
+	if http.get_status() == HTTPClient.STATUS_BODY:
+		if Time.get_ticks_msec() > _bg_deadline:
+			last_error = "读响应超时（%d ms）" % timeout_ms
+			bg_reset()
+		return {}
+	_bg_state = 0
+	if http.get_status() != HTTPClient.STATUS_CONNECTED:
+		_reset_conn()
+	_down_until = 0
+	last_error = ""
+	calls += 1
+	var text := _bg_raw.get_string_from_utf8()
+	var data = JSON.parse_string(text)
+	if typeof(data) != TYPE_DICTIONARY:
+		last_error = "返回的不是 JSON（HTTP %d）：%s" % [_bg_code, text.substr(0, 120)]
+		return {}
+	if _bg_code != 200 and not (data as Dictionary).has("ok"):
+		last_error = "HTTP %d" % _bg_code
+		return {}
+	return data as Dictionary
+
+
+func bg_reset() -> void:
+	if _bg_state != 0:
+		_reset_conn()
+	_bg_state = 0
+
+
+# 主线程要发真正的动作 → 把在飞的轮询收干净（最多等 timeout_ms，通常只差几十毫秒）
+func _bg_drain() -> void:
+	var guard := Time.get_ticks_msec() + mini(timeout_ms, 1500)
+	while _bg_state != 0:
+		bg_poll()
+		if Time.get_ticks_msec() > guard:
+			last_error = "轮询没有响应，放弃这一次"
+			bg_reset()
+			return
+		OS.delay_msec(1)
 
 
 # 现在是不是「刚确认连不上」的冷却期（界面据此显示提示、别再催）

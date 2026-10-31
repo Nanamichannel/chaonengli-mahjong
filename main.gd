@@ -343,11 +343,19 @@ var _state_ver := ""      # 上一次 state 的版本号（服务端给的）
 func srv_request(req: Dictionary) -> Dictionary:
 	if not use_server_rules:
 		return {}
-	# 只有「带座位、会落到某个技能上」的请求才带这个标记；
-	# 状态轮询一律不带（服务端也不会去读）。
-	# ★ 联机很卡的元凶：每 0.35s 拉一次完整 state（21KB），同步 HTTP 会把主线程
-	#   按住一整个往返。这里改成「版本号轮询」：带上次的 ver，服务端没变化就只回
-	#   {"same": true}（几十字节），我们直接用本地那份 state。
+	if srv == null:
+		srv = ServerBridge.new()
+		if not srv.available:
+			push_warning("main.gd: 找不到 python，规则退回本地兜底")
+			srv_note = "找不到 python"
+			return {}
+	var r: Dictionary = srv.request(_srv_shape(req))
+	return _srv_handle(r)
+
+
+# 请求整形：只有「带座位、会落到某个技能上」的请求才带 copy 标记（状态轮询不带）；
+# state 一律换成「版本号轮询」——服务端没变化只回 {"same": true}（几十字节）。
+func _srv_shape(req: Dictionary) -> Dictionary:
 	if String(req.get("op", "")) == "state" and _state_ver != "":
 		req = req.duplicate()
 		req["op"] = "poll"
@@ -357,13 +365,13 @@ func srv_request(req: Dictionary) -> Dictionary:
 		req["copy"] = true
 		if String(req.get("op", "")) != "state":
 			copy_hint = ""
-	if srv == null:
-		srv = ServerBridge.new()
-		if not srv.available:
-			push_warning("main.gd: 找不到 python，规则退回本地兜底")
-			srv_note = "找不到 python"
-			return {}
-	var r: Dictionary = srv.request(req)
+	return req
+
+
+# 服务端回的这份怎么记账（同步 / 非阻塞两条路共用）
+func _srv_handle(r: Dictionary) -> Dictionary:
+	if r.is_empty():
+		return r
 	if String(r.get("ver", "")) != "":
 		_state_ver = String(r.get("ver"))
 	if bool(r.get("same", false)):
@@ -13949,6 +13957,16 @@ func _process(delta: float) -> void:
 	c45_panel.tick()             # 神境
 	c46_panel.tick()             # 恶听
 	c24_panel.tick()             # 一发
+	# ★ 先收上一次「非阻塞轮询」的结果（公网往返 100~300ms 也不冻画面）
+	if srv != null and srv.has_method("bg_poll") and bool(srv.call("bg_busy")):
+		var rb: Dictionary = srv.call("bg_poll")
+		if not rb.is_empty():
+			var rr := _srv_handle(rb)
+			if not rr.is_empty():
+				if typeof(rr.get("humans")) == TYPE_ARRAY:
+					srv_humans = rr.get("humans")
+				if not bool(rr.get("same", false)):
+					srv_apply_state(rr.get("state"), rr.get("events"))
 	if game_over or srv_busy:
 		return
 	if _prompt_blocked():
@@ -13957,9 +13975,11 @@ func _process(delta: float) -> void:
 		poll_accum += delta
 		if poll_accum >= POLL_SEC:
 			poll_accum = 0.0
-			var rq := srv_request({"op": "state", "seat": my_seat})
-			if not rq.is_empty():
-				srv_apply_state(rq.get("state"), [])
+			if not (srv != null and srv.has_method("bg_send")
+					and bool(srv.call("bg_send", _srv_shape({"op": "state", "seat": my_seat})))):
+				var rq := srv_request({"op": "state", "seat": my_seat})
+				if not rq.is_empty():
+					srv_apply_state(rq.get("state"), [])
 		return
 	# 还卡在配牌（比如推进的那个窗口被关了）→ 该我接手就接着推
 	if not dealing and not srv_state.is_empty() and not bool(srv_state.get("deal_done", true)):
@@ -13988,6 +14008,10 @@ func _process(delta: float) -> void:
 		if not srv_busy:
 			srv_busy = true
 			_srv_step_once()
+		return
+	# 轮询用非阻塞：发出去立刻返回，下一帧再收（否则每 0.35s 按住一整个 RTT）
+	if srv != null and srv.has_method("bg_send") \
+			and bool(srv.call("bg_send", _srv_shape({"op": "state", "seat": my_seat}))):
 		return
 	var r := srv_request({"op": "state", "seat": my_seat})
 	if r.is_empty():

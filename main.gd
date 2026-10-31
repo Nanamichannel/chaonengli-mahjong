@@ -5633,22 +5633,6 @@ func _skill_mute_apply() -> void:
 func _on_identity_skill(seat: int, card_no: int, index: int) -> void:
 	if game_over or seat != my_seat:
 		return
-	# ★ 复制模式：池里还有可复制的技能 → 点图标就是「复制这个技能」，不是发动
-	if not c41_pool.is_empty():
-		var hit := false
-		for it in c41_pool:
-			if typeof(it) != TYPE_DICTIONARY:
-				continue
-			var d0 := it as Dictionary
-			if int(d0.get("card", 0)) == int(card_no) and int(d0.get("skill", 0)) == int(index) + 1:
-				hit = true
-				break
-		if hit:
-			_c41_do_copy2(int(card_no), int(index) + 1)
-			_c41_pick_close()
-		else:
-			_toast("这张卡的技能不在可复制列表里（点「跳过」清空）")
-		return
 	# 协战卡被遮罩 → 这张卡的技能一律不发动（服务端也会拒，这里先给个说明）
 	if _card_is_support_muted(int(card_no)):
 		_toast("这张协战卡已经遮罩（长按人物卡可以取消）")
@@ -8405,7 +8389,16 @@ func _c41_do_copy() -> void:
 const C41_SKILL_SCALE := 1.35
 
 
-func _c41_pick_open(pool: Array) -> void:
+# ── 复制「待选」面板（左上角）──────────────────────────────────────
+#   一排「可复制技能」的图标按钮（技能卡图）+ 一个跳过按钮。
+#   点图标 = 复制那个技能；点跳过 = 剩下的都取消。
+#   面板放在 layer 62，压在人物卡、牌、其他 UI 上面（不会被抢点击）。
+const C41_ICON := Vector2(112.0, 156.0)      # 技能图标按钮（等比）
+const C41_GAP := 10.0
+const C41_BOX_POS := Vector2(24.0, 84.0)     # 左上角
+
+
+func _c41_pick_open(pool: Array, names: Array = []) -> void:
 	_c41_pick_close()
 	var vp := get_viewport_rect().size
 	var host: Node = get_parent()
@@ -8413,43 +8406,71 @@ func _c41_pick_open(pool: Array) -> void:
 		host = self
 	var layer := CanvasLayer.new()
 	layer.name = "C41Pick"
-	layer.layer = 61
+	layer.layer = 62                          # ★ 最上层：不会被牌 / 人物卡挡住
 	host.add_child(layer)
 	c41_pick_layer = layer
 
+	var tex_skip := btn_tex("pass")
+	var skip_w := 104.0
+	var skip_h := 116.0
+	if tex_skip != null and tex_skip.get_width() > 0:
+		skip_h = skip_w * float(tex_skip.get_height()) / float(tex_skip.get_width())
+
+	var n := (pool as Array).size()
+	var row_w := n * (C41_ICON.x + C41_GAP)
+	var box := Control.new()
+	box.name = "C41Box"
+	box.position = C41_BOX_POS
+	box.size = Vector2(row_w + skip_w + C41_GAP, 34.0 + maxf(C41_ICON.y, skip_h))
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(box)
+
 	var tip := Label.new()
-	tip.text = "复制：点技能图标复制（共 %d 个可选），点「跳过」全部取消" % pool.size()
-	tip.add_theme_font_size_override("font_size", 30)
+	tip.text = "复制（点图标 = 复制，%d 个可选）" % n
+	tip.add_theme_font_size_override("font_size", 24)
 	tip.add_theme_color_override("font_color", Color(1.0, 0.96, 0.85))
 	tip.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	tip.add_theme_constant_override("outline_size", 7)
-	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tip.size = Vector2(vp.x, 44)
-	tip.position = Vector2(0, 26)
+	tip.add_theme_constant_override("outline_size", 6)
+	tip.position = Vector2(0, 0)
+	tip.size = Vector2(box.size.x, 30)
 	tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(tip)
+	box.add_child(tip)
 
-	# 跳过按钮：和牌桌统一的「跳过」贴图（场景节点 BtnTiaoguo）
-	var b := TextureButton.new()
-	b.name = "C41Skip"
-	var tex := btn_tex("pass")
-	b.texture_normal = tex
-	b.ignore_texture_size = true
-	b.stretch_mode = TextureButton.STRETCH_SCALE
-	b.focus_mode = Control.FOCUS_NONE
-	var bh := 120.0
-	var bw := 110.0
-	if tex != null and tex.get_width() > 0:
-		bw = 110.0
-		bh = bw * float(tex.get_height()) / float(tex.get_width())
-	b.size = Vector2(bw, bh)
-	b.position = Vector2(vp.x * 0.5 - bw * 0.5, vp.y - bh - 150.0)
-	b.pressed.connect(_c41_do_skip)
-	b.pressed.connect(_c41_pick_close)
-	layer.add_child(b)
-	c41_pick_btn = b
+	for i in range(n):
+		var it = (pool as Array)[i]
+		if typeof(it) != TYPE_DICTIONARY:
+			continue
+		var d := it as Dictionary
+		var cd := int(d.get("card", 0))
+		var sk := int(d.get("skill", 1))
+		var b := TextureButton.new()
+		b.name = "C41Icon%d" % i
+		var t := load("res://Cailiao/skill/cards/card_%02d.png" % cd) as Texture2D
+		b.texture_normal = t
+		b.ignore_texture_size = true
+		b.stretch_mode = TextureButton.STRETCH_SCALE
+		b.focus_mode = Control.FOCUS_NONE
+		b.size = C41_ICON
+		b.position = Vector2(i * (C41_ICON.x + C41_GAP), 34.0)
+		b.tooltip_text = "复制：%s（%s 发动）" % [String(d.get("name", "")),
+			srv_name_of(int(d.get("target", -1)))]
+		b.pressed.connect(_c41_do_copy2.bind(cd, sk))
+		b.pressed.connect(_c41_pick_close)
+		box.add_child(b)
 
-	_c41_apply_skill_scale(C41_SKILL_SCALE)
+	var sbtn := TextureButton.new()
+	sbtn.name = "C41Skip"
+	sbtn.texture_normal = tex_skip
+	sbtn.ignore_texture_size = true
+	sbtn.stretch_mode = TextureButton.STRETCH_SCALE
+	sbtn.focus_mode = Control.FOCUS_NONE
+	sbtn.size = Vector2(skip_w, skip_h)
+	sbtn.position = Vector2(row_w, 34.0)
+	sbtn.tooltip_text = "都跳过（清空这一叠）"
+	sbtn.pressed.connect(_c41_do_skip)
+	sbtn.pressed.connect(_c41_pick_close)
+	box.add_child(sbtn)
+	c41_pick_btn = sbtn
 
 
 func _c41_pick_close() -> void:
@@ -8457,17 +8478,6 @@ func _c41_pick_close() -> void:
 		c41_pick_layer.queue_free()
 	c41_pick_layer = null
 	c41_pick_btn = null
-	_c41_apply_skill_scale(1.0)
-
-
-# 把「我这一家」人物卡上的技能图标等比放大 / 还原
-func _c41_apply_skill_scale(m: float) -> void:
-	var idn := get_node_or_null("Identity")
-	if idn == null:
-		return
-	for c in idn.get_children():
-		if c.has_method("set_skill_scale_mult"):
-			c.call("set_skill_scale_mult", m)
 
 
 func _c41_do_skip() -> void:

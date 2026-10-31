@@ -37,6 +37,7 @@ from db import DB                                        # noqa: E402
 import lobby as lobby_mod                                # noqa: E402
 import skills                                            # noqa: E402
 from game import Game, RuleError                         # noqa: E402
+import game as game_mod                                  # noqa: E402
 from rules import agari, tenpai, wallmodel                # noqa: E402
 from tiles import counts_of, parse_hand, sort_tiles      # noqa: E402
 
@@ -661,6 +662,19 @@ _NO_GATE_OPS = {
 
 # 自己内部已经问过看破的 op（要带 card/skill 参数，静态表里给不了）
 _GATE_INLINE = {"skill", "yiding"}
+
+
+def _op_skill_pair(op: str, req: dict):
+    """这次请求对应哪张卡的哪个技能（给「复制品独立配额」用）。没有就 None。"""
+    c, k = req.get("card"), req.get("skill")
+    if isinstance(c, int) and isinstance(k, int) and c > 0 and k > 0:
+        return (int(c), int(k))
+    if op == "card09_swap":
+        return (9, int(req.get("skill") or 1))
+    p = _SKILL_OP_PAIRS.get(op)
+    if p:
+        return (int(p[0]), int(p[1]))
+    return None
 
 
 def _gate_pair(op: str, req: dict):
@@ -2363,6 +2377,14 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
     if fn is None:
         return {"ok": False, "state": None, "events": [], "result": None,
                 "error": f"不认识的 op: {op}"}
+    # 复制品 / 传承品有**自己一份**一次性配额：客户端点左侧图标时带 copy=true，
+    # 这里翻成 "card-skill" 告诉 Game「这一下花的是复制品那本账」。
+    # 每次都先清空，避免上一次请求的标记漏到这一次。
+    game_mod.REQ_COPY_KEY = ""
+    if bool(req.get("copy")):
+        _cp = _op_skill_pair(op, req)
+        if _cp:
+            game_mod.REQ_COPY_KEY = "%d-%d" % (_cp[0], _cp[1])
     db = None
     try:
         db = _open_db(db_path)

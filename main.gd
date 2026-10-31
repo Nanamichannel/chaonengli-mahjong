@@ -318,9 +318,22 @@ func seat_of_who(who: String) -> int:
 			return (my_seat + 3) % 4
 	return my_seat
 
+# 点了「复制品 / 传承品」的图标之后，下一次真正发动的请求要带 copy=true，
+# 服务端据此把这一下记到「复制品」那本账上（原技能与复制品各有一份配额）。
+# 值 = "card-skill"；空 = 普通（原技能）发动。
+var copy_hint := ""
+
+
 func srv_request(req: Dictionary) -> Dictionary:
 	if not use_server_rules:
 		return {}
+	# 只有「带座位、会落到某个技能上」的请求才带这个标记；
+	# 状态轮询一律不带（服务端也不会去读）。
+	if copy_hint != "" and not req.has("copy"):
+		req = req.duplicate()
+		req["copy"] = true
+		if String(req.get("op", "")) != "state":
+			copy_hint = ""
 	if srv == null:
 		srv = ServerBridge.new()
 		if not srv.available:
@@ -5640,9 +5653,12 @@ func _skill_mute_apply() -> void:
 			c.call("set_skill_muted", i, muted_skills.has(_skill_key(cn, i + 1)))
 
 
-func _on_identity_skill(seat: int, card_no: int, index: int) -> void:
+func _on_identity_skill(seat: int, card_no: int, index: int,
+		is_copy := false) -> void:
 	if game_over or seat != my_seat:
 		return
+	# 这次点的是「复制来的那一份」→ 让服务端记到复制品那本账上
+	copy_hint = ("%d-%d" % [card_no, index + 1]) if is_copy else ""
 	# 协战卡被遮罩 → 这张卡的技能一律不发动（服务端也会拒，这里先给个说明）
 	if _card_is_support_muted(int(card_no)):
 		_toast("这张协战卡已经遮罩（长按人物卡可以取消）")
@@ -8336,7 +8352,8 @@ func _copied_icons_refresh(st: Dictionary) -> void:
 	if not cp.is_empty():
 		items.append({"card": int(cp.get("card", 0)),
 			"skill": int(cp.get("skill", 1)), "host": 16})
-	var key := JSON.stringify(items)
+	var cu: Array = st.get("copy_used", [])
+	var key := JSON.stringify(items) + "|" + JSON.stringify(cu)
 	if key == c41_icons_key:
 		return
 	c41_icons_key = key
@@ -8383,7 +8400,12 @@ func _copied_icons_refresh(st: Dictionary) -> void:
 		b.position = base + Vector2(0, -float(idx) * (ICON.y + 6.0))
 		b.tooltip_text = "%s来的技能：Card%02d-%d（点一下就用）" % [
 			"传承" if host_card == 16 else "复制", card_no, sk]
-		b.pressed.connect(func(): _on_identity_skill(my_seat, card_no, sk - 1))
+		# 复制品自己那一份配额用掉了 → 这一格单独变灰（原技能那份不受影响）
+		if cu.has("%d-%d-%d" % [card_no, sk, my_seat]):
+			b.disabled = true
+			b.modulate = Color(0.42, 0.42, 0.42, 1.0)
+			b.tooltip_text += "（这一份已经用过了）"
+		b.pressed.connect(func(): _on_identity_skill(my_seat, card_no, sk - 1, true))
 		c41_layer.add_child(b)
 		c41_btns.append(b)
 
@@ -8400,7 +8422,8 @@ var c41_pick_btn: Control = null
 var c41_icons_key := ""        # 左侧「复制品图标条」的缓存 key（避免每帧重建）
 
 
-func _c41_sync(st: Dictionary) -> void:      # 复制品 / 传承品的左侧图标条（先刷，免得下面提前 return 漏掉）
+func _c41_sync(st: Dictionary) -> void:
+	_copied_icons_refresh(st)          # 先刷：只有传承（16 号卡）没有 41 卡时也要显示
 	var d = st.get("c41")
 	if typeof(d) != TYPE_DICTIONARY:
 		return
@@ -8433,7 +8456,6 @@ func _c41_sync(st: Dictionary) -> void:      # 复制品 / 传承品的左侧图
 			c41_pool = pool
 			_c41_pick_open(pool)
 			_toast("复制：点技能图标复制（共 %d 个），点「跳过」全部取消" % pool.size())
-	_copied_icons_refresh(st)
 
 
 func _c41_do_copy2(card: int, skill: int) -> void:
@@ -8567,49 +8589,6 @@ func _c41_do_skip() -> void:
 	var r := srv_request({"op": "c41_skip", "seat": my_seat})
 	if not r.is_empty():
 		srv_apply_state(r.get("state"), r.get("events"))
-
-
-func _c41_refresh_btns(copies: Array) -> void:
-	for b in c41_btns:
-		if b != null and is_instance_valid(b):
-			(b as Node).queue_free()
-	c41_btns.clear()
-	if (copies as Array).is_empty():
-		return
-	if c41_layer == null or not is_instance_valid(c41_layer):
-		var host: Node = get_parent()
-		if host == null:
-			host = self
-		c41_layer = CanvasLayer.new()
-		c41_layer.name = "C41Layer"
-		c41_layer.layer = 60
-		host.add_child(c41_layer)
-	# 默认位置：屏幕左侧中部；能拿到 Card41 的话就贴在它上方
-	var base := Vector2(30, 360)
-	var idn := get_node_or_null("Identity")
-	if idn != null:
-		var card := idn.get_node_or_null("Card41")
-		if card != null and card is Node2D:
-			base = (card as Node2D).global_position + Vector2(0, -52)
-	# 已经复制到的技能：直接画成「技能图标按钮」（和人物卡上的那个子节点同一套图）
-	const ICON := Vector2(96.0, 54.0)          # 横版技能按钮（446x250 等比缩小）
-	for i in range((copies as Array).size()):
-		var it: Dictionary = copies[i]
-		var card_no := int(it.get("card", 0))
-		var sk := int(it.get("skill", 1))
-		var b := TextureButton.new()
-		b.name = "C41Have%d" % i
-		var t := load("res://Cailiao/skill/ui/buttons/card_%02d_%d_r0.png" % [card_no, sk]) as Texture2D
-		b.texture_normal = t
-		b.ignore_texture_size = true
-		b.stretch_mode = TextureButton.STRETCH_SCALE
-		b.focus_mode = Control.FOCUS_NONE
-		b.size = ICON
-		b.position = base + Vector2(0, -float(i) * (ICON.y + 6.0))
-		b.tooltip_text = "复制到的技能：%s（点一下就用）" % String(it.get("name", ""))
-		b.pressed.connect(func(): _on_identity_skill(my_seat, card_no, sk - 1))
-		c41_layer.add_child(b)
-		c41_btns.append(b)
 
 
 # ── Card40 S1【透视】───────────────────────────────────────────────
@@ -10790,13 +10769,9 @@ func _apply_used_skills(st: Dictionary) -> void:
 	if idn == null or not idn.has_method("set_skill_disabled"):
 		return
 	idn.call("reset_skill_states")
-	var has_copy := not _cc_copy(st).is_empty()
 	for u in (st.get("used_skills", []) as Array):
 		var parts := String(u).split("-")
 		if parts.size() != 3 or int(parts[2]) != my_seat:
-			continue
-		# 传承这一手用掉了，但 16 号卡已经变成复制来的技能 → 还要能点
-		if int(parts[0]) == 16 and int(parts[1]) == 1 and has_copy:
 			continue
 		# 馈赠（21S2）：换牌用掉了，但「一定和牌」那条链路还在 → 不能锁死
 		if int(parts[0]) == 21 and int(parts[1]) == 2:

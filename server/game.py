@@ -115,10 +115,19 @@ WARM_KINDS = ({f"{n}m" for n in range(1, 10)} | {"0m", "0p", "0s", "zhong",
 COLD_KINDS = [k for k in TILE_KINDS if k not in WARM_KINDS]
 
 
+# 本次请求「点的是复制品 / 传承品的图标」（客户端带 copy=true）时，
+# api_cli 会在这里写 "card-skill"，Game.__init__ 拷到实例上。
+# 用处：原技能与复制品各有一份一次性配额，两本账（used_skills / used_copy）
+# 必须能分辨「这一下花的是哪一份」，否则同座位同卡号时必然混在一起。
+REQ_COPY_KEY = ""
+
+
 class Game:
     def __init__(self, db: DB, round_id: int, rules: dict | None = None):
         self.db = db
         self.round_id = round_id
+        # 这一发请求点的是复制品吗（"card-skill"）；空 = 原技能
+        self.req_copy_key = REQ_COPY_KEY
         self.rules = {"kuitan": True, "kiriage_mangan": False, "red_fives": True,
                       "double_yakuman": True, "atozuke": False, "multi_ron": False,
                       **(rules or {})}
@@ -1204,8 +1213,14 @@ class Game:
                        "poked_cards": sorted({
                            int(k.split(":")[1]) for k in self.poked
                            if k.count(":") == 1 and k.startswith("%d:" % int(seat or 0))}),
-                       "used_skills": [k for k in sorted(self.used_skills | self.used_copy)
-                                       if k.endswith("-%d" % seat)],
+                       # 原技能那份配额用掉的（只发原技能；复制品单独发，
+                       # 否则同座位同卡号时客户端没法分辨该灰哪一个图标）
+                       "used_skills": [k for k in sorted(self.used_skills)
+                                       if k.endswith("-%d" % int(seat or 0))],
+                       "copy_used": [k for k in sorted(self.used_copy)
+                                     if k.endswith("-%d" % int(seat or 0))],
+                       "copy_granted": [k for k in sorted(self.cc_grants)
+                                        if k.endswith("-%d" % int(seat or 0))],
                        # 自信：本小局是不是已经发动（客户端给图标套红框）
                        "confident": seat in self.confident,
                        "tenacity": self.owns_tenacity(seat),
@@ -2337,11 +2352,38 @@ class Game:
                                      "c24": c24_kind})
 
     # ── 一次性技能 / 画板（Card02 Skill1）────────────────────────────
+    def _cc_key(self, seat: int, card: int, skill: int) -> str:
+        return f"{int(card)}-{int(skill)}-{int(seat)}"
+
+    def copy_granted(self, seat: int, card: int, skill: int) -> bool:
+        """这个座位有没有「复制 / 传承」来的这一张技能。"""
+        return self._cc_key(seat, card, skill) in self.cc_grants
+
+    def copy_used(self, seat: int, card: int, skill: int) -> bool:
+        """复制品那一份配额用掉了没有（和原技能的 used_skills 分开记）。"""
+        return self._cc_key(seat, card, skill) in self.used_copy
+
+    def orig_used(self, seat: int, card: int, skill: int) -> bool:
+        """原技能那一份配额用掉了没有。"""
+        return self._cc_key(seat, card, skill) in self.used_skills
+
     def skill_used(self, seat: int, card: int, skill: int) -> bool:
-        key = f"{int(card)}-{int(skill)}-{int(seat)}"
-        if key in self.cc_grants:
-            return key in self.used_copy          # 复制来的：看它自己那份配额
-        return key in self.used_skills
+        """这份技能还有没有额度：原技能一次 + 复制品一次，两本账各记各的。
+
+        · 本次请求点的是复制品图标（req_copy_key 命中）→ 只看复制品那本
+        · 其余情况 → 原技能用过 **且** 复制品那一次也用过，才算用尽
+          （只有复制品、没有原卡时也成立：原技能那本永远空着，
+            复制品用掉后这里才会变 True）
+        """
+        key = self._cc_key(seat, card, skill)
+        if self.req_copy_key and self.req_copy_key == f"{int(card)}-{int(skill)}":
+            return key in self.used_copy
+        if key not in self.used_skills:
+            return False
+        if key in self.cc_grants and key not in self.used_copy:
+            return False                      # 复制品那一份还留着
+        return True
+
 
     def _char_states(self, viewer: int = -1) -> list[dict]:
         """主战 / 协战 的遮罩状态。open = 发动过技能（之后一直开着），
@@ -2579,8 +2621,12 @@ class Game:
         s, c, k = int(seat), int(card), int(skill)
         if once:
             key = f"{c}-{k}-{s}"
-            if key in self.cc_grants:
-                self.used_copy.add(key)           # 复制品：记自己的配额
+            if self.req_copy_key and self.req_copy_key == f"{c}-{k}":
+                self.used_copy.add(key)          # 点的就是复制品 → 记复制品那本
+            elif key not in self.used_skills:
+                self.used_skills.add(key)        # 原技能还留着 → 记原技能那本
+            elif key in self.cc_grants and key not in self.used_copy:
+                self.used_copy.add(key)          # 原技能已用 → 花复制品那一份
             else:
                 self.used_skills.add(key)
         # 传承：发动的是「复制来的技能」→ 起作用的是 16 号卡，卡面翻 16

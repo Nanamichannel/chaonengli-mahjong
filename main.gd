@@ -10558,10 +10558,12 @@ const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
 #      （Ctrl+方向键 / Ctrl+Alt+方向键 / Ctrl+[ ] 在微调模式外也能用，效果一样）
 #   ③ 自动记忆：调完写 user://btn_tune.cfg，下次启动自动带上
 #      （想回到 @export 的值：删掉那个文件，或按 Ctrl+0）
+#   ④ ★ 以上热键 / 记忆**只在编辑器里生效**（OS.has_feature("template") 为假）。
+#      导出的 exe 用 @export 的默认值，玩家碰不到这套调试开关。
 # ══════════════════════════════════════════════════════════════════════════
 @export_group("开始按钮微调")
 @export var prompt_btn_gap := 12.0            # 按钮和手牌最右边的空隙（px）
-@export var prompt_btn_offset := Vector2.ZERO # 整体平移（右/下为正，px）
+@export var prompt_btn_offset := Vector2(17, 24)  # 整体平移（右/下为正，px；2026-10-31 实调值）
 @export var confirm_btn_scale := 1.5          # 确认态放大倍数
 @export var confirm_btn_offset := Vector2.ZERO# 只在「确认态」额外平移（px）
 
@@ -10573,7 +10575,14 @@ var _btn_ok := {}                   # 按钮 -> 是否「确认态」（_sync_pr
 var _btn_tune_mode := false         # F10：微调模式（方向键不用按 Ctrl）
 
 
+# 微调接口只在编辑器里可用；导出的 exe 一律用 @export 的默认值
+func _btn_tune_dev() -> bool:
+	return not OS.has_feature("template")
+
+
 func _btn_tune_load() -> void:
+	if not _btn_tune_dev():
+		return
 	if not FileAccess.file_exists(BTN_TUNE_CFG):
 		return
 	var f := FileAccess.open(BTN_TUNE_CFG, FileAccess.READ)
@@ -13870,23 +13879,23 @@ func _input(event: InputEvent) -> void:
 				srv_new_round()
 				get_viewport().set_input_as_handled()
 				return
-			# ── 手牌右侧按钮微调（见文件里「开始按钮微调」那段注释）──
-			if k0.keycode == KEY_F9:
+			# ── 手牌右侧按钮微调（**只在编辑器里**；导出的 exe 没有这套热键）──
+			if _btn_tune_dev() and k0.keycode == KEY_F9:
 				_btn_tune_report()
 				get_viewport().set_input_as_handled()
 				return
-			if k0.keycode == KEY_F10:
+			if _btn_tune_dev() and k0.keycode == KEY_F10:
 				_btn_tune_mode = not _btn_tune_mode
 				_toast("按钮微调模式：%s（方向键挪，F9 看数值）"
 					% ("开" if _btn_tune_mode else "关"))
 				get_viewport().set_input_as_handled()
 				return
-			if k0.keycode == KEY_F12:
+			if _btn_tune_dev() and k0.keycode == KEY_F12:
 				_btn_tune_load()
 				_btn_tune_report()
 				get_viewport().set_input_as_handled()
 				return
-			if k0.ctrl_pressed or _btn_tune_mode:
+			if _btn_tune_dev() and (k0.ctrl_pressed or _btn_tune_mode):
 				var step := 10.0 if k0.shift_pressed else 1.0
 				var d := Vector2.ZERO
 				match k0.keycode:

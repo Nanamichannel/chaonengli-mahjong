@@ -8317,6 +8317,74 @@ func _c43_confirm(picks: Array, rivers: Array) -> void:
 		_toast("NO MISS：换完了，接着打牌")
 
 
+# ── 左侧「复制品图标条」：复制（Card41，可多个）+ 传承（Card16，一个）──────────
+#   都画成技能图标按钮（skill/ui/buttons/card_XX_Y_r0.png），点一下 = 发动那个技能。
+#   复制品贴在 Card41 上方，传承品贴在 Card16 上方；数据没变就不重建（避免闪烁）。
+func _copied_icons_refresh(st: Dictionary) -> void:
+	var items: Array = []
+	var c41 = st.get("c41")
+	if typeof(c41) == TYPE_DICTIONARY:
+		for x in ((c41 as Dictionary).get("copies") or []):
+			if typeof(x) != TYPE_DICTIONARY:
+				continue
+			items.append({"card": int((x as Dictionary).get("card", 0)),
+				"skill": int((x as Dictionary).get("skill", 1)), "host": 41})
+	var cp := _cc_copy(st)
+	if not cp.is_empty():
+		items.append({"card": int(cp.get("card", 0)),
+			"skill": int(cp.get("skill", 1)), "host": 16})
+	var key := JSON.stringify(items)
+	if key == c41_icons_key:
+		return
+	c41_icons_key = key
+
+	for b in c41_btns:
+		if b != null and is_instance_valid(b):
+			(b as Node).queue_free()
+	c41_btns.clear()
+	if items.is_empty():
+		return
+	if c41_layer == null or not is_instance_valid(c41_layer):
+		var host: Node = get_parent()
+		if host == null:
+			host = self
+		c41_layer = CanvasLayer.new()
+		c41_layer.name = "C41Layer"
+		c41_layer.layer = 60
+		host.add_child(c41_layer)
+
+	const ICON := Vector2(96.0, 54.0)          # 横版技能按钮（446x250 等比缩小）
+	var idn := get_node_or_null("Identity")
+	var stack_by_host := {}                    # 同一张卡上方可以摞多个
+	for i in range(items.size()):
+		var it: Dictionary = items[i]
+		var card_no := int(it.get("card", 0))
+		var sk := int(it.get("skill", 1))
+		var host_card := int(it.get("host", 41))
+		var base := Vector2(30, 360)
+		if idn != null:
+			var cn := idn.get_node_or_null("Card%d" % host_card)
+			if cn != null and cn is Node2D:
+				base = (cn as Node2D).global_position + Vector2(0, -52)
+		var idx := int(stack_by_host.get(host_card, 0))
+		stack_by_host[host_card] = idx + 1
+
+		var b := TextureButton.new()
+		b.name = "CopyIcon%d" % i
+		var t := load("res://Cailiao/skill/ui/buttons/card_%02d_%d_r0.png" % [card_no, sk]) as Texture2D
+		b.texture_normal = t
+		b.ignore_texture_size = true
+		b.stretch_mode = TextureButton.STRETCH_SCALE
+		b.focus_mode = Control.FOCUS_NONE
+		b.size = ICON
+		b.position = base + Vector2(0, -float(idx) * (ICON.y + 6.0))
+		b.tooltip_text = "%s来的技能：Card%02d-%d（点一下就用）" % [
+			"传承" if host_card == 16 else "复制", card_no, sk]
+		b.pressed.connect(func(): _on_identity_skill(my_seat, card_no, sk - 1))
+		c41_layer.add_child(b)
+		c41_btns.append(b)
+
+
 # ── Card41 S1【复制】───────────────────────────────────────────────
 #   别人宣告技能的一瞬间问我要不要复制；复制到的技能在【复制】图标**上方**堆按钮，
 #   点按钮 = 走那个技能原来的入口（服务端 granted 已经把我当持有者）。
@@ -8326,9 +8394,10 @@ var c41_layer: CanvasLayer = null
 var c41_pool: Array = []              # 当前可复制的技能池（非空时点技能图标 = 复制）
 var c41_pick_layer: CanvasLayer = null
 var c41_pick_btn: Control = null
+var c41_icons_key := ""        # 左侧「复制品图标条」的缓存 key（避免每帧重建）
 
 
-func _c41_sync(st: Dictionary) -> void:
+func _c41_sync(st: Dictionary) -> void:      # 复制品 / 传承品的左侧图标条（先刷，免得下面提前 return 漏掉）
 	var d = st.get("c41")
 	if typeof(d) != TYPE_DICTIONARY:
 		return
@@ -8361,7 +8430,7 @@ func _c41_sync(st: Dictionary) -> void:
 			c41_pool = pool
 			_c41_pick_open(pool)
 			_toast("复制：点技能图标复制（共 %d 个），点「跳过」全部取消" % pool.size())
-	_c41_refresh_btns(dd.get("copies", []))
+	_copied_icons_refresh(st)
 
 
 func _c41_do_copy2(card: int, skill: int) -> void:

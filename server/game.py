@@ -5185,7 +5185,13 @@ class Game:
                 self._c29s1_continue()
             elif _pop == "c35s1_set":
                 self.c35_skip()
-        if kind == "block":
+        if kind == "sight":
+            # ★ 看破（17-2）本小局只能用一次。以前 _act_pay 只给 block/stop/imm 记账，
+            #   sight 漏了 → used_skills 里没有它 → act_kinds 的 has17 永远为真，
+            #   用过看破的人还会被反复询问。
+            #   放行（pass）不会走到 _act_pay，所以「问了但没用」不算消耗。
+            self.mark_skill_used(by, 17, 2)
+        elif kind == "block":
             price = self.c31_block_price(by)
             self._c31_block_pay(by, price)
             n["price"] = int(price)

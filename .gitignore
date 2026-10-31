@@ -27,6 +27,9 @@ net.cfg
 # 本地测试配置：这个文件只要存在，客户端就会跳过菜单直接进牌桌
 test_seats.cfg
 
+# 截图（导出预设已经排除，git 里也不用留）
+screenshots/
+
 # 临时文件
 *.tmp
 /_*.png

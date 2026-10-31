@@ -11,6 +11,8 @@ Godot 4.7 客户端 + Python/SQLite 服务端的**日本麻将（立直麻将）
 
 到 [**Releases**](https://github.com/Nanamichannel/chaonengli-mahjong/releases) 下载 **`Tianma.exe`**（约 188 MB，游戏资源已内嵌），**双击即玩**。
 
+版本变化见 [**更新日志**](更新日志.md)（Releases 里每个版本也带一份）。
+
 - **不用装任何东西，也不用写配置文件** —— 服务器地址已内置在客户端里（`server_net.gd` 的 `DEFAULT_URL`）
 - 想连别的服务器 / 走单机：在 exe 同目录放一个 `net.cfg`，它会覆盖内置地址（格式见 `net.cfg.example`）
 - 换皮肤：exe 同目录建 `skin/`，放同名 png（`bg.png` / `chi.png` / `rong.png` / `zimo.png` …），重启即生效

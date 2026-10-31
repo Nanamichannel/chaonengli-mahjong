@@ -281,6 +281,28 @@ func _bring_slot_front(slot: int) -> void:
 
 func _on_slot_touched(card_no: int, slot: int) -> void:
 	_bring_slot_front(int(slot))
+	_collapse_covered(int(slot))
+
+
+# 点谁就把「被它盖住」的那些卡的技能图标收起来：
+#   人物卡是「主战 + 协战」两两叠着摆的，两张重叠时下层卡的技能按钮会被上层卡盖住，
+#   但按钮本身还是可点的（会误触到别人的技能）→ 收起来最干净。
+func _collapse_covered(slot: int) -> void:
+	var me_b := _slots.get(int(slot), null) as Control
+	if me_b == null:
+		return
+	var r := me_b.get_global_rect()
+	for i in range(1, 9):
+		if i == int(slot):
+			continue
+		var b := _slots.get(i, null) as TextureButton
+		if b == null or not b.is_visible_in_tree():
+			continue
+		if not b.has_method("collapse_skills"):
+			continue
+		if not r.intersects(b.get_global_rect()):
+			continue
+		b.call("collapse_skills")
 
 
 func _on_slot_long(card_no: int, slot: int) -> void:
@@ -294,6 +316,8 @@ func _on_slot_toggled(card_no: int, open: bool, slot: int) -> void:
 	var seat := _seat_of_group((slot - 1) >> 1)
 	if seat != _view_seat:
 		return
+	if open:
+		_collapse_covered(int(slot))          # 展开技能时，先把被压住的卡收起来
 	skills_toggled.emit(seat, card_no, open)
 
 

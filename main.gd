@@ -12838,7 +12838,19 @@ func _hand_visual(index: int) -> Node2D:
 
 # 把格子按当前参数排好（只在改手牌参数时走这里；平时位置归你）
 # 最后一格永远留着「摸到的那张」的空隙（它空着时看不见，不碍事）
+# 手牌/摸牌/窗口大小都没变 → 一个节点都不重建。
+# ★ 以前每次 state 应用（0.35s 轮询、每次推送）都重排一遍手牌，
+#   鼠标在牌上划、反复点人物卡时还会叠加重建 → 掉帧累积。
+var _hand_layout_sig := ""
+
 func _layout_hand_slots() -> void:
+	var _vp := get_viewport().get_visible_rect().size if get_viewport() != null else Vector2.ZERO
+	var _sig := "%s|%s|%d|%dx%d" % [str(hand_tiles), String(drawn_tile), int(my_seat),
+		int(_vp.x), int(_vp.y)]
+	if _sig == _hand_layout_sig:
+		return
+	_hand_layout_sig = _sig
+
 	var slots := _hand_slots()
 	if slots.is_empty():
 		return

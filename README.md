@@ -9,7 +9,7 @@ Godot 4.7 客户端 + Python/SQLite 服务端的**日本麻将（立直麻将）
 
 ## 下载
 
-到 [**Releases**](https://github.com/Nanamichannel/chaonengli-mahjong/releases) 下载 **`Tianma.exe`**（约 188 MB，游戏资源已内嵌），**双击即玩**。
+到 [**Releases**](https://github.com/Nanamichannel/chaonengli-mahjong/releases) 下载 **`Tianma.exe`**（约 189 MB，游戏资源已内嵌），**双击即玩**。
 
 版本变化见 [**更新日志**](更新日志.md)（Releases 里每个版本也带一份）。
 

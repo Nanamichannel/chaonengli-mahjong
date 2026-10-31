@@ -515,12 +515,31 @@ func _join_lobby() -> void:
 	_apply_lobby(r.get("lobby", {}))
 
 
+var _bg_wait := false      # 有一个非阻塞的 lobby_state 请求在飞
+
 func _poll() -> void:
 	if entered:
+		return
+	# ★ 非阻塞：发出去立刻返回，下一次进来再收（公网往返 200~300ms 也不冻界面）
+	if _bg_wait:
+		var rb: Dictionary = srv.bg_poll() if srv != null and srv.has_method("bg_poll") else {}
+		if rb.is_empty():
+			return                                  # 还没回来：这一帧什么都不做
+		_bg_wait = false
+		if bool(rb.get("ok", false)):
+			_apply_lobby(rb.get("lobby", {}))
+			_net_badge_show("")
+		elif srv.net != null and bool(srv.net.enabled) and bool(srv.net.offline()):
+			_net_badge_show(_net_why(rb))
 		return
 	if my_seat < 0:
 		_join_lobby()               # 还没认领到座位（上次服务端忙）→ 一直重试到成功
 		return
+	if srv != null and srv.has_method("bg_send") \
+			and bool(srv.bg_send({"op": "lobby_state", "seat": my_seat})):
+		_bg_wait = true
+		return
+	# 兜底（单机 / 老路径）：同步
 	var r: Dictionary = srv.request({"op": "lobby_state", "seat": my_seat})
 	if bool(r.get("ok", false)):
 		_apply_lobby(r.get("lobby", {}))

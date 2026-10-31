@@ -491,30 +491,43 @@ func _bg_drain() -> void:
 var ws: WebSocketPeer = null
 var _ws_next_try := 0
 var push_ver := ""                       # 最近一次推送带来的 ver（空 = 还没推过）
+var ws_seat := -1                        # 这条长连接代表哪个座位（服务端按座位裁视野）
 
 func _ws_url() -> String:
 	var scheme := "wss://" if _tls else "ws://"
 	var hostpart := _host
 	if (_tls and _port != 443) or (not _tls and _port != 80):
 		hostpart += ":%d" % _port
-	var p := "%s%s%s/ws/%s" % [scheme, hostpart, _base_path, room.uri_encode()]
+	var p := "%s%s%s/ws/%s?seat=%d" % [scheme, hostpart, _base_path, room.uri_encode(),
+		maxi(int(ws_seat), 0)]
 	if token != "":
-		p += "?token=" + token.uri_encode()
+		p += "&token=" + token.uri_encode()
 	return p
+
+
+# 换座位 → 必须重连，服务端要按新座位裁视野
+func push_set_seat(s: int) -> void:
+	if int(s) == ws_seat:
+		return
+	ws_seat = int(s)
+	if ws != null:
+		ws.close()
+		ws = null
+		_ws_next_try = 0
 
 
 func push_ok() -> bool:
 	return enabled and ws != null and ws.get_ready_state() == WebSocketPeer.STATE_OPEN
 
 
-# 每帧调一次：推进长连接，有推送就返回新的 ver（否则 ""）
-func push_tick() -> String:
+# 每帧调一次：推进长连接。有推送返回 {"ver": ..., "state": {...}?}，否则 {}
+func push_tick() -> Dictionary:
 	if not enabled:
-		return ""
+		return {}
 	var now := Time.get_ticks_msec()
 	if ws == null:
 		if now < _ws_next_try:
-			return ""
+			return {}
 		var socks := WebSocketPeer.new()
 		var opt: TLSOptions = null
 		if _tls:
@@ -522,26 +535,38 @@ func push_tick() -> String:
 		var err := socks.connect_to_url(_ws_url(), opt)
 		if err != OK:
 			_ws_next_try = now + 5000
-			return ""
+			return {}
 		ws = socks
-		return ""
+		return {}
 	ws.poll()
 	var st := ws.get_ready_state()
 	if st == WebSocketPeer.STATE_OPEN:
-		var got := ""
+		var out := {}
 		while ws.get_available_packet_count() > 0:
-			var txt := ws.get_packet().get_string_from_utf8()
+			var pkt := ws.get_packet()
+			var txt := ""
+			if ws.was_string_packet():
+				txt = pkt.get_string_from_utf8()
+			else:
+				# 二进制帧 = zlib 压过的整份响应（按我这个座位裁好的视野）
+				var raw := pkt.decompress_dynamic(-1, FileAccess.COMPRESSION_DEFLATE)
+				txt = raw.get_string_from_utf8()
 			var d = JSON.parse_string(txt)
-			if typeof(d) == TYPE_DICTIONARY:
-				var v := String((d as Dictionary).get("ver", ""))
-				if v != "":
-					push_ver = v
-					got = v
-		return got
+			if typeof(d) != TYPE_DICTIONARY:
+				continue
+			var dd := d as Dictionary
+			var v := String(dd.get("ver", ""))
+			if v != "":
+				push_ver = v
+				out = {"ver": v}
+			var pst = dd.get("state")
+			if typeof(pst) == TYPE_DICTIONARY and not (pst as Dictionary).is_empty():
+				out["state"] = pst
+		return out
 	if st == WebSocketPeer.STATE_CLOSED:
 		ws = null
 		_ws_next_try = now + 3000
-	return ""
+	return {}
 
 
 func push_close() -> void:

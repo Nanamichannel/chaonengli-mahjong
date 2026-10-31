@@ -13969,9 +13969,18 @@ func _process(delta: float) -> void:
 					srv_apply_state(rr.get("state"), rr.get("events"))
 	# ★ 长连接推送：服务端状态一变就发新的 ver 过来 → 立刻拉一次，不用等轮询周期
 	if srv != null and srv.has_method("push_tick"):
-		var pv := String(srv.call("push_tick"))
-		if pv != "" and pv != _state_ver:
-			poll_accum = 99999.0
+		srv.call("push_set_seat", my_seat)
+		var pr: Dictionary = srv.call("push_tick")
+		if not pr.is_empty():
+			var pv := String(pr.get("ver", ""))
+			var pst = pr.get("state")
+			if typeof(pst) == TYPE_DICTIONARY and not (pst as Dictionary).is_empty():
+				# 推送里直接带了「按我这个座位裁好」的整份 state → 不用再拉
+				if pv != "":
+					_state_ver = pv
+				srv_apply_state(pst, [])
+			elif pv != "" and pv != _state_ver:
+				poll_accum = 99999.0        # 只推了版本号 → 被叫醒，自己拉一次
 	if game_over or srv_busy:
 		return
 	if _prompt_blocked():

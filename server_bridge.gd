@@ -100,10 +100,15 @@ func push_ok() -> bool:
 	return bg_ok() and bool(net.push_ok())
 
 
-func push_tick() -> String:
+func push_tick() -> Dictionary:
 	if not bg_ok():
-		return ""
-	return String(net.push_tick())
+		return {}
+	return net.push_tick()
+
+
+func push_set_seat(s: int) -> void:
+	if net != null:
+		net.push_set_seat(int(s))
 
 
 func push_close() -> void:

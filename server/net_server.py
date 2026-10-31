@@ -252,8 +252,13 @@ class Handler(BaseHTTPRequestHandler):
             if not self._token_ok(room, query):
                 self._send(403, {"ok": False, "error": "token 不对"})
                 return
-            log("%s/ws 推送连接建立" % room)
-            ws_push.handle_upgrade(self, room, hello={"push": "hello", "room": room})
+            try:
+                ws_seat = int((query.get("seat") or ["-1"])[0])
+            except Exception:                                    # noqa: BLE001
+                ws_seat = -1
+            log("%s/ws 推送连接建立 seat=%d" % (room, ws_seat))
+            ws_push.handle_upgrade(self, room, hello={"push": "hello", "room": room},
+                                   seat=ws_seat)
             return
         if u.path in ("/", "/index.html"):
             self._text(200, "天才麻将少女 联机服务端在跑。\n"
@@ -299,6 +304,18 @@ class Handler(BaseHTTPRequestHandler):
             lock = _room_locks.setdefault(room, threading.Lock())
             with lock:
                 out = api_cli.handle(req, db_path=db_path)
+                # 状态变了 → 顺手把 4 个座位各自的 state 也算出来（视野已裁剪），
+                # 供长连接直接推送（客户端收到就不用再拉一次）
+                pushes = None
+                _v = out.get("ver") if isinstance(out, dict) else None
+                if _v and op not in ("poll",):
+                    pushes = {}
+                    for _s in range(4):
+                        try:
+                            pushes[_s] = api_cli.handle({"op": "state", "seat": _s},
+                                                         db_path=db_path)
+                        except Exception:                        # noqa: BLE001
+                            pushes[_s] = None
             out.setdefault("room", room)
         except Exception as e:                                   # noqa: BLE001
             log("[ERR ] %s/%s seat=%s %s\n%s" % (room, op, seat, e,
@@ -312,7 +329,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             ver = out.get("ver") if isinstance(out, dict) else None
             if ver:
-                ws_push.notify(room, str(ver))
+                ws_push.notify(room, str(ver), pushes)
         except Exception:                                        # noqa: BLE001
             pass
         self._send(200, out)

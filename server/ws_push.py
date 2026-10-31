@@ -13,6 +13,7 @@ import json
 import struct
 import threading
 import time
+import zlib
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -27,6 +28,7 @@ class _Conn:
         self.sock = handler.connection
         self.rfile = handler.rfile
         self.room = ""
+        self.seat = -1
         self.alive = True
         self.wlock = threading.Lock()
 
@@ -91,7 +93,8 @@ class _Conn:
         return (opcode, data)
 
 
-def handle_upgrade(handler, room: str, hello: dict | None = None) -> None:
+def handle_upgrade(handler, room: str, hello: dict | None = None,
+                   seat: int = -1) -> None:
     """在 HTTP handler 里做 WS 握手，然后一直服务到断开。"""
     key = handler.headers.get("Sec-WebSocket-Key", "")
     if not key:
@@ -115,6 +118,7 @@ def handle_upgrade(handler, room: str, hello: dict | None = None) -> None:
 
     conn = _Conn(handler)
     conn.room = room
+    conn.seat = int(seat)
     with _lock:
         _rooms.setdefault(room, set()).add(conn)
         n = len(_rooms[room])
@@ -146,8 +150,14 @@ def handle_upgrade(handler, room: str, hello: dict | None = None) -> None:
             pass
 
 
-def notify(room: str, ver: str) -> int:
-    """这个房间的状态版本变了 → 推给所有长连接。同一个 ver 只推一次。"""
+def notify(room: str, ver: str, payloads: dict | None = None) -> int:
+    """状态变了 → 推给这个房间的长连接。
+
+    payloads: {seat: 该座位的响应字典}。有就用**二进制帧 + zlib**把整份 state 推过去
+    （每人一份，视野已经裁过），客户端收到直接渲染，不用再拉一次。
+    缺这个座位（或没给 payloads）就退回「只推版本号」，客户端被叫醒后自己 poll。
+    同一个 ver 只推一次。
+    """
     if not ver:
         return 0
     with _lock:
@@ -157,11 +167,24 @@ def notify(room: str, ver: str) -> int:
         conns = list(_rooms.get(room) or ())
     if not conns:
         return 0
-    body = json.dumps({"push": "state", "room": room, "ver": ver, "ts": time.time()},
-                      ensure_ascii=False)
+    simple = json.dumps({"push": "state", "room": room, "ver": ver, "ts": time.time()},
+                        ensure_ascii=False)
     sent = 0
     for c in conns:
-        if c.send_text(body):
+        body = None
+        if payloads:
+            p = payloads.get(c.seat) if c.seat >= 0 else None
+            if isinstance(p, dict):
+                p = dict(p)
+                p["push"] = "state"
+                p["room"] = room
+                full = json.dumps(p, ensure_ascii=False).encode("utf-8")
+                try:
+                    body = zlib.compress(full, 6)
+                except Exception:                            # noqa: BLE001
+                    body = None
+        ok = c._frame(0x2, body) if body else c.send_text(simple)
+        if ok:
             sent += 1
         else:
             c.alive = False

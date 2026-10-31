@@ -40,7 +40,9 @@ var calls := 0
 #   「未响应」，玩家看到的就是「一打开就卡死」。
 #   单次建连接最多等 CONNECT_MS；失败后 DOWN_MS 之内 request() 直接回错误，
 #   一次都不去碰网络（主线程这段时间完全自由）。连上就清零。
-const CONNECT_MS := 900
+const CONNECT_MS := 900          # 本机 / 局域网：连接基本是 1ms 级
+const CONNECT_MS_WAN := 4000     # 公网（Funnel / 云主机）：要算上 DNS + TLS 握手
+const CONNECT_MS_TS := 1500      # Tailscale 内网（100.x）：直连，一般 20~60ms
 const DOWN_MS := 3000
 var _down_until := 0                 # Time.get_ticks_msec() 之前不再尝试连接
 var _http: HTTPClient = null
@@ -256,6 +258,24 @@ func _resp_is_gzip(http: HTTPClient) -> bool:
 	return false
 
 
+
+# 建连接给多少时间：以前一律 900ms，那是按「本机 1ms」定的；
+# 朋友走公网时 DNS + TLS 握手经常要 1~3 秒 → 一律 900ms 会误判成「连接超时」。
+func _connect_budget_ms() -> int:
+	var h := _host.to_lower()
+	if h == "127.0.0.1" or h == "localhost" or h == "::1":
+		return CONNECT_MS
+	if h.begins_with("192.168.") or h.begins_with("10.") or h.begins_with("127."):
+		return CONNECT_MS
+	if h.begins_with("100."):                     # Tailscale 内网 100.64/10
+		return CONNECT_MS_TS
+	if h.begins_with("172."):
+		var parts := h.split(".")
+		if parts.size() >= 2 and int(parts[1]) >= 16 and int(parts[1]) <= 31:
+			return CONNECT_MS
+	return CONNECT_MS_WAN
+
+
 func _ensure_connected() -> bool:
 	if _http != null:
 		if _http.get_status() == HTTPClient.STATUS_CONNECTED:
@@ -277,7 +297,7 @@ func _ensure_connected() -> bool:
 		return false
 	# ★ 这里原来用 timeout_ms（10 秒）：主机不可达时窗口会整段「未响应」。
 	#   建连接只给 CONNECT_MS，连不上就迅速退回、过 DOWN_MS 再试。
-	var deadline := Time.get_ticks_msec() + mini(timeout_ms, CONNECT_MS)
+	var deadline := Time.get_ticks_msec() + mini(timeout_ms, _connect_budget_ms())
 	while http.get_status() in [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING]:
 		http.poll()
 		if Time.get_ticks_msec() > deadline:

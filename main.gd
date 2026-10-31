@@ -6347,6 +6347,7 @@ var c05_target: Dictionary = {}
 var c05_ui: Control = null
 var c05_start_btn: TextureButton = null
 var c05_dead_layer: Control = null
+var c05_dead_map := {}           # 墩号 -> Button（位置每帧跟牌墩走，见 _sync_c05_dead_buttons）
 var c05_choice: Control = null
 
 var c05_hide_active := false
@@ -6516,23 +6517,66 @@ func _build_c05_dead_buttons() -> void:
 			var vis = st.get("vis", null)
 			if vis == null or not is_instance_valid(vis):
 				continue
-			var gp: Vector2 = (vis as Node2D).global_position
 			var b := Button.new()
 			b.name = "Dead%d" % k
 			b.flat = true
 			b.focus_mode = Control.FOCUS_NONE
 			b.modulate = Color(1, 1, 1, 0.18)
-			b.size = Vector2(76, 100)
-			b.position = gp - b.size * 0.5
+			b.size = _dead_btn_size(vis)
 			b.tooltip_text = "王牌（第 %d 墩）" % k
-			b.pressed.connect(_c05_choose_dead.bind(k, gp))
+			b.pressed.connect(_c05_choose_dead.bind(k))
 			c05_dead_layer.add_child(b)
+			b.global_position = (vis as Node2D).global_position - b.size * 0.5
+			c05_dead_map[k] = b
 			# 看得见的彩框：不然玩家根本不知道王牌哪一墩能点
 			SelFrame.attach(b, b.size, SelFrame.TEX_YELLOW,
 				Color(1, 1, 1, 1), true)
 
 
-func _c05_choose_dead(stack: int, pos: Vector2) -> void:
+# 王牌点击区的大小：取牌墩里那张 Sprite 的实际显示尺寸（原来是写死 76x100，
+# 和真实牌面差一截，点上去就感觉「框和牌不重合」）
+func _dead_btn_size(vis) -> Vector2:
+	var node := vis as Node2D
+	if node != null:
+		var sp := node.get_node_or_null("Sprite2D") as Sprite2D
+		if sp != null and sp.texture != null:
+			var sz: Vector2 = sp.texture.get_size() * sp.global_scale
+			if sz.x > 4.0 and sz.y > 4.0:
+				return sz
+	return Vector2(76.0, 107.0)
+
+
+# 位置每帧跟牌墩走。牌山会重建（_refresh_wall_stacks），只在创建时取一次的话，
+# 重建后按钮就停在旧位置 —— 这就是「牌墩和识别位置严重偏移」的原因。
+func _sync_c05_dead_buttons() -> void:
+	if c05_dead_map.is_empty():
+		return
+	var live := {}
+	for st in wall_stacks:
+		live[int(st.get("no", 0))] = st.get("vis", null)
+	for k in c05_dead_map.keys():
+		var b := c05_dead_map[k] as Button
+		if b == null or not is_instance_valid(b):
+			continue
+		var v := live.get(int(k), null) as Node2D
+		if v == null or not is_instance_valid(v):
+			b.visible = false
+			continue
+		b.visible = true
+		var want := v.global_position - b.size * 0.5
+		if b.global_position.distance_to(want) > 0.5:
+			b.global_position = want
+
+
+func _c05_choose_dead(stack: int) -> void:
+	# 位置现场取（牌山可能已经重建过），不要用创建时的旧坐标
+	var pos := Vector2.ZERO
+	for s in wall_stacks:
+		if int(s.get("no", 0)) == stack:
+			var v := s.get("vis", null) as Node2D
+			if v != null and is_instance_valid(v):
+				pos = v.global_position
+			break
 	_c05_choice_close()
 	var vp := get_viewport_rect().size
 	c05_choice = Control.new()
@@ -6709,6 +6753,7 @@ func _c05_close(cancel: bool) -> void:
 	c05_ui = null
 	c05_start_btn = null
 	c05_dead_layer = null
+	c05_dead_map.clear()
 	_update_c05_view()
 
 
@@ -13493,6 +13538,7 @@ func _process(delta: float) -> void:
 	if game_over:
 		_result_confirm_tick(delta)
 	_skill_panel_stale_close()
+	_sync_c05_dead_buttons()     # Card05 王牌点击区：位置跟牌墩走
 	_refresh_start_btn_kinds()  # 先定「跳过/确认」状态（决定贴图 + 是否放大）
 	_sync_prompt_btns()          # 再排版：贴着手牌右边，确认态放大 1.5 倍且底部对齐
 	swap_panel.tick()            # 通用面板自己贴位置

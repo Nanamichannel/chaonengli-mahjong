@@ -95,6 +95,22 @@ func bg_poll() -> Dictionary:
 	return net.bg_poll()
 
 
+# ── 长连接推送（联机才有；单机返回 false / 空串）──
+func push_ok() -> bool:
+	return bg_ok() and bool(net.push_ok())
+
+
+func push_tick() -> String:
+	if not bg_ok():
+		return ""
+	return String(net.push_tick())
+
+
+func push_close() -> void:
+	if net != null:
+		net.push_close()
+
+
 func request(req: Dictionary) -> Dictionary:
 	if net != null and net.enabled:
 		var rn: Dictionary = net.request(req)

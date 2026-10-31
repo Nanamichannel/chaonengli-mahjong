@@ -34,6 +34,10 @@ import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import gzip
+
+import ws_push
 from urllib.parse import parse_qs, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -198,9 +202,21 @@ class Handler(BaseHTTPRequestHandler):
     # ── 小工具 ──
     def _send(self, code: int, body: dict) -> None:
         raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        # 公网链路：整份 state 有 20KB+，gzip 后一般只剩 1/8（客户端会自己解）
+        enc = ""
+        if len(raw) >= 1024 and "gzip" in (self.headers.get("Accept-Encoding") or "").lower():
+            try:
+                raw2 = gzip.compress(raw, 6)
+                if len(raw2) < len(raw):
+                    raw = raw2
+                    enc = "gzip"
+            except Exception:                                    # noqa: BLE001
+                enc = ""
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
+        if enc:
+            self.send_header("Content-Encoding", enc)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         try:
@@ -229,6 +245,16 @@ class Handler(BaseHTTPRequestHandler):
     # ── GET ──
     def do_GET(self) -> None:
         u = urlparse(self.path)
+        if (self.headers.get("Upgrade") or "").lower() == "websocket" \
+                and u.path.startswith("/ws"):
+            query = parse_qs(u.query)
+            room = room_of((u.path[len("/ws"):].strip("/")) or query.get("room", [""])[0])
+            if not self._token_ok(room, query):
+                self._send(403, {"ok": False, "error": "token 不对"})
+                return
+            log("%s/ws 推送连接建立" % room)
+            ws_push.handle_upgrade(self, room, hello={"push": "hello", "room": room})
+            return
         if u.path in ("/", "/index.html"):
             self._text(200, "天才麻将少女 联机服务端在跑。\n"
                             "接口：POST /rpc/<房间号>（body = 请求 JSON）\n"
@@ -282,6 +308,13 @@ class Handler(BaseHTTPRequestHandler):
         dt = (time.time() - t0) * 1000.0
         flag = "" if out.get("ok") else "  ← %s" % str(out.get("error", ""))[:120]
         log("%s/%s seat=%s %.0fms%s" % (room, op, seat, dt, flag))
+        # 状态版本变了 → 立刻推给这个房间的长连接（同一个 ver 只推一次）
+        try:
+            ver = out.get("ver") if isinstance(out, dict) else None
+            if ver:
+                ws_push.notify(room, str(ver))
+        except Exception:                                        # noqa: BLE001
+            pass
         self._send(200, out)
 
 

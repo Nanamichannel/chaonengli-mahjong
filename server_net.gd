@@ -246,6 +246,16 @@ func _reset_conn() -> void:
 
 
 # 复用已有连接；状态不对（被掐断 / 从没连过）就重连一次。
+
+# 响应头里有没有 Content-Encoding: gzip（Godot 的 HTTPClient 没有 get_response_header）
+func _resp_is_gzip(http: HTTPClient) -> bool:
+	var d: Dictionary = http.get_response_headers_as_dictionary()
+	for k in d.keys():
+		if String(k).to_lower() == "content-encoding":
+			return String(d[k]).to_lower().contains("gzip")
+	return false
+
+
 func _ensure_connected() -> bool:
 	if _http != null:
 		if _http.get_status() == HTTPClient.STATUS_CONNECTED:
@@ -300,6 +310,7 @@ func _post(req: Dictionary) -> Dictionary:
 	# ★ Connection: keep-alive —— 服务端是 HTTP/1.1 + 带 Content-Length，支持复用
 	var headers := PackedStringArray([
 		"Content-Type: application/json",
+		"Accept-Encoding: gzip",
 		"Accept: application/json",
 		"Connection: keep-alive",
 		"User-Agent: TianmaGodot/1.0",
@@ -328,6 +339,7 @@ func _post(req: Dictionary) -> Dictionary:
 
 	var code := http.get_response_code()
 	var raw := PackedByteArray()
+	var gzips := _resp_is_gzip(http)
 	while http.get_status() == HTTPClient.STATUS_BODY:
 		http.poll()
 		var chunk := http.read_response_body_chunk()
@@ -344,6 +356,8 @@ func _post(req: Dictionary) -> Dictionary:
 	if http.get_status() != HTTPClient.STATUS_CONNECTED:
 		_reset_conn()
 
+	if gzips and raw.size() > 0:
+		raw = raw.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
 	var text := raw.get_string_from_utf8()
 	var data = JSON.parse_string(text)
 	if typeof(data) != TYPE_DICTIONARY:
@@ -362,6 +376,7 @@ var _bg_state := 0                     # 0 空闲 / 1 等响应头 / 2 读 body
 var _bg_deadline := 0
 var _bg_raw := PackedByteArray()
 var _bg_code := 0
+var _bg_gzip := false
 
 func bg_busy() -> bool:
 	return _bg_state != 0
@@ -380,6 +395,7 @@ func bg_send(req: Dictionary) -> bool:
 		path += "?token=" + token.uri_encode()
 	var headers := PackedStringArray([
 		"Content-Type: application/json",
+		"Accept-Encoding: gzip",
 		"Accept: application/json",
 		"Connection: keep-alive",
 		"User-Agent: TianmaGodot/1.0",
@@ -417,6 +433,7 @@ func bg_poll() -> Dictionary:
 				bg_reset()
 			return {}
 		_bg_code = http.get_response_code()
+		_bg_gzip = _resp_is_gzip(http)
 		_bg_state = 2
 	# 只在 STATUS_BODY 时读；读完状态会自己跳走，硬读会刷 ERROR
 	while http.get_status() == HTTPClient.STATUS_BODY:
@@ -435,6 +452,8 @@ func bg_poll() -> Dictionary:
 	_down_until = 0
 	last_error = ""
 	calls += 1
+	if _bg_gzip and _bg_raw.size() > 0:
+		_bg_raw = _bg_raw.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
 	var text := _bg_raw.get_string_from_utf8()
 	var data = JSON.parse_string(text)
 	if typeof(data) != TYPE_DICTIONARY:
@@ -462,6 +481,73 @@ func _bg_drain() -> void:
 			bg_reset()
 			return
 		OS.delay_msec(1)
+
+
+# ── 长连接推送（WebSocket，同一个端口 /ws/<房间>）────────────────────
+#   作用只有一件事：状态**变了就立刻告诉客户端**（带新的 ver），
+#   客户端随即拉一次（通常 113 字节的 poll 就够）。这样「别人的动作多久能看到」
+#   从「最多 0.35s 轮询间隔 + 往返」变成「一个往返」。
+#   走的是同一条 TLS 连接：公网只需要一次握手，之后一直是热的。
+var ws: WebSocketPeer = null
+var _ws_next_try := 0
+var push_ver := ""                       # 最近一次推送带来的 ver（空 = 还没推过）
+
+func _ws_url() -> String:
+	var scheme := "wss://" if _tls else "ws://"
+	var hostpart := _host
+	if (_tls and _port != 443) or (not _tls and _port != 80):
+		hostpart += ":%d" % _port
+	var p := "%s%s%s/ws/%s" % [scheme, hostpart, _base_path, room.uri_encode()]
+	if token != "":
+		p += "?token=" + token.uri_encode()
+	return p
+
+
+func push_ok() -> bool:
+	return enabled and ws != null and ws.get_ready_state() == WebSocketPeer.STATE_OPEN
+
+
+# 每帧调一次：推进长连接，有推送就返回新的 ver（否则 ""）
+func push_tick() -> String:
+	if not enabled:
+		return ""
+	var now := Time.get_ticks_msec()
+	if ws == null:
+		if now < _ws_next_try:
+			return ""
+		var socks := WebSocketPeer.new()
+		var opt: TLSOptions = null
+		if _tls:
+			opt = TLSOptions.client()
+		var err := socks.connect_to_url(_ws_url(), opt)
+		if err != OK:
+			_ws_next_try = now + 5000
+			return ""
+		ws = socks
+		return ""
+	ws.poll()
+	var st := ws.get_ready_state()
+	if st == WebSocketPeer.STATE_OPEN:
+		var got := ""
+		while ws.get_available_packet_count() > 0:
+			var txt := ws.get_packet().get_string_from_utf8()
+			var d = JSON.parse_string(txt)
+			if typeof(d) == TYPE_DICTIONARY:
+				var v := String((d as Dictionary).get("ver", ""))
+				if v != "":
+					push_ver = v
+					got = v
+		return got
+	if st == WebSocketPeer.STATE_CLOSED:
+		ws = null
+		_ws_next_try = now + 3000
+	return ""
+
+
+func push_close() -> void:
+	if ws != null:
+		ws.close()
+	ws = null
 
 
 # 现在是不是「刚确认连不上」的冷却期（界面据此显示提示、别再催）

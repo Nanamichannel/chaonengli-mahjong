@@ -13967,6 +13967,11 @@ func _process(delta: float) -> void:
 					srv_humans = rr.get("humans")
 				if not bool(rr.get("same", false)):
 					srv_apply_state(rr.get("state"), rr.get("events"))
+	# ★ 长连接推送：服务端状态一变就发新的 ver 过来 → 立刻拉一次，不用等轮询周期
+	if srv != null and srv.has_method("push_tick"):
+		var pv := String(srv.call("push_tick"))
+		if pv != "" and pv != _state_ver:
+			poll_accum = 99999.0
 	if game_over or srv_busy:
 		return
 	if _prompt_blocked():
@@ -13995,6 +14000,9 @@ func _process(delta: float) -> void:
 	var others_here := srv_humans.size() > 1          # 这局还有别的窗口在操作
 	var deal_running := not bool(srv_state.get("deal_done", true))
 	var period := POLL_SEC if (waiting_for_others or deal_running or others_here) else POLL_IDLE_SEC
+	# 推送长连接活着 → 轮询退化成「保险丝」，放慢到 2 秒（公网流量/手机电量都省）
+	if srv != null and srv.has_method("push_ok") and bool(srv.call("push_ok")):
+		period = maxf(period, 2.0)
 	poll_accum += delta
 	if poll_accum < period:
 		return

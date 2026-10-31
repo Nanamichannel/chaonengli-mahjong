@@ -10325,6 +10325,7 @@ const BOARD_START_TEX := "res://Cailiao/UI/tiaoguo.png"
 # 在编辑器里换这两张图，所有技能面板的按钮一起变。
 const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
 const CONFIRM_BTN_SCALE := 1.5      # 确认态按钮放大倍数
+var _btn_ok := {}                   # 按钮 -> 是否「确认态」（_sync_prompt_btns 据此放大）
 
 
 func btn_tex(kind: String) -> Texture2D:
@@ -10345,19 +10346,12 @@ func set_start_btn_kind(btn: TextureButton, picked: bool) -> void:
 	var t := btn_tex("ok" if picked else "pass")
 	if t != null and btn.texture_normal != t:
 		btn.texture_normal = t
-	# 确认态整体放大 CONFIRM_BTN_SCALE 倍（用 scale + 居中 pivot：
-	# 不动 size/position，免得和 _sync_prompt_btns 的布局打架）
-	# 以「底边中心」为基准放大：底部始终和手牌底部对齐，只往上长
-	var m := CONFIRM_BTN_SCALE if picked else 1.0
-	if btn.has_method("set_base_mult"):
-		btn.set("pivot_bottom", picked)     # 放大时支点在底边 → 底部不动
-		btn.call("set_base_mult", m)
-		btn.pivot_offset = Vector2(btn.size.x * 0.5, btn.size.y) if picked else btn.size * 0.5
-	else:
-		# 没挂动画脚本的按钮（c26 / future 等）：手动设 pivot + scale
-		btn.pivot_offset = Vector2(btn.size.x * 0.5, btn.size.y) if picked else btn.size * 0.5
-		if not btn.scale.is_equal_approx(Vector2.ONE * m):
-			btn.scale = Vector2.ONE * m
+	# 只记状态：真正的「放大 1.5 倍 + 底部对齐」在 _sync_prompt_btns() 里按 size 算。
+	# ★ 不用 scale/pivot 的原因：action_button 的 resized 信号会把 pivot 写回中心，
+	#   而 _sync_prompt_btns 每帧改 size 就触发一次 → 放大后底部总会往下探一截。
+	_btn_ok[btn] = picked
+	if not is_equal_approx(btn.scale.x, 1.0):
+		btn.scale = Vector2.ONE
 
 
 # ── 统一刷新：每个技能面板的「开始按钮」按「有没有选东西」切图 ──────────────
@@ -12263,6 +12257,13 @@ func _sync_prompt_btns() -> void:
 		if tb != null and tb.texture_normal != null and tb.texture_normal.get_width() > 0:
 			aspect = float(tb.texture_normal.get_height()) / float(tb.texture_normal.get_width())
 		var r := prompt_btn_rect(aspect)
+		# ★ 确认态：放大 CONFIRM_BTN_SCALE 倍，且**底部严格对齐手牌底部**
+		#   横向保持原中心，纵向让底边不动、只往上长。
+		if bool(_btn_ok.get(btn, false)):
+			var cx := r.get_center().x
+			var bottom := r.end.y
+			r.size *= CONFIRM_BTN_SCALE
+			r.position = Vector2(cx - r.size.x * 0.5, bottom - r.size.y)
 		if btn.size.distance_to(r.size) > 0.5:
 			btn.size = r.size
 		if btn.global_position.distance_to(r.position) > 0.5:
@@ -13492,8 +13493,8 @@ func _process(delta: float) -> void:
 	if game_over:
 		_result_confirm_tick(delta)
 	_skill_panel_stale_close()
-	_sync_prompt_btns()          # 「开始按钮」跟着未副露手牌的最右边走
-	_refresh_start_btn_kinds() # 开始按钮：没选=跳过图，选了=确认图
+	_refresh_start_btn_kinds()  # 先定「跳过/确认」状态（决定贴图 + 是否放大）
+	_sync_prompt_btns()          # 再排版：贴着手牌右边，确认态放大 1.5 倍且底部对齐
 	swap_panel.tick()            # 通用面板自己贴位置
 	_sync_chow_choices()         # 「吃」的选搭子面板跟着手牌走
 	ym_panel.tick()

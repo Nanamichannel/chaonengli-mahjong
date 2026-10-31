@@ -4634,17 +4634,17 @@ func _cg_answer_pair(title: String, cb_yes: Callable, cb_no: Callable) -> void:
 	head.add_theme_constant_override("outline_size", 6)
 	head.position = Vector2(vp.x * 0.5 - 320.0, vp.y * 0.5 - 90.0)
 	cg_ui.add_child(head)
-	var ok := ui_btn("ok", 220.0)
+	var ok := ui_btn("ok", 150.0)
 	ok.pressed.connect(func():
 		_cg_close()
 		cb_yes.call())
 	cg_ui.add_child(ok)
-	var no := ui_btn("pass", 190.0)
+	var no := ui_btn("pass", 150.0)
 	no.pressed.connect(func():
 		_cg_close()
 		cb_no.call())
 	cg_ui.add_child(no)
-	_place_btn_pair(ok, no, vp.x * 0.5, vp.y * 0.5 - 20.0)
+	_place_btn_pair(ok, no, vp.x * 0.5, vp.y * 0.5 + 60.0)
 
 
 # 竖向列表选择器：items = [{"label": String, "cb": Callable}]
@@ -4788,11 +4788,11 @@ func _cg_show_kind_grid(title: String, on_pick: Callable = Callable(), on_ok: Ca
 		num.position = Vector2(4, 2)
 		num.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(num)
-	var ok := ui_btn("ok", 220.0)              # 贴图，不叠字
+	var ok := ui_btn("ok", 150.0)              # 并排：两个同尺寸
 	ok.name = "OK"
 	ok.pressed.connect(_cg_ok_pressed)
 	cg_ui.add_child(ok)
-	var cl := ui_btn("pass", 170.0)
+	var cl := ui_btn("pass", 150.0)
 	cl.pressed.connect(_cg_kind_close)
 	cg_ui.add_child(cl)
 	# 两个按钮作为整体居中（这一行在牌种网格下方）
@@ -8885,13 +8885,13 @@ func _c38s1_make_ui() -> void:
 		c38_ui.add_child(b)
 		c38_nodes["h%d" % j] = b
 	# ── 确认 / 取消（贴图，不叠字）──
-	c38_ok = ui_btn("ok", 240.0)
+	c38_ok = ui_btn("ok", 150.0)               # 并排：两个同尺寸
 	c38_ok.pressed.connect(_c38s1_confirm)
 	c38_ui.add_child(c38_ok)
-	var cancel := ui_btn("pass", 190.0)
+	var cancel := ui_btn("pass", 150.0)
 	cancel.pressed.connect(_c38s1_close)
 	c38_ui.add_child(cancel)
-	_place_btn_pair(c38_ok, cancel, vp.x * 0.5, 430.0 + 67.0)   # 这一行的高度中点
+	_place_btn_pair(c38_ok, cancel, vp.x * 0.5, 470.0)
 
 
 func _c38s1_refresh() -> void:
@@ -10679,14 +10679,10 @@ const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
 # ══════════════════════════════════════════════════════════════════════════
 @export_group("开始按钮微调")
 @export var prompt_btn_gap := 12.0            # 按钮和手牌最右边的空隙（px）
-@export var prompt_btn_offset := Vector2(17, 24)  # 确认态整体平移（右/下为正；2026-10-31 实调值）
-												 # ★ 只影响「确认态」，跳过态永远在原位
-@export var confirm_btn_scale := 1.5          # 确认态放大倍数
-@export var confirm_btn_offset := Vector2.ZERO# 只在「确认态」额外平移（px）
+@export var prompt_btn_offset := Vector2.ZERO  # 整体平移（确认 / 跳过 一起动，右/下为正）
 
 const BTN_TUNE_CFG := "user://btn_tune.cfg"
-const BTN_TUNE_DEFAULT := {
-	"gap": 12.0, "ox": 0.0, "oy": 0.0, "scale": 1.5, "cox": 0.0, "coy": 0.0}
+const BTN_TUNE_DEFAULT := {"gap": 12.0, "ox": 0.0, "oy": 0.0}
 
 var _btn_ok := {}                   # 按钮 -> 是否「确认态」（_sync_prompt_btns 据此放大）
 var _btn_tune_mode := false         # F10：微调模式（方向键不用按 Ctrl）
@@ -10714,10 +10710,8 @@ func _btn_tune_load() -> void:
 	var dd := d as Dictionary
 	prompt_btn_gap = float(dd.get("gap", prompt_btn_gap))
 	prompt_btn_offset = Vector2(float(dd.get("ox", 0.0)), float(dd.get("oy", 0.0)))
-	confirm_btn_scale = float(dd.get("scale", confirm_btn_scale))
-	confirm_btn_offset = Vector2(float(dd.get("cox", 0.0)), float(dd.get("coy", 0.0)))
-	print("[PROMPT_BTN] 已载入微调：gap=%.1f offset=%s scale=%.2f confirm_offset=%s" % [
-		prompt_btn_gap, prompt_btn_offset, confirm_btn_scale, confirm_btn_offset])
+	print("[PROMPT_BTN] 已载入微调：gap=%.1f offset=%s" % [
+		prompt_btn_gap, prompt_btn_offset])
 
 
 func _btn_tune_save() -> void:
@@ -10726,17 +10720,13 @@ func _btn_tune_save() -> void:
 		push_warning("main.gd: 写不了 " + BTN_TUNE_CFG)
 		return
 	f.store_string(JSON.stringify({
-		"gap": prompt_btn_gap, "ox": prompt_btn_offset.x, "oy": prompt_btn_offset.y,
-		"scale": confirm_btn_scale,
-		"cox": confirm_btn_offset.x, "coy": confirm_btn_offset.y}, "\t"))
+		"gap": prompt_btn_gap, "ox": prompt_btn_offset.x, "oy": prompt_btn_offset.y}, "\t"))
 	f.close()
 
 
 func _btn_tune_reset() -> void:
 	prompt_btn_gap = float(BTN_TUNE_DEFAULT["gap"])
 	prompt_btn_offset = Vector2(0, 0)
-	confirm_btn_scale = float(BTN_TUNE_DEFAULT["scale"])
-	confirm_btn_offset = Vector2(0, 0)
 	if FileAccess.file_exists(BTN_TUNE_CFG):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(BTN_TUNE_CFG))
 
@@ -10744,12 +10734,13 @@ func _btn_tune_reset() -> void:
 # F9：当前值 + 实际矩形（照这个数字去调 @export 或直接按方向键）
 func _btn_tune_report() -> void:
 	var aspect := 70.0 / 220.0
+	var t0 := btn_tex("pass")
+	if t0 != null and t0.get_width() > 0:
+		aspect = float(t0.get_height()) / float(t0.get_width())
 	var r := prompt_btn_rect(aspect)
-	var s2 := r.size * confirm_btn_scale
-	var cp := (Vector2(r.get_center().x - s2.x * 0.5, r.end.y - s2.y)
-		+ prompt_btn_offset + confirm_btn_offset)
-	var line := "gap=%.1f  offset=%s  scale=%.2f  confirm_offset=%s" % [
-		prompt_btn_gap, prompt_btn_offset, confirm_btn_scale, confirm_btn_offset]
+	var s2 := r.size
+	var cp := r.position + prompt_btn_offset
+	var line := "gap=%.1f  offset=%s" % [prompt_btn_gap, prompt_btn_offset]
 	print("[PROMPT_BTN] ", line)
 	print("[PROMPT_BTN] 跳过态=", r, "  确认态=", Rect2(cp, s2))
 	_toast("按钮微调 · " + line)
@@ -12689,15 +12680,10 @@ func _sync_prompt_btns() -> void:
 		var aspect := 70.0 / 220.0                       # 贴图默认比例（220×70）
 		if tb != null and tb.texture_normal != null and tb.texture_normal.get_width() > 0:
 			aspect = float(tb.texture_normal.get_height()) / float(tb.texture_normal.get_width())
+		# ★ 确认 / 跳过**同一位置、同一大小**（2026-10-31 换图后的口径：
+		#   两张图都是 894x974，只换贴图、不缩放）；微调偏移对两种状态一起生效。
 		var r := prompt_btn_rect(aspect)
-		# ★ 确认态：放大 confirm_btn_scale 倍，且**底部严格对齐手牌底部**
-		#   横向保持原中心，纵向让底边不动、只往上长。
-		if bool(_btn_ok.get(btn, false)):
-			var cx := r.get_center().x
-			var bottom := r.end.y
-			r.size *= confirm_btn_scale
-			r.position = Vector2(cx - r.size.x * 0.5, bottom - r.size.y) \
-				+ prompt_btn_offset + confirm_btn_offset
+		r.position += prompt_btn_offset
 		if btn.size.distance_to(r.size) > 0.5:
 			btn.size = r.size
 		if btn.global_position.distance_to(r.position) > 0.5:
@@ -14037,17 +14023,7 @@ func _input(event: InputEvent) -> void:
 					KEY_UP: d = Vector2(0, -step)
 					KEY_DOWN: d = Vector2(0, step)
 				if d != Vector2.ZERO:
-					if k0.alt_pressed:
-						confirm_btn_offset += d          # 只动「确认态」
-					else:
-						prompt_btn_offset += d           # 跳过 / 确认一起动
-					_btn_tune_save()
-					_btn_tune_report()
-					get_viewport().set_input_as_handled()
-					return
-				if k0.keycode == KEY_BRACKETLEFT or k0.keycode == KEY_BRACKETRIGHT:
-					var ds := 0.05 if k0.keycode == KEY_BRACKETRIGHT else -0.05
-					confirm_btn_scale = clampf(confirm_btn_scale + ds, 0.5, 4.0)
+					prompt_btn_offset += d               # 确认 / 跳过 一起动
 					_btn_tune_save()
 					_btn_tune_report()
 					get_viewport().set_input_as_handled()

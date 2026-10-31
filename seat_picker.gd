@@ -38,7 +38,7 @@ var _box: Control = null
 var _title: Label = null
 var _btns: Array = []            # 4 个 TextureButton
 var _frames: Array = []          # 4 个红框（选中）
-var _skip: Button = null
+var _skip: TextureButton = null
 
 var _seat_of_wind: Array = []    # 方位 index → 绝对座位号
 var _enabled: Array = []         # 方位 index → 能不能点
@@ -101,9 +101,14 @@ func _build() -> void:
 		b.add_child(f)
 		_frames.append(f)
 
-	_skip = Button.new()
+	# 跳过 = 用户做的 tiaoguo 贴图（不叠字）
+	_skip = TextureButton.new()
 	_skip.name = "Skip"
-	_skip.text = "跳过"
+	var _sk_tex := load("res://Cailiao/UI/tiaoguo.png") as Texture2D
+	if _sk_tex != null:
+		_skip.texture_normal = _sk_tex
+	_skip.ignore_texture_size = true
+	_skip.stretch_mode = TextureButton.STRETCH_SCALE
 	_skip.focus_mode = Control.FOCUS_NONE
 	_skip.pressed.connect(_on_skip)
 	_box.add_child(_skip)

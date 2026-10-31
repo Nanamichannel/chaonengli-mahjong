@@ -148,7 +148,6 @@ var sort_rank := {}                    # 牌 ID -> 排序权重
 
 var pai: Node2D                # 牌模板库：Pai 下每个子节点就是一种牌
 var hand_container: Control
-var draw_button: Button
 var sizee := 0.8
 var tile_size := Vector2(68.00, 97.00)   # 由模板牌自动量出 
 var tile_bank: TileBank = null       # 136 张牌实体库（TilePiece 节点都挂在它下面）
@@ -317,6 +316,22 @@ func seat_of_who(who: String) -> int:
 		"B":
 			return (my_seat + 3) % 4
 	return my_seat
+
+# 最近一次点的技能图标按钮的屏幕矩形（枷锁的数字按钮贴在它上方）
+var _skill_btn_rect := Rect2()
+
+
+func _remember_skill_btn(card_no: int, index: int) -> void:
+	var idn := get_node_or_null("Identity")
+	if idn == null:
+		return
+	var cn := idn.get_node_or_null("Card%d" % int(card_no))
+	if cn == null:
+		return
+	var sb := cn.get_node_or_null("Skill%d" % (int(index) + 1)) as Control
+	if sb != null and is_instance_valid(sb):
+		_skill_btn_rect = sb.get_global_rect()
+
 
 # 点了「复制品 / 传承品」的图标之后，下一次真正发动的请求要带 copy=true，
 # 服务端据此把这一下记到「复制品」那本账上（原技能与复制品各有一份配额）。
@@ -638,15 +653,6 @@ func _ready() -> void:
 	_setup_hand_slots()
 	_layout_hand_area()
 
-	draw_button = Button.new()
-	draw_button.text = "摸牌"
-	draw_button.position = Vector2(20, 20)
-	draw_button.custom_minimum_size = Vector2(100, 45)
-	draw_button.size = Vector2(100, 45)
-	draw_button.z_index = 10
-	add_child(draw_button)
-	draw_button.pressed.connect(draw_tile)
-	draw_button.visible = false      # 摸牌按钮取消：改成自动摸牌
 
 	refresh_hand()
 	_refresh_wall_stacks()   # 牌山：认领场景里预置的 68 个牌墩（墩01…墩68）
@@ -1276,12 +1282,6 @@ func _reset_view_for_new_round() -> void:
 	menzen = true
 	# 各种按钮也收起来
 	hide_chow_panel()
-	hide_pon_button()
-	hide_minkan_button()
-	hide_kakan_button()
-	hide_pass_button()
-	if ankan_button != null:
-		ankan_button.visible = false
 	srv_layout_buttons([])
 	for who in OPP_ORDER:
 		opp_hands[who] = []
@@ -1467,9 +1467,6 @@ func start_deal() -> void:
 
 	print("[配牌] 骰子 %s ＝ 第 %d 墩 → %s 面开始编号，从第 %d 墩开始拿"
 		% [str(dice), first_stack, wall_start_side, first_stack])
-	if draw_button != null:
-		draw_button.disabled = true
-		draw_button.text = "配牌中"
 	# 每家 0 张
 	hand_tiles.clear()
 	drawn_tile = ""
@@ -1787,9 +1784,6 @@ func _deal_step() -> void:
 	if bool(st.get("deal_done", false)):
 		dealing = false
 		game_phase = PHASE_PLAY
-		if draw_button != null:
-			draw_button.disabled = false
-		_update_draw_button()
 		draw_tile()                    # 摸牌按钮取消：配牌一结束就自动开始摸打
 		print("[配牌] 配牌结束，我手上 %d 张（台上 %d 张）"
 			% [display_tiles().size(), opp_hands.get("B", []).size()])
@@ -1968,36 +1962,17 @@ func srv_act(action: String, extra: Dictionary = {}) -> Dictionary:
 # 轮到我了：服务端说能和就和；其余按钮按服务端给的选项显示
 # ── 「过」按钮：服务端开出鸣牌窗口时，不鸣就点它（不然会一直等你）──
 const PASS_BUTTON_POS := Vector2(680, 20)
-var pass_button: Button
 
 
 # 【死代码·别再改这里】真正被点到的「跳过」按钮是场景里的 UI/Btn/BtnTiaoguo，
 # 它接的是 _on_action_button("pass")。下面这个 pass_button 是早期现场 new 的「过」按钮，
 # show_pass_button() 已经没有任何调用点 —— 之前修加速时改错地方就是踩了这个。
-func show_pass_button() -> void:
-	if pass_button == null:
-		pass_button = Button.new()
-		pass_button.text = "过"
-		pass_button.position = PASS_BUTTON_POS
-		pass_button.custom_minimum_size = Vector2(100, 45)
-		pass_button.size = Vector2(100, 45)
-		pass_button.z_index = 10
-		pass_button.focus_mode = Control.FOCUS_NONE
-		pass_button.pressed.connect(_on_pass_pressed)
-		add_child(pass_button)
-	pass_button.visible = true
 
 
-func hide_pass_button() -> void:
-	if pass_button != null:
-		pass_button.visible = false
 
 
 func _on_pass_pressed() -> void:
-	hide_pass_button()
 	hide_chow_panel()
-	hide_pon_button()
-	hide_minkan_button()
 	# 加速询问里的「跳过」= 不发动这个技能（不是普通鸣牌的跳过）
 	if not srv_c29s1_ask().is_empty():
 		_c29s1_op("c29s1_skip")
@@ -2890,8 +2865,6 @@ func _card09_close() -> void:
 		c09_ui.queue_free()
 	c09_ui = null
 	c09_btn = null
-	if draw_button != null:
-		draw_button.visible = false
 	_apply_entity_states(srv_state)
 
 
@@ -4198,6 +4171,22 @@ func _act_kind_tex(kind: String) -> Texture2D:
 
 
 # 一条询问 = 一行：标题 + 能用哪几招（技能图标按钮）+「开始」图当跳过
+# 这张卡是不是某一家的「主战」卡（决定询问行的上下顺序）
+func _ask_card_is_main(actor: int, card: int) -> bool:
+	var arr = srv_state.get("char_states", [])
+	if typeof(arr) != TYPE_ARRAY:
+		return false
+	for it in (arr as Array):
+		if typeof(it) != TYPE_DICTIONARY:
+			continue
+		if int((it as Dictionary).get("seat", -1)) != int(actor):
+			continue
+		var m = (it as Dictionary).get("main", {})
+		if typeof(m) == TYPE_DICTIONARY and int((m as Dictionary).get("card", 0)) == int(card):
+			return true
+	return false
+
+
 func _asks_show(arr: Array) -> void:
 	_asks_last = (arr as Array).duplicate(true)
 	_ask_scale_load()
@@ -4219,14 +4208,29 @@ func _asks_show(arr: Array) -> void:
 	var vp := get_viewport_rect().size
 	var col_x := 48.0
 	var y := 96.0
-	for i in range(arr.size()):
-		var it = arr[i]
+	# 摊平成「行」：一行 = 一个（询问 × 可用招式）= 一个人物卡 + 一个跳过
+	#   主战卡发动的排在前面（用户口径：谁在主战位谁在上面）
+	var rows: Array = []
+	for it in arr:
 		if typeof(it) != TYPE_DICTIONARY:
 			continue
-		var d := it as Dictionary
+		var d0 := it as Dictionary
+		var a_actor := int(d0.get("actor", -1))
+		var a_card := int(d0.get("card", 0))
+		var kl0 = d0.get("kinds")
+		for k0 in (kl0 if typeof(kl0) == TYPE_ARRAY else []):
+			rows.append({"d": d0, "kind": String(k0),
+				"main": _ask_card_is_main(a_actor, a_card)})
+	rows.sort_custom(func(a, b) -> bool:
+		return bool(a.get("main", false)) and not bool(b.get("main", false)))
+	y = 96.0
+	for row in rows:
+		var d: Dictionary = row.get("d", {})
+		var ks := String(row.get("kind", ""))
 		var aid := int(d.get("id", -1))
 		var actor := int(d.get("actor", -1))
 		var nm := String(d.get("name", ""))
+		var card := int(d.get("card", 0))
 		var is_counter := String(d.get("kind", "skill")) != "skill"
 		var txt := "%s 发动了【%s】—— 要拦下来吗？" % [srv_name_of(actor), nm]
 		if is_counter:
@@ -4239,39 +4243,7 @@ func _asks_show(arr: Array) -> void:
 		lb.add_theme_constant_override("outline_size", 6)
 		lb.position = Vector2(col_x, y)
 		kp_ui.add_child(lb)
-		var kinds = d.get("kinds")
-		var kl: Array = kinds if typeof(kinds) == TYPE_ARRAY else []
-		var bx := col_x
-		var ih := 0.0
-		for k in kl:
-			var ks := String(k)
-			var tex := _act_kind_tex(ks)
-			var b := TextureButton.new()
-			b.texture_normal = tex
-			b.ignore_texture_size = true          # 否则控件会被贴图原始尺寸（250x446）撑大
-			b.stretch_mode = TextureButton.STRETCH_SCALE
-			b.focus_mode = Control.FOCUS_NONE
-			# ★ 按贴图原始比例摆，不拉伸
-			var iw := 46.0 * ask_btn_scale
-			if tex != null and tex.get_width() > 0:
-				b.size = Vector2(iw, iw * float(tex.get_height())
-						/ float(tex.get_width()))
-			else:
-				b.size = Vector2(iw, iw * 1.78)
-			b.position = Vector2(bx, y + 30.0)
-			b.pressed.connect(_kp_answer.bind(aid, ks))
-			kp_ui.add_child(b)
-			ih = maxf(ih, b.size.y)
-			var cap := Label.new()
-			cap.text = String(ACT_KIND_CN.get(ks, ks))
-			cap.add_theme_font_size_override("font_size", 18)
-			cap.add_theme_color_override("font_color", Color(1, 1, 0.9))
-			cap.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-			cap.add_theme_constant_override("outline_size", 5)
-			cap.position = Vector2(bx + 2.0, y + 30.0 + b.size.y + 2.0)
-			kp_ui.add_child(cap)
-			bx += b.size.x + 14.0
-		# 跳过 / 放行：统一用「开始」那张图，同样按原比例
+		# 跳过按钮（尺寸基准）
 		var stex := btn_tex("pass")
 		var sb := TextureButton.new()
 		sb.texture_normal = stex
@@ -4279,15 +4251,31 @@ func _asks_show(arr: Array) -> void:
 		sb.stretch_mode = TextureButton.STRETCH_SCALE
 		sb.focus_mode = Control.FOCUS_NONE
 		var sw := 84.0 * ask_btn_scale
+		var sh := sw * 0.32
 		if stex != null and stex.get_width() > 0:
-			sb.size = Vector2(sw, sw * float(stex.get_height())
-					/ float(stex.get_width()))
-		else:
-			sb.size = Vector2(sw, sw * 0.32)
-		sb.position = Vector2(bx + 14.0, y + 42.0)
+			sh = sw * float(stex.get_height()) / float(stex.get_width())
+		sb.size = Vector2(sw, sh)
+		# 被看破的那张人物卡：等比缩放到和跳过按钮同高（不变形、不叠字）
+		var ctex := load("res://Cailiao/skill/cards/card_%02d.png" % card) as Texture2D
+		var cb2 := TextureButton.new()
+		cb2.texture_normal = ctex
+		cb2.ignore_texture_size = true
+		cb2.stretch_mode = TextureButton.STRETCH_SCALE
+		cb2.focus_mode = Control.FOCUS_NONE
+		var cw := sh * 0.72
+		var ch := sh
+		if ctex != null and ctex.get_width() > 0:
+			cw = sh * float(ctex.get_width()) / float(ctex.get_height())
+		cb2.size = Vector2(cw, ch)
+		cb2.tooltip_text = "%s 的【%s】→ 点这张卡用「%s」拦下来" % [
+			srv_name_of(actor), nm, String(ACT_KIND_CN.get(ks, ks))]
+		cb2.position = Vector2(col_x, y + 30.0)
+		cb2.pressed.connect(_kp_answer.bind(aid, ks))
+		kp_ui.add_child(cb2)
+		sb.position = Vector2(col_x + cw + 18.0, y + 30.0)
 		sb.pressed.connect(_kp_answer.bind(aid, "pass"))
 		kp_ui.add_child(sb)
-		y += maxf(ih, sb.size.y) + 70.0
+		y += ch + 70.0
 		if y > vp.y - 150.0:             # 兜底：排不下就另起一列，别跑出屏幕
 			y = 96.0
 			col_x += 620.0
@@ -4566,6 +4554,41 @@ func _cg_close() -> void:
 	cg_ui = null
 
 
+# 二选一询问：标题 + 「确认」「跳过」两张贴图（不叠字）
+func _cg_answer_pair(title: String, cb_yes: Callable, cb_no: Callable) -> void:
+	_cg_close()
+	var host: Node = get_parent()
+	if host == null:
+		host = self
+	cg_ui = Control.new()
+	cg_ui.name = "CgPairUI"
+	cg_ui.z_index = 300
+	host.add_child(cg_ui)
+	cg_ui.position = Vector2.ZERO
+	cg_active = true
+	var vp := get_viewport_rect().size
+	var head := Label.new()
+	head.text = title
+	head.add_theme_font_size_override("font_size", 24)
+	head.add_theme_color_override("font_color", Color(1, 1, 0.85))
+	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	head.add_theme_constant_override("outline_size", 6)
+	head.position = Vector2(vp.x * 0.5 - 320.0, vp.y * 0.5 - 90.0)
+	cg_ui.add_child(head)
+	var ok := ui_btn("ok", 220.0)
+	ok.position = Vector2(vp.x * 0.5 - 230.0, vp.y * 0.5 - 30.0)
+	ok.pressed.connect(func():
+		_cg_close()
+		cb_yes.call())
+	cg_ui.add_child(ok)
+	var no := ui_btn("pass", 190.0)
+	no.position = Vector2(vp.x * 0.5 + 20.0, vp.y * 0.5 - 20.0)
+	no.pressed.connect(func():
+		_cg_close()
+		cb_no.call())
+	cg_ui.add_child(no)
+
+
 # 竖向列表选择器：items = [{"label": String, "cb": Callable}]
 # 用「技能卡图」做按钮的列表：lst = [{card, skill, name}]，点一张就回调
 func _cg_show_cards(title: String, lst: Array, cb: Callable) -> void:
@@ -4707,19 +4730,13 @@ func _cg_show_kind_grid(title: String, on_pick: Callable = Callable(), on_ok: Ca
 		num.position = Vector2(4, 2)
 		num.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(num)
-	var ok := Button.new()
+	var ok := ui_btn("ok", 220.0)              # 贴图，不叠字
 	ok.name = "OK"
-	ok.text = "开始"
-	ok.focus_mode = Control.FOCUS_NONE
 	ok.position = Vector2(40, 100.0 + 2.0 * (th + 30.0) + 6.0)
-	ok.size = Vector2(220, 56)
 	ok.pressed.connect(_cg_ok_pressed)
 	cg_ui.add_child(ok)
-	var cl := Button.new()
-	cl.text = "关闭"
-	cl.focus_mode = Control.FOCUS_NONE
-	cl.position = Vector2(280, ok.position.y)
-	cl.size = Vector2(160, 56)
+	var cl := ui_btn("pass", 170.0)
+	cl.position = Vector2(290, ok.position.y)
 	cl.pressed.connect(_cg_kind_close)
 	cg_ui.add_child(cl)
 
@@ -4782,11 +4799,8 @@ func _cg_show(title: String, items: Array) -> void:
 			b.pressed.connect(func(): _cg_fire(cb))
 		cg_ui.add_child(b)
 		y += 52.0
-	var cl := Button.new()
-	cl.text = "关闭"
-	cl.focus_mode = Control.FOCUS_NONE
+	var cl := ui_btn("pass", 170.0)            # 贴图，不叠字
 	cl.position = Vector2(40, y + 8.0)
-	cl.size = Vector2(160, 44)
 	cl.pressed.connect(_cg_close)
 	cg_ui.add_child(cl)
 
@@ -4847,18 +4861,69 @@ func _cg_research() -> void:
 		   " ".join(PackedStringArray(ts2))])
 
 
+# 看破：选一个要剔除的技能 —— 用**技能图标按钮**（card_XX_Y_r0），旁边一个「跳过」
 func _cg_show_skills(kind: String, target: int) -> void:
 	var lst: Array = srv_state.get("kangpo_list", [])
-	var items: Array = []
-	for it in lst:
-		var d: Dictionary = it
+	if (lst as Array).is_empty():
+		_toast("看破：%s 现在没有可以剔除的技能" % srv_name_of(target))
+		return
+	_cg_close()
+	var host: Node = get_parent()
+	if host == null:
+		host = self
+	var cell := Vector2(150.0, 84.0)          # 技能图标按钮（446x250 等比）
+	var gap := 12.0
+	var per := 5
+	var cnt := (lst as Array).size()
+	var cols := mini(per, cnt)
+	var w := float(cols) * cell.x + float(maxi(0, cols - 1)) * gap
+	var rows := int((cnt + per - 1) / per)
+	var vp := get_viewport_rect().size
+	var x := (vp.x - w) * 0.5
+	var yaw := float(rows) * cell.y + float(maxi(0, rows - 1)) * gap
+	var y := vp.y * 0.5 - yaw * 0.5
+	cg_ui = Control.new()
+	cg_ui.name = "CgSightUI"
+	cg_ui.z_index = 300                       # 牌墩 15/16、技能按钮 20 → 不会被盖
+	host.add_child(cg_ui)
+	cg_ui.position = Vector2.ZERO
+	cg_active = true
+	cg_kind = kind
+	var head := Label.new()
+	head.text = "看破：剔除 %s 的哪个技能？" % srv_name_of(target)
+	head.add_theme_font_size_override("font_size", 24)
+	head.add_theme_color_override("font_color", Color(1, 1, 0.85))
+	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	head.add_theme_constant_override("outline_size", 6)
+	head.position = Vector2(x, y - 40.0)
+	cg_ui.add_child(head)
+	for i in range(cnt):
+		var d: Dictionary = (lst as Array)[i]
 		var card := int(d.get("card", 0))
 		var sk := int(d.get("skill", 0))
 		var nm := String(d.get("name", ""))
-		items.append({"label": "【%s】%s" % [nm, String(d.get("timing", ""))],
-			"cb": func(): _cg_sight_use(target, card, sk, nm)})
-	cg_kind = kind
-	_cg_show("看破：剔除 %s 的哪个技能" % srv_name_of(target), items)
+		var b := TextureButton.new()
+		b.name = "Sight%d" % i
+		b.texture_normal = load("res://Cailiao/skill/ui/buttons/card_%02d_%d_r0.png"
+			% [card, sk]) as Texture2D
+		b.ignore_texture_size = true
+		b.stretch_mode = TextureButton.STRETCH_SCALE
+		b.focus_mode = Control.FOCUS_NONE
+		b.size = cell
+		b.position = Vector2(x + float(i % per) * (cell.x + gap),
+			y + float(int(i / per)) * (cell.y + gap))
+		b.tooltip_text = nm
+		b.pressed.connect(_cg_sight_pick.bind(target, card, sk, nm))
+		cg_ui.add_child(b)
+	var sk2 := ui_btn("pass", 170.0)           # 跳过（放弃这次看破）
+	sk2.position = Vector2(x + w - sk2.size.x, y + yaw + 12.0)
+	sk2.pressed.connect(_cg_close)
+	cg_ui.add_child(sk2)
+
+
+func _cg_sight_pick(target: int, card: int, sk: int, nm: String) -> void:
+	_cg_close()
+	_cg_sight_use(target, card, sk, nm)
 
 
 func _cg_sight_use(target: int, card: int, sk: int, nm: String) -> void:
@@ -4876,11 +4941,68 @@ func _cg_shackle() -> void:
 	if not bool(srv_state.get("jiasuo_can", false)):
 		_toast("枷锁：配牌时才能定，一局只能定一次")
 		return
-	var items: Array = []
-	for n in range(1, 14):
-		items.append({"label": "%d 番" % n,
-			"cb": func(): _cg_shackle_set(n)})
-	_cg_show("枷锁：本局期待几番？", items)
+	_cg_shackle_grid()
+
+
+# 枷锁：1~13 的数字按钮，4 / 5 / 4 三行，贴在「枷锁」技能图标按钮的正上方
+#   · 单击数字 = 直接发动（不叠字、不用确认）
+#   · z_index 300：牌墩 15/16、技能按钮 20 → 既不压住技能图标，也不会被牌山盖住
+func _cg_shackle_grid() -> void:
+	_cg_close()
+	var host: Node = get_parent()
+	if host == null:
+		host = self
+	var cell := Vector2(110.0, 62.0)
+	var t0 := load("res://Cailiao/UI/数字/1.png") as Texture2D
+	if t0 != null and t0.get_width() > 0:
+		cell.y = cell.x * float(t0.get_height()) / float(t0.get_width())
+	if _skill_btn_rect.size.x > 1.0:              # 和技能图标按钮一样大
+		cell = _skill_btn_rect.size
+	var gap := 10.0
+	var rows := [4, 5, 4]
+	var w := 5.0 * cell.x + 4.0 * gap
+	var hh := 3.0 * cell.y + 2.0 * gap
+	var vp := get_viewport_rect().size
+	var x := (vp.x - w) * 0.5
+	var y := 120.0
+	if _skill_btn_rect.size.x > 1.0:
+		x = _skill_btn_rect.get_center().x - w * 0.5
+		y = _skill_btn_rect.position.y - hh - 12.0
+	x = clampf(x, 8.0, maxf(8.0, vp.x - w - 8.0))
+	y = clampf(y, 8.0, maxf(8.0, vp.y - hh - 8.0))
+	cg_ui = Control.new()
+	cg_ui.name = "CgShackleUI"
+	cg_ui.z_index = 300
+	host.add_child(cg_ui)
+	cg_ui.position = Vector2.ZERO
+	cg_active = true
+	var n := 1
+	for ri in range(rows.size()):
+		var cnt := int(rows[ri])
+		var row_w := float(cnt) * cell.x + float(maxi(0, cnt - 1)) * gap
+		var rx := x + (w - row_w) * 0.5
+		for ci in range(cnt):
+			var b := TextureButton.new()
+			b.name = "Han%d" % n
+			b.texture_normal = load("res://Cailiao/UI/数字/%d.png" % n) as Texture2D
+			b.ignore_texture_size = true
+			b.stretch_mode = TextureButton.STRETCH_SCALE
+			b.focus_mode = Control.FOCUS_NONE
+			b.size = cell
+			b.position = Vector2(rx + float(ci) * (cell.x + gap),
+				y + float(ri) * (cell.y + gap))
+			b.pressed.connect(_cg_shackle_pick.bind(n))
+			cg_ui.add_child(b)
+			n += 1
+	var sk := ui_btn("pass", cell.x)               # 跳过（不定番）
+	sk.position = Vector2(x + w + gap, y + 2.0 * (cell.y + gap))
+	sk.pressed.connect(_cg_close)
+	cg_ui.add_child(sk)
+
+
+func _cg_shackle_pick(n: int) -> void:
+	_cg_close()
+	_cg_shackle_set(n)
 
 
 func _cg_shackle_set(n: int) -> void:
@@ -5658,6 +5780,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		is_copy := false) -> void:
 	if game_over or seat != my_seat:
 		return
+	_remember_skill_btn(card_no, index)
 	# 这次点的是「复制来的那一份」→ 让服务端记到复制品那本账上
 	copy_hint = ("%d-%d" % [card_no, index + 1]) if is_copy else ""
 	# 协战卡被遮罩 → 这张卡的技能一律不发动（服务端也会拒，这里先给个说明）
@@ -6505,13 +6628,9 @@ func _make_c05_ui() -> void:
 	c05_start_btn.pressed.connect(_c05_confirm)
 	c05_ui.add_child(c05_start_btn)
 
-	var cancel := Button.new()
+	var cancel := ui_btn("pass", 200.0)         # 取消换牌：贴图，不叠字
 	cancel.name = "C05Cancel"
-	cancel.text = "取消换牌"
-	cancel.focus_mode = Control.FOCUS_NONE
-	cancel.size = Vector2(150, 48)
-	cancel.position = Vector2(vp.x - 190.0, 150.0)
-	cancel.add_theme_font_size_override("font_size", 22)
+	cancel.position = Vector2(vp.x - 230.0, 150.0)
 	cancel.pressed.connect(func(): _c05_close(true))
 	c05_ui.add_child(cancel)
 
@@ -7518,11 +7637,11 @@ func _c33s2_open() -> void:
 	row.add_theme_constant_override("separation", 30)
 	vb.add_child(row)
 
-	var ok := _c33s2_btn("确 定", Color(0.95, 0.84, 0.45))
+	var ok := _c33s2_btn("ok")
 	ok.pressed.connect(_c33s2_submit)
 	row.add_child(ok)
 
-	var cancel := _c33s2_btn("取 消", Color(0.80, 0.80, 0.80))
+	var cancel := _c33s2_btn("pass")
 	cancel.pressed.connect(_c33s2_close)
 	row.add_child(cancel)
 
@@ -7530,23 +7649,10 @@ func _c33s2_open() -> void:
 	edit.call_deferred("grab_focus")
 
 
-func _c33s2_btn(txt: String, col: Color) -> Button:
-	var b := Button.new()
-	b.text = txt
-	b.custom_minimum_size = Vector2(170, 58)
-	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_font_size_override("font_size", 26)
-	b.add_theme_color_override("font_color", col)
-	var n := StyleBoxFlat.new()
-	n.bg_color = Color(0.16, 0.20, 0.18, 1.0)
-	n.border_color = col
-	n.set_border_width_all(2)
-	n.set_corner_radius_all(10)
-	b.add_theme_stylebox_override("normal", n)
-	var h := n.duplicate() as StyleBoxFlat
-	h.bg_color = Color(0.24, 0.30, 0.25, 1.0)
-	b.add_theme_stylebox_override("hover", h)
-	b.add_theme_stylebox_override("pressed", h)
+# kind = "ok"（确认）/ "pass"（取消）：贴图按钮，不叠字
+func _c33s2_btn(kind: String) -> TextureButton:
+	var b := ui_btn(kind, 220.0)
+	b.custom_minimum_size = b.size
 	return b
 
 
@@ -7643,13 +7749,10 @@ func _c43s2_sync(st: Dictionary) -> void:
 	var who := srv_name_of(int(a.get("actor", -1)))
 	var nm := String(a.get("name", ""))
 	var left := int((d as Dictionary).get("left", 0))
-	var items: Array = [
-		{"label": "发动【免疫】：让这次「%s（%s）」作废，以后我免疫它（还剩 %d 次）"
-			% [nm, who, left],
-			"cb": Callable(self, "_c43s2_answer").bind(true)},
-		{"label": "跳过：照常让他发动", "cb": Callable(self, "_c43s2_answer").bind(false)},
-	]
-	_cg_show("%s 对你发动了「%s」—— 要不要免疫？" % [who, nm], items)
+	# 免疫 = 「确认(queren)」/「跳过(tiaoguo)」两张贴图，标题说明还剩几次
+	_cg_answer_pair("%s 对你发动了「%s」—— 要免疫吗？（还剩 %d 次）" % [who, nm, left],
+		Callable(self, "_c43s2_answer").bind(true),
+		Callable(self, "_c43s2_answer").bind(false))
 
 
 func _c43s2_answer(use: bool) -> void:
@@ -8636,7 +8739,7 @@ var c38_dora: Array = []
 var c38_hand: Array = []
 var c38_picks: Array = []            # [{"kind":"dora","i":0} / {"kind":"hand","seq":n}]
 var c38_nodes := {}                  # key -> TextureButton
-var c38_ok: Button = null
+var c38_ok: TextureButton = null
 
 
 func _c38s1_open() -> void:
@@ -8762,19 +8865,13 @@ func _c38s1_make_ui() -> void:
 		b.pressed.connect(_c38_pick_hand.bind(j))
 		c38_ui.add_child(b)
 		c38_nodes["h%d" % j] = b
-	# ── 确认 / 取消 ──
-	c38_ok = Button.new()
-	c38_ok.text = "确认"
-	c38_ok.focus_mode = Control.FOCUS_NONE
-	c38_ok.position = Vector2(vp.x * 0.5 - 190.0, 430.0)
-	c38_ok.size = Vector2(180, 54)
+	# ── 确认 / 取消（贴图，不叠字）──
+	c38_ok = ui_btn("ok", 240.0)
+	c38_ok.position = Vector2(vp.x * 0.5 - 130.0, 430.0)
 	c38_ok.pressed.connect(_c38s1_confirm)
 	c38_ui.add_child(c38_ok)
-	var cancel := Button.new()
-	cancel.text = "取消"
-	cancel.focus_mode = Control.FOCUS_NONE
-	cancel.position = Vector2(vp.x * 0.5 + 10.0, 430.0)
-	cancel.size = Vector2(180, 54)
+	var cancel := ui_btn("pass", 190.0)
+	cancel.position = Vector2(vp.x * 0.5 + 130.0, 430.0)
 	cancel.pressed.connect(_c38s1_close)
 	c38_ui.add_child(cancel)
 
@@ -10565,7 +10662,7 @@ const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
 @export_group("开始按钮微调")
 @export var prompt_btn_gap := 12.0            # 按钮和手牌最右边的空隙（px）
 @export var prompt_btn_offset := Vector2(17, 24)  # 确认态整体平移（右/下为正；2026-10-31 实调值）
-                                                 # ★ 只影响「确认态」，跳过态永远在原位
+												 # ★ 只影响「确认态」，跳过态永远在原位
 @export var confirm_btn_scale := 1.5          # 确认态放大倍数
 @export var confirm_btn_offset := Vector2.ZERO# 只在「确认态」额外平移（px）
 
@@ -10651,6 +10748,24 @@ func btn_tex(kind: String) -> Texture2D:
 	return null
 
 
+# 统一「确认 / 跳过」贴图按钮（不叠任何文字，贴图本身就是语义）
+#   kind = "ok"（BtnQueren）/ "pass"（BtnTiaoguo）
+#   width = 按钮宽度；高度按贴图比例算，永远不变形
+func ui_btn(kind: String, width: float) -> TextureButton:
+	var b := TextureButton.new()
+	b.texture_normal = btn_tex(kind)
+	b.ignore_texture_size = true
+	b.stretch_mode = TextureButton.STRETCH_SCALE
+	b.focus_mode = Control.FOCUS_NONE
+	var bw := maxf(40.0, width)
+	var bh := bw * (70.0 / 220.0)
+	var t := b.texture_normal
+	if t != null and t.get_width() > 0:
+		bh = bw * float(t.get_height()) / float(t.get_width())
+	b.size = Vector2(bw, bh)
+	return b
+
+
 # 给已经 new 出来的「开始按钮」换图：picked=false → 跳过，true → 确认
 func set_start_btn_kind(btn: TextureButton, picked: bool) -> void:
 	if btn == null or not is_instance_valid(btn):
@@ -10679,19 +10794,21 @@ func _refresh_start_btn_kinds() -> void:
 	set_start_btn_kind(c11s2_btn, not c11s2_sel.is_empty())
 	set_start_btn_kind(sf_btn, not sf_picks.is_empty())
 	set_start_btn_kind(zl_btn, not zl_picks.is_empty())
-	set_start_btn_kind(dy_btn, dy_kind != "")
 	set_start_btn_kind(pofa_btn, pofa_picks.size() >= 2)
 	set_start_btn_kind(hs_btn, not hs_picks.is_empty())
-	set_start_btn_kind(sw_start_btn, sw_kinds.size() == 2)
-	set_start_btn_kind(sw_hand_btn, sw_hand_picks.size() == 2)
-	set_start_btn_kind(c05_start_btn, not c05_picks.is_empty())
-	set_start_btn_kind(c05_hide_btn, c05_hide_picks.size() >= 3)
-	set_start_btn_kind(wind_start_btn, not wind_picks.is_empty())
-	set_start_btn_kind(flow_start_btn, not flow_picks.is_empty() or flow_target >= 0)
-	set_start_btn_kind(gb_btn, not gb_picks.is_empty())
-	set_start_btn_kind(board_start_btn, skill2_picks.size() == 2)
+	# ↓ 下面这些按钮**只在「选够了」之后才 visible**，跳过态根本不该出现 → 恒确认图
+	#   （用户口径：恒确认的那些确保是确认按钮；双图只留给「选牌前就露出」的 9 个）
+	set_start_btn_kind(dy_btn, true)              # 钓鱼：选完牌种才出现
+	set_start_btn_kind(sw_start_btn, true)        # 南风·种类
+	set_start_btn_kind(sw_hand_btn, true)         # 南风·换牌
+	set_start_btn_kind(c05_start_btn, true)       # 策略·换牌
+	set_start_btn_kind(c05_hide_btn, true)        # 策略·盖牌
+	set_start_btn_kind(wind_start_btn, true)      # 自风
+	set_start_btn_kind(flow_start_btn, true)      # 风神
+	set_start_btn_kind(gb_btn, true)              # 国标
+	set_start_btn_kind(yd_btn, true)              # 一定
+	set_start_btn_kind(board_start_btn, true)     # 画板
 	set_start_btn_kind(c25_btn, false)          # C25Cancel：取消/跳过
-	set_start_btn_kind(yd_btn, not yd_picks.is_empty())
 	set_start_btn_kind(c26_btn, true)          # 出现时必然已排好
 	set_start_btn_kind(future_btn_ok, true)    # 同上
 	set_start_btn_kind(deal_skip_btn, false)   # 发牌阶段的「跳过」
@@ -11379,7 +11496,6 @@ func _c29s1_op(op: String, extra: Dictionary = {}) -> void:
 		req[k] = extra[k]
 	srv_layout_buttons([])
 	hide_chow_panel()
-	hide_pon_button()
 	var r := srv_request(req)
 	if r.is_empty():
 		_toast(_srv_err("加速：服务端没有回应"))
@@ -11440,12 +11556,6 @@ func srv_opts_of(st: Dictionary) -> Array:
 
 func srv_yield_to_me() -> void:
 	hide_chow_panel()
-	hide_pon_button()
-	hide_minkan_button()
-	hide_kakan_button()
-	hide_pass_button()
-	if ankan_button != null:
-		ankan_button.visible = false
 	var st := srv_state
 	if st.is_empty():
 		srv_layout_buttons([])
@@ -11983,7 +12093,6 @@ func srv_apply_state(st, events = null) -> void:
 	_update_board_tile(st2)             # 画板：压在人物卡下方的明牌
 	srv_sync_wall(st2)                  # 牌山（拿走哪些 / 翻了哪些宝牌）也跟着服务端走
 	_score_label_sync(st2)              # 风盘四边 Label：下/右/上/左 的点数
-	_update_draw_button()
 	# 宝牌运（25S1）：切出宝牌被罚 → 说一声（自己的事件不在下面那个「别人摸牌」循环里）
 	if typeof(events) == TYPE_ARRAY:
 		for ev in (events as Array):
@@ -12036,13 +12145,9 @@ func _auto_draw_if_my_turn() -> void:
 	if int(srv_state.get("turn", -1)) != my_seat:
 		return
 	if String(srv_state.get("phase", "")) != "draw":
-		if draw_button != null:
-			draw_button.visible = false
 		return                                   # 只有「该我摸牌」才自动推；打牌/鸣牌等我按按钮
 	if _card09_gate_before_draw():
 		return                                   # 持 09 号卡：先让他决定要不要换牌河
-	if draw_button != null:
-		draw_button.visible = false
 	draw_tile()
 
 
@@ -13871,6 +13976,11 @@ func _process(delta: float) -> void:
 # 空格 = 摸牌；摸到之后点右键 = 把刚摸的那张直接切出去（摸切）
 # 用 _input 而不是 _unhandled_input：这样鼠标停在手牌/按钮上时右键也一样有效
 func _input(event: InputEvent) -> void:
+	# 输入框（例如猜番数）有焦点时，所有调试热键都不响应 ——
+	# 否则 _input 比输入框先跑，1~4 会被「切座位」吃掉，数字根本打不进去。
+	var _focus := get_viewport().gui_get_focus_owner() if get_viewport() != null else null
+	if _focus is LineEdit or _focus is TextEdit:
+		return
 	if event is InputEventKey:
 		var k0 := event as InputEventKey
 		if k0.pressed and not k0.echo:
@@ -14018,7 +14128,6 @@ func _setup_opponents() -> void:
 		vis.visible = false
 		tapai.add_child(vis)
 		opp_drawn_nodes[who] = vis
-	_update_draw_button()
 	refresh_discards()
 
 
@@ -14131,18 +14240,12 @@ func _after_opp_discard(who: String) -> void:
 	refresh_discards()                   # 打出的牌进他家牌河
 	_next_turn()
 	hide_chow_panel()
-	hide_pon_button()
-	hide_minkan_button()
-	hide_kakan_button()
-	offer_pon(who)                       # 三家打出的牌都能碰：能碰就亮「碰」按钮
-	offer_minkan(who)                    # 手里有暗刻就能杠过来
 	# 其他家的吃（OPP_CHOW_TEST 打开时才自动喂牌 + 吃下）
 	if OPP_CHOW_TEST:
 		var nxt := next_player_name(who)
 		if nxt != "me" and opp_meld_counts.get(nxt, 0) < OPP_CHOW_TEST_MAX:
 			if do_opp_chow(nxt, who, last_opp_discard(who)):
 				hide_chow_panel()       # 这张已经被别人吃了，我的吃/碰按钮作废
-				hide_pon_button()
 				_schedule_opp_chow_discard(nxt)
 
 
@@ -14155,17 +14258,9 @@ func _show_opp_drawn(who: String, on: bool) -> void:
 # 逆时针轮转：我 → D → C → B → 我
 func _next_turn() -> void:
 	turn_index = (turn_index + 1) % (OPP_ORDER.size() + 1)
-	_update_draw_button()
 
 
 # 按钮上显示现在轮到谁摸（方便看出「单击按钮让下一家摸牌」）
-func _update_draw_button() -> void:
-	if draw_button == null:
-		return
-	if turn_index == 0:
-		draw_button.text = "摸牌"
-	else:
-		draw_button.text = OPP_ORDER[turn_index - 1] + " 摸牌"
 
 
 # ────────────────────────── 吃（吃上家 B 打出的牌） ──────────────────────────
@@ -14214,12 +14309,9 @@ const BACK_DIR := "res://Cailiao/mahjong_graphic/PNG 位图/默认风格 default
 const KAN_BUTTON_POS := Vector2(350, 20)
 const MINKAN_BUTTON_POS := Vector2(460, 20)
 const KAKAN_BUTTON_POS := Vector2(570, 20)
-var ankan_button: Button
 var ankan_tile := ""
-var minkan_button: Button
 var minkan_who := ""
 var minkan_tiles := []
-var kakan_button: Button
 var kakan_tile := ""
 var meld_list := []          # 已完成的副露（喂给 redraw_melds 重画用）
 var menzen := true           # 门前清：吃/碰/明杠/加杠会破，暗杠不破
@@ -14479,7 +14571,6 @@ func do_chow(group: Array) -> void:
 	if game_over:
 		return
 	hide_chow_panel()
-	hide_pon_button()
 	var extra := {}
 	if not group.is_empty():
 		extra["tiles"] = group           # 把选中的搭子告诉服务端
@@ -14616,7 +14707,6 @@ const PON_BUTTON_POS := Vector2(240, 20)          # 碰按钮位置（样式待�
 # 碰的是哪家的牌 → 横置的那张摆在「左 / 中 / 右」（B 上家 / C 对家 / D 下家）
 const PON_ROT_INDEX := {"B": 0, "C": 1, "D": 2}
 
-var pon_button: Button                            # 碰按钮
 var pon_groups := []                              # 当前能用来碰的两张手牌
 var pon_who := ""                                 # 碰的是哪家打出的牌
 var after_pon_discard := false                    # 碰之后必须立刻切一张
@@ -14648,53 +14738,15 @@ func find_pon_group(discard_id: String) -> Array:
 
 
 # 某家打出后调用：能碰就亮「碰」按钮
-func offer_pon(who: String) -> void:
-	if game_over or riichi_declared or meld_count >= 4:
-		return
-	if after_chi_discard or after_pon_discard:
-		return
-	var g := find_pon_group(last_opp_discard(who))
-	if g.size() < 2:
-		return
-	pon_groups = g
-	pon_who = who
-	show_pon_button()
 
 
-func show_pon_button() -> void:
-	if pon_button == null:
-		pon_button = Button.new()
-		pon_button.text = "碰"
-		pon_button.position = PON_BUTTON_POS
-		pon_button.custom_minimum_size = Vector2(100, 45)
-		pon_button.size = Vector2(100, 45)
-		pon_button.z_index = 10
-		pon_button.focus_mode = Control.FOCUS_NONE
-		pon_button.pressed.connect(_on_pon_pressed)
-		add_child(pon_button)
-	pon_button.visible = true
 
 
-func hide_pon_button() -> void:
-	if pon_button != null:
-		pon_button.visible = false
-	pon_groups = []
-	pon_who = ""
 
 
-func _on_pon_pressed() -> void:
-	if game_over:
-		return
-	do_pon("", [])
 
 
 # 碰下：手牌去掉两张 → 那家牌河里那张消失 → 三张摆到右下角（摆放逻辑与吃相同）
-func do_pon(who: String, group: Array) -> void:
-	if game_over:
-		return
-	hide_chow_panel()
-	hide_pon_button()
-	srv_act("pon")                       # 用哪两张由服务端挑
 
 
 # 碰之后这张牌能不能切：不能切出与碰来的那张相同的牌
@@ -15234,46 +15286,13 @@ func add_opp_ankan(who: String, tiles: Array) -> void:
 # 手牌里凑够 4 张一样的（含刚摸的那张）就亮「暗杠」按钮
 # 注意：不能拿「花色 + 数值」当种类 —— 字牌的花色是 ""、数值是 0，会把不同字牌算成同一种。
 # 一律用 kind_of()（0m/0p/0s 按 5 处理，字牌各有各的编号）。
-func _check_ankan() -> void:
-	ankan_tile = ""
-	if game_phase == PHASE_DEAL:                 # 配牌阶段不算杠
-		if ankan_button != null:
-			ankan_button.visible = false
-		return
-	if not game_over:
-		var ids := display_tiles()
-		var by_kind := {}
-		for t in ids:
-			var k := kind_of(t)
-			by_kind[k] = int(by_kind.get(k, 0)) + 1
-		for t in ids:
-			if int(by_kind.get(kind_of(t), 0)) >= 4:
-				ankan_tile = t
-				break
-	if ankan_button == null:
-		ankan_button = Button.new()
-		ankan_button.text = "暗杠"
-		ankan_button.position = KAN_BUTTON_POS
-		ankan_button.custom_minimum_size = Vector2(100, 45)
-		ankan_button.size = Vector2(100, 45)
-		ankan_button.z_index = 10
-		ankan_button.focus_mode = Control.FOCUS_NONE
-		ankan_button.pressed.connect(do_ankan)
-		add_child(ankan_button)
-	ankan_button.visible = ankan_tile != ""
 
 
 # 暗杠：手牌去掉 4 张 → 摆出副露 → 补一张岭上牌（客户端没有王牌，就从牌山继续摸）
-func do_ankan() -> void:
-	if game_over or ankan_tile == "":
-		return
-	var t := ankan_tile
-	ankan_tile = ""
-	if ankan_button != null:
-		ankan_button.visible = false
-	srv_act("ankan", {"tile": t})
 
-# 按副露清单把右下角的副露全部重画（加杠要把「碰」升级成「杠」，得整组重画）
+
+# 明杠 / 加杠 时，横置的那张摆在从左往右第几张（从 0 数）
+# 杠上家 / 对家 → 第 2 张(1)；杠下家 → 第 3 张(2)
 func redraw_melds() -> void:
 	if meld_container != null:
 		for c in meld_container.get_children():
@@ -15288,8 +15307,6 @@ func redraw_melds() -> void:
 		meld_list[meld_list.size() - 1]["from"] = m.get("from", "")
 
 
-# 明杠 / 加杠 时，横置的那张摆在从左往右第几张（从 0 数）
-# 杠上家 / 对家 → 第 2 张(1)；杠下家 → 第 3 张(2)
 func kan_rot_index(who: String) -> int:
 	return 2 if who == "D" else 1
 
@@ -15304,96 +15321,21 @@ func find_minkan_tiles(tile_id: String) -> Array:
 	return out if out.size() >= 3 else []
 
 
-func offer_minkan(who: String) -> void:
-	if game_over or riichi_declared or meld_count >= 4:
-		return
-	var d := last_opp_discard(who)
-	if d == "":
-		return
-	var three := find_minkan_tiles(d)
-	if three.size() < 3:
-		return
-	minkan_tiles = three
-	minkan_who = who
-	show_minkan_button()
 
 
-func show_minkan_button() -> void:
-	if minkan_button == null:
-		minkan_button = Button.new()
-		minkan_button.text = "杠"
-		minkan_button.position = MINKAN_BUTTON_POS
-		minkan_button.custom_minimum_size = Vector2(100, 45)
-		minkan_button.size = Vector2(100, 45)
-		minkan_button.z_index = 10
-		minkan_button.focus_mode = Control.FOCUS_NONE
-		minkan_button.pressed.connect(do_minkan)
-		add_child(minkan_button)
-	minkan_button.visible = true
 
 
-func hide_minkan_button() -> void:
-	if minkan_button != null:
-		minkan_button.visible = false
-	minkan_who = ""
-	minkan_tiles = []
 
 
 # 明杠：手里三张 + 别家打出那张 = 4 张；横置的那张按来源摆第 2 / 第 3 张
-func do_minkan() -> void:
-	if game_over:
-		return
-	hide_minkan_button()
-	minkan_tiles = []
-	srv_act("minkan")                    # 用哪三张由服务端挑
 
 
 # 碰过的牌又摸到第 4 张 → 亮「加杠」
-func _check_kakan() -> void:
-	kakan_tile = ""
-	if game_phase == PHASE_DEAL:
-		if kakan_button != null:
-			kakan_button.visible = false
-		return
-	if not game_over and not riichi_declared:
-		for m in meld_list:
-			if String(m.get("kind", "")) != "pon":
-				continue
-			var k: String = m["tiles"][0]
-			for t in display_tiles():
-				if kind_of(t) == kind_of(k):
-					kakan_tile = t
-					break
-			if kakan_tile != "":
-				break
-	if kakan_button == null:
-		kakan_button = Button.new()
-		kakan_button.text = "加杠"
-		kakan_button.position = KAKAN_BUTTON_POS
-		kakan_button.custom_minimum_size = Vector2(100, 45)
-		kakan_button.size = Vector2(100, 45)
-		kakan_button.z_index = 10
-		kakan_button.focus_mode = Control.FOCUS_NONE
-		kakan_button.pressed.connect(do_kakan)
-		add_child(kakan_button)
-	kakan_button.visible = kakan_tile != ""
 
 
-func hide_kakan_button() -> void:
-	if kakan_button != null:
-		kakan_button.visible = false
-	kakan_tile = ""
 
 
 # 加杠：手里第 4 张塞进那副碰里，横置位置跟明杠一样；然后补一张岭上牌
-func do_kakan() -> void:
-	if game_over or kakan_tile == "":
-		return
-	var t := kakan_tile
-	kakan_tile = ""
-	if kakan_button != null:
-		kakan_button.visible = false
-	srv_act("kakan", {"tile": t})
 
 
 # ══════════════════════════════════════════════════════════════════════════

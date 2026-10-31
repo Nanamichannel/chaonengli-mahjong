@@ -205,7 +205,12 @@ func _make_ui() -> void:
 	ui.z_index = 262
 	holder.add_child(ui)
 	ui.position = Vector2.ZERO
-	var tex := load(START_TEX) as Texture2D
+	# 这些面板的「开始」按钮都是「选够牌之后才出现」→ 恒用确认图（用户做的 queren）
+	var tex: Texture2D = null
+	if host != null and host.has_method("btn_tex"):
+		tex = host.call("btn_tex", "ok") as Texture2D
+	if tex == null:
+		tex = load(START_TEX) as Texture2D
 	var bw := 220.0
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:

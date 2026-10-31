@@ -548,6 +548,7 @@ const SkinPatch := preload("res://skin.gd")   # 外部皮肤（exe 同目录 ski
 
 func _ready() -> void:
 	randomize()
+	_btn_tune_load()          # 按钮微调（user://btn_tune.cfg，没有就用 @export 的值）
 	call_deferred("_dev_autoplay_maybe")	# 开发用：有 autoplay.cfg 才自动打
 	get_tree().auto_accept_quit = false     # 关窗口要先清记录再退
 	_setup_background()
@@ -10541,8 +10542,90 @@ const BOARD_START_TEX := "res://Cailiao/UI/tiaoguo.png"
 #   kind = "ok"   → Main/UI/Btn/BtnQueren （确认）
 # 在编辑器里换这两张图，所有技能面板的按钮一起变。
 const START_BTN_NODE := {"pass": "BtnTiaoguo", "ok": "BtnQueren"}
-const CONFIRM_BTN_SCALE := 1.5      # 确认态按钮放大倍数
+
+# ══════════════════════════════════════════════════════════════════════════
+#  【手牌右侧 开始/确认按钮】位置微调接口
+#   ① 检视面板：选中 **Main** 节点（挂 main.gd 的那个，不是根 Node2D2）→「开始按钮微调」
+#      改完 Ctrl+S 存场景，值就写进 node_2d.tscn
+#   ② 运行时热键（面板开着就能调，立刻看到效果）
+#        F10                    进入/退出「微调模式」（进去后方向键直接挪，不用按 Ctrl）
+#        方向键                  平移 1px（按住 Shift = 10px）
+#        Alt + 方向键            只平移「确认态」（跳过态不动）
+#        [ / ]                  确认态放大倍数 ∓/± 0.05
+#        Ctrl + 0               全部恢复默认
+#        F12                    重新读 user://btn_tune.cfg（手改那个文件后按一下）
+#        F9                     把当前数值 + 实际矩形打到输出面板
+#      （Ctrl+方向键 / Ctrl+Alt+方向键 / Ctrl+[ ] 在微调模式外也能用，效果一样）
+#   ③ 自动记忆：调完写 user://btn_tune.cfg，下次启动自动带上
+#      （想回到 @export 的值：删掉那个文件，或按 Ctrl+0）
+# ══════════════════════════════════════════════════════════════════════════
+@export_group("开始按钮微调")
+@export var prompt_btn_gap := 12.0            # 按钮和手牌最右边的空隙（px）
+@export var prompt_btn_offset := Vector2.ZERO # 整体平移（右/下为正，px）
+@export var confirm_btn_scale := 1.5          # 确认态放大倍数
+@export var confirm_btn_offset := Vector2.ZERO# 只在「确认态」额外平移（px）
+
+const BTN_TUNE_CFG := "user://btn_tune.cfg"
+const BTN_TUNE_DEFAULT := {
+	"gap": 12.0, "ox": 0.0, "oy": 0.0, "scale": 1.5, "cox": 0.0, "coy": 0.0}
+
 var _btn_ok := {}                   # 按钮 -> 是否「确认态」（_sync_prompt_btns 据此放大）
+var _btn_tune_mode := false         # F10：微调模式（方向键不用按 Ctrl）
+
+
+func _btn_tune_load() -> void:
+	if not FileAccess.file_exists(BTN_TUNE_CFG):
+		return
+	var f := FileAccess.open(BTN_TUNE_CFG, FileAccess.READ)
+	if f == null:
+		return
+	var raw := f.get_as_text()
+	f.close()
+	var d = JSON.parse_string(raw)
+	if typeof(d) != TYPE_DICTIONARY:
+		push_warning("main.gd: btn_tune.cfg 不是合法 JSON，忽略")
+		return
+	var dd := d as Dictionary
+	prompt_btn_gap = float(dd.get("gap", prompt_btn_gap))
+	prompt_btn_offset = Vector2(float(dd.get("ox", 0.0)), float(dd.get("oy", 0.0)))
+	confirm_btn_scale = float(dd.get("scale", confirm_btn_scale))
+	confirm_btn_offset = Vector2(float(dd.get("cox", 0.0)), float(dd.get("coy", 0.0)))
+	print("[PROMPT_BTN] 已载入微调：gap=%.1f offset=%s scale=%.2f confirm_offset=%s" % [
+		prompt_btn_gap, prompt_btn_offset, confirm_btn_scale, confirm_btn_offset])
+
+
+func _btn_tune_save() -> void:
+	var f := FileAccess.open(BTN_TUNE_CFG, FileAccess.WRITE)
+	if f == null:
+		push_warning("main.gd: 写不了 " + BTN_TUNE_CFG)
+		return
+	f.store_string(JSON.stringify({
+		"gap": prompt_btn_gap, "ox": prompt_btn_offset.x, "oy": prompt_btn_offset.y,
+		"scale": confirm_btn_scale,
+		"cox": confirm_btn_offset.x, "coy": confirm_btn_offset.y}, "\t"))
+	f.close()
+
+
+func _btn_tune_reset() -> void:
+	prompt_btn_gap = float(BTN_TUNE_DEFAULT["gap"])
+	prompt_btn_offset = Vector2(0, 0)
+	confirm_btn_scale = float(BTN_TUNE_DEFAULT["scale"])
+	confirm_btn_offset = Vector2(0, 0)
+	if FileAccess.file_exists(BTN_TUNE_CFG):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(BTN_TUNE_CFG))
+
+
+# F9：当前值 + 实际矩形（照这个数字去调 @export 或直接按方向键）
+func _btn_tune_report() -> void:
+	var aspect := 70.0 / 220.0
+	var r := prompt_btn_rect(aspect)
+	var s2 := r.size * confirm_btn_scale
+	var cp := Vector2(r.get_center().x - s2.x * 0.5, r.end.y - s2.y) + confirm_btn_offset
+	var line := "gap=%.1f  offset=%s  scale=%.2f  confirm_offset=%s" % [
+		prompt_btn_gap, prompt_btn_offset, confirm_btn_scale, confirm_btn_offset]
+	print("[PROMPT_BTN] ", line)
+	print("[PROMPT_BTN] 跳过态=", r, "  确认态=", Rect2(cp, s2))
+	_toast("按钮微调 · " + line)
 
 
 func btn_tex(kind: String) -> Texture2D:
@@ -12410,7 +12493,7 @@ func _layout_hand_area() -> void:
 # 用户口径：贴在「未副露手牌」的最右边，大小不变；副露变多 / 摸牌进出手牌时
 # 跟着最右边那张走，不要压在牌上。
 # （所有询问技能都是摸牌前或即时发动，所以不用给「刚摸到的那张」让位。）
-const PROMPT_BTN_GAP := 12.0      # 按钮和手牌之间的空隙
+# 空隙 / 平移 / 放大倍数都是可调参数，见上面「开始按钮微调」@export 组
 
 # 「开始按钮」的矩形（**全局坐标**）：
 #   高 = 手牌那张牌的高度（和手牌等高）、宽 = 高 ÷ 贴图宽高比（等比）
@@ -12436,7 +12519,7 @@ func prompt_btn_rect(aspect: float) -> Rect2:
 	var right := row_left + tile_size.x
 	if n > 0:
 		right = row_left + tile_x(n - 1) + tile_size.x         # 未副露手牌的最右边
-	var x := right + PROMPT_BTN_GAP
+	var x := right + prompt_btn_gap
 	# 横着放不下 → 整体等比缩一点（窗口很窄时才会用到）
 	var room_x := vp.x - x - 8.0
 	if sz.x > room_x and sz.x > 0.0:
@@ -12444,7 +12527,8 @@ func prompt_btn_rect(aspect: float) -> Rect2:
 	if x + sz.x > vp.x - 8.0:
 		x = maxf(8.0, vp.x - sz.x - 8.0)
 	var y := clampf(row_top, 8.0, maxf(8.0, vp.y - sz.y - 8.0))
-	return Rect2(Vector2(x, y), sz)
+	# 微调接口：所有「开始/确认按钮」整体平移（检视面板 / Ctrl+方向键）
+	return Rect2(Vector2(x, y) + prompt_btn_offset, sz)
 
 
 func prompt_btn_pos(bw: float, bh: float) -> Vector2:
@@ -12470,13 +12554,13 @@ func _sync_prompt_btns() -> void:
 		if tb != null and tb.texture_normal != null and tb.texture_normal.get_width() > 0:
 			aspect = float(tb.texture_normal.get_height()) / float(tb.texture_normal.get_width())
 		var r := prompt_btn_rect(aspect)
-		# ★ 确认态：放大 CONFIRM_BTN_SCALE 倍，且**底部严格对齐手牌底部**
+		# ★ 确认态：放大 confirm_btn_scale 倍，且**底部严格对齐手牌底部**
 		#   横向保持原中心，纵向让底边不动、只往上长。
 		if bool(_btn_ok.get(btn, false)):
 			var cx := r.get_center().x
 			var bottom := r.end.y
-			r.size *= CONFIRM_BTN_SCALE
-			r.position = Vector2(cx - r.size.x * 0.5, bottom - r.size.y)
+			r.size *= confirm_btn_scale
+			r.position = Vector2(cx - r.size.x * 0.5, bottom - r.size.y) + confirm_btn_offset
 		if btn.size.distance_to(r.size) > 0.5:
 			btn.size = r.size
 		if btn.global_position.distance_to(r.position) > 0.5:
@@ -13786,6 +13870,51 @@ func _input(event: InputEvent) -> void:
 				srv_new_round()
 				get_viewport().set_input_as_handled()
 				return
+			# ── 手牌右侧按钮微调（见文件里「开始按钮微调」那段注释）──
+			if k0.keycode == KEY_F9:
+				_btn_tune_report()
+				get_viewport().set_input_as_handled()
+				return
+			if k0.keycode == KEY_F10:
+				_btn_tune_mode = not _btn_tune_mode
+				_toast("按钮微调模式：%s（方向键挪，F9 看数值）"
+					% ("开" if _btn_tune_mode else "关"))
+				get_viewport().set_input_as_handled()
+				return
+			if k0.keycode == KEY_F12:
+				_btn_tune_load()
+				_btn_tune_report()
+				get_viewport().set_input_as_handled()
+				return
+			if k0.ctrl_pressed or _btn_tune_mode:
+				var step := 10.0 if k0.shift_pressed else 1.0
+				var d := Vector2.ZERO
+				match k0.keycode:
+					KEY_LEFT: d = Vector2(-step, 0)
+					KEY_RIGHT: d = Vector2(step, 0)
+					KEY_UP: d = Vector2(0, -step)
+					KEY_DOWN: d = Vector2(0, step)
+				if d != Vector2.ZERO:
+					if k0.alt_pressed:
+						confirm_btn_offset += d          # 只动「确认态」
+					else:
+						prompt_btn_offset += d           # 跳过 / 确认一起动
+					_btn_tune_save()
+					_btn_tune_report()
+					get_viewport().set_input_as_handled()
+					return
+				if k0.keycode == KEY_BRACKETLEFT or k0.keycode == KEY_BRACKETRIGHT:
+					var ds := 0.05 if k0.keycode == KEY_BRACKETRIGHT else -0.05
+					confirm_btn_scale = clampf(confirm_btn_scale + ds, 0.5, 4.0)
+					_btn_tune_save()
+					_btn_tune_report()
+					get_viewport().set_input_as_handled()
+					return
+				if k0.keycode == KEY_0:
+					_btn_tune_reset()
+					_btn_tune_report()
+					get_viewport().set_input_as_handled()
+					return
 	if game_over:
 		return
 	if event is InputEventKey:

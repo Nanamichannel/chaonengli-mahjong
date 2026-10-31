@@ -8324,7 +8324,10 @@ func _copied_icons_refresh(st: Dictionary) -> void:
 	var items: Array = []
 	var c41 = st.get("c41")
 	if typeof(c41) == TYPE_DICTIONARY:
-		for x in ((c41 as Dictionary).get("copies") or []):
+		var copies = (c41 as Dictionary).get("copies")
+		if typeof(copies) != TYPE_ARRAY:
+			copies = []
+		for x in copies:
 			if typeof(x) != TYPE_DICTIONARY:
 				continue
 			items.append({"card": int((x as Dictionary).get("card", 0)),

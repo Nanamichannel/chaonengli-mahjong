@@ -24,6 +24,7 @@ Godot 的 OS.execute 在 Windows 上读不到子进程 stdout，所以两边都�
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -488,6 +489,33 @@ def op_new_hanchan(db: DB, req: dict) -> dict:
             "wall": [r["tile"] for r in rows], "new_hanchan": True}
 
 
+def _state_ver(st) -> str:
+    """state 的指纹：客户端拿它判断「和上次一样吗」，一样就不用再传 21KB。"""
+    try:
+        raw = json.dumps(st, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return ""
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def op_poll(db: DB, req: dict) -> dict:
+    """轻量轮询：客户端带上次的 ver，没变化就只回 {"same": true}。
+
+    没变化时**不回 state**（几十字节），客户端直接用本地那份。
+    """
+    rid = req.get("round_id") or _get_round_id(db)
+    seat = req.get("seat")
+    seat = int(seat) if isinstance(seat, int) else None
+    st = _state(db, rid, seat)
+    ver = _state_ver(st)
+    if str(req.get("ver", "")) == ver:
+        return {"ok": True, "state": None, "events": [], "result": None,
+                "round_id": rid, "ver": ver, "same": True}
+    g = _game(db, rid)
+    return {"ok": True, "state": st, "events": [], "result": g.result,
+            "round_id": rid, "ver": ver, "same": False}
+
+
 def op_state(db: DB, req: dict) -> dict:
     rid = req.get("round_id") or _get_round_id(db)
     seat = req.get("seat")
@@ -613,7 +641,7 @@ _RIICHI_BLOCK_OPS = {
 # 以后新增 op 忘登记会直接抛错（历史 bug：白名单漏了 deal_skill 等 8 个发动点）。
 _NO_GATE_OPS = {
     # ── 非技能：流程 / 查询 / 游戏动作 ──
-    "join", "result_confirm", "next", "new_hanchan", "start", "deal_step", "state", "advance",
+    "join", "result_confirm", "next", "new_hanchan", "start", "deal_step", "state", "poll", "advance",
     "act", "wall", "step", "tenpai", "furiten", "ron", "judge",
     "wipe", "view_hand",
     "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
@@ -2210,6 +2238,7 @@ OPS = {
     "start": op_start,
     "deal_step": op_deal_step,
     "state": op_state,
+    "poll": op_poll,
     "advance": op_advance,
     "act": op_act,
     "wall": op_wall,
@@ -2577,7 +2606,12 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                     return {"ok": False, "state": _g.state_for(int(seat)),
                             "events": [], "result": None,
                             "error": "已经立直了：不能再发动会改动自己手牌的技能"}
-        return fn(db, req)
+        res = fn(db, req)
+        # 所有带 state 的响应都附上 ver：客户端轮询时带回来，服务端就能只回
+        # {"same": true}（几十字节），不用每次都传整份 21KB
+        if isinstance(res, dict) and isinstance(res.get("state"), dict):
+            res["ver"] = _state_ver(res["state"])
+        return res
     except RuleError as e:
         return {"ok": False, "state": None, "events": [], "result": None, "error": str(e)}
     except Exception as e:                                    # noqa: BLE001

@@ -229,7 +229,16 @@ def order_of(db, seat: int) -> list[int]:
         return []
     try:
         seats = (json.loads(row["value"]) or {}).get("seats") or []
-        return [int(v) for v in (seats[int(seat)].get("order") or [])]
+        s = seats[int(seat)]
+        order = [int(v) for v in (s.get("order") or [])]
+        if len(order) < 5:
+            # 还没走到「排序」那一步（或者排序被清空了）→ 退一步用 picks：
+            # 前 4 张当主战轮换、第 5 张当协战。**四台客户端看到的是同一套**，
+            # 不会再出现「每人显示一套随机卡 / 全都不遮」。
+            picks = [int(v) for v in (s.get("picks") or [])]
+            if len(picks) >= 5:
+                order = picks[:5]
+        return order
     except (ValueError, TypeError, AttributeError, IndexError):
         return []
 

@@ -337,6 +337,7 @@ func _remember_skill_btn(card_no: int, index: int) -> void:
 # 服务端据此把这一下记到「复制品」那本账上（原技能与复制品各有一份配额）。
 # 值 = "card-skill"；空 = 普通（原技能）发动。
 var copy_hint := ""
+var _state_ver := ""      # 上一次 state 的版本号（服务端给的）
 
 
 func srv_request(req: Dictionary) -> Dictionary:
@@ -344,6 +345,13 @@ func srv_request(req: Dictionary) -> Dictionary:
 		return {}
 	# 只有「带座位、会落到某个技能上」的请求才带这个标记；
 	# 状态轮询一律不带（服务端也不会去读）。
+	# ★ 联机很卡的元凶：每 0.35s 拉一次完整 state（21KB），同步 HTTP 会把主线程
+	#   按住一整个往返。这里改成「版本号轮询」：带上次的 ver，服务端没变化就只回
+	#   {"same": true}（几十字节），我们直接用本地那份 state。
+	if String(req.get("op", "")) == "state" and _state_ver != "":
+		req = req.duplicate()
+		req["op"] = "poll"
+		req["ver"] = _state_ver
 	if copy_hint != "" and not req.has("copy"):
 		req = req.duplicate()
 		req["copy"] = true
@@ -356,6 +364,13 @@ func srv_request(req: Dictionary) -> Dictionary:
 			srv_note = "找不到 python"
 			return {}
 	var r: Dictionary = srv.request(req)
+	if String(r.get("ver", "")) != "":
+		_state_ver = String(r.get("ver"))
+	if bool(r.get("same", false)):
+		# 服务端说没变化 → 直接用本地那份（行为完全不变，但省掉 21KB + 解析）
+		srv_up = true
+		srv_note = ""
+		return {"ok": true, "state": srv_state, "events": [], "result": null, "same": true}
 	srv_up = bool(r.get("ok", false))
 	srv_note = "" if srv_up else String(r.get("error", ""))
 	if not srv_up:
@@ -523,7 +538,20 @@ func _load_background() -> void:
 			print("main.gd: 背景 = %s（外部）" % ep)
 			return
 		push_warning("main.gd: 外部背景读不了，改用包里的：" + ep)
-	# ② 包里的 res://Cailiao/background/（老办法）
+	# ② 包里的 board_teal.png：**直接 load**
+	#    ★ 导出成 exe 后 DirAccess 枚举 res:// 目录会拿不到（pck 里的文件列表为空），
+	#      以前就是这里失败 → 保留场景默认那张动漫背景（联机玩家看到的「桌布不对」）。
+	#      资源系统 load() 在导出版一定可用，所以优先走它。
+	var prefer_path := BG_DIR + BG_PREFER
+	if ResourceLoader.exists(prefer_path):
+		var pt := load(prefer_path) as Texture2D
+		if pt != null:
+			_bg_tex = pt
+			beijing.texture = _bg_tex
+			_fit_background()
+			print("main.gd: 背景 = %s（OK）" % BG_PREFER)
+			return
+	# ③ 兜底：目录扫描（编辑器里能用，导出版可能为空）
 	var files := _bg_files()
 	if files.has(BG_PREFER):
 		files.erase(BG_PREFER)
@@ -1426,7 +1454,7 @@ func start_deal() -> void:
 					idn.call("reload_orders")
 					# CardPhase 随后会读这个文件；写入同一组，保证桌面卡和选牌界面一致
 					var own = idn.call("current_order")
-					if typeof(own) == TYPE_ARRAY:
+					if typeof(own) == TYPE_ARRAY and (own as Array).size() >= 5:
 						var wf := FileAccess.open("user://player_cards.json", FileAccess.WRITE)
 						if wf != null:
 							wf.store_string(JSON.stringify(own))
@@ -4200,20 +4228,6 @@ const ASK_TUNE_UI := false              # 调节条已经收起来了（想再�
 var ask_btn_scale := ASK_SCALE_DEFAULT
 var _ask_cfg_ok := false
 var _asks_last: Array = []
-const ACT_KIND_ICON := {
-	"sight": [17, 2], "block": [31, 1], "stop": [31, 2], "imm": [43, 2],
-}
-
-
-func _act_kind_tex(kind: String) -> Texture2D:
-	var pair = ACT_KIND_ICON.get(kind)
-	if typeof(pair) != TYPE_ARRAY:
-		return null
-	var t := load("res://Cailiao/skill/ui/buttons/card_%02d_%d_r0.png"
-		% [int(pair[0]), int(pair[1])]) as Texture2D
-	if t != null:
-		return t
-	return load("res://Cailiao/skill/cards/card_%02d.png" % int(pair[0])) as Texture2D
 
 
 # 一条询问 = 一行：标题 + 能用哪几招（技能图标按钮）+「开始」图当跳过
@@ -4264,7 +4278,13 @@ func _asks_show(arr: Array) -> void:
 		var a_actor := int(d0.get("actor", -1))
 		var a_card := int(d0.get("card", 0))
 		var kl0 = d0.get("kinds")
-		for k0 in (kl0 if typeof(kl0) == TYPE_ARRAY else []):
+		var ks0: Array = kl0 if typeof(kl0) == TYPE_ARRAY else []
+		if ks0.is_empty():
+			# 兜底：服务端没给可用招式（异常/版本不一致）→ 至少留一个「跳过」，
+			# 否则这条询问没有按钮可点，kp_active 永远为真，整个对局卡死。
+			rows.append({"d": d0, "kind": "pass",
+				"main": _ask_card_is_main(a_actor, a_card)})
+		for k0 in ks0:
 			rows.append({"d": d0, "kind": String(k0),
 				"main": _ask_card_is_main(a_actor, a_card)})
 	rows.sort_custom(func(a, b) -> bool:

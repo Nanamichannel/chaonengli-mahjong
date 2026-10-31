@@ -335,23 +335,10 @@ func _load_orders() -> void:
 			if _valid_order(all[i]):
 				_orders[i] = (all[i] as Array).slice(0, ORDER_COUNT)
 
-	# 缺失的座位用 1..46 里没被用过的卡补齐（四家之间也尽量不重复）
-	var used := {}
-	for seat in range(4):
-		for v in _orders[seat]:
-			used[int(v)] = true
-	for seat in range(4):
-		if not _orders[seat].is_empty():
-			continue
-		var arr: Array = []
-		while arr.size() < ORDER_COUNT:
-			var n := randi_range(1, CARD_COUNT)
-			if used.has(n):
-				continue
-			used[n] = true
-			arr.append(n)
-		_orders[seat] = arr
-	_save_orders()
+	# ★ 以前这里会给「缺失的座位」随机编 5 张卡并存盘 —— 那是联机版的元凶：
+	#   每台机器编的都不一样 → 别人看到你面前是另一张卡；而且随机卡和服务端
+	#   char_states 对不上 → 遮罩全部失效（所有人都亮着）。
+	#   现在：**只认文件里真实存在的卡序**，缺的就留空，由服务端 char_states 决定。
 	_debug_cards = _read_debug_flag()
 
 func _read_debug_flag() -> bool:
@@ -433,23 +420,32 @@ func my_skill_slots() -> Array:
 
 
 # 服务端下发的遮罩状态：[{seat, main:{card,open,expired}, support:{...}}]
+var _painted := false                   # 遮罩有没有画过至少一次
+
 func set_char_states(data) -> void:
 	var sig := JSON.stringify(data)
-	if sig == _char_sig:
-		return                                # 没变化就别重排（否则图标会闪）
-	_char_sig = sig
-	_char_states.clear()
-	if typeof(data) == TYPE_ARRAY:
-		for it in (data as Array):
-			if typeof(it) == TYPE_DICTIONARY:
-				_char_states[int((it as Dictionary).get("seat", -1))] = it
+	var sig_changed := sig != _char_sig
+	if sig_changed:
+		_char_sig = sig
+		_char_states.clear()
+		if typeof(data) == TYPE_ARRAY:
+			for it in (data as Array):
+				if typeof(it) == TYPE_DICTIONARY:
+					_char_states[int((it as Dictionary).get("seat", -1))] = it
+	# ★ 每次 state 都给「摆卡」一次机会：位子上的卡可能被 reload_orders()/_apply_round()
+	#   改过；但只在「状态变了 / 卡变了 / 还没画过」时才重刷遮罩 ——
+	#   set_hidden() 会打断卡面动画，每 0.35 秒刷一遍会很吵。
+	var cards_changed := false
 	if _orders.size() >= 4:
-		_apply_char_cards()          # 状态晚到时也要重排（协战覆盖主战）
-	_refresh_hidden()
+		cards_changed = bool(_apply_char_cards())
+	if sig_changed or cards_changed or not _painted:
+		_painted = true
+		_refresh_hidden()
 
 
 # 只重排「哪个位子摆哪张卡」（协战覆盖主战的逻辑在这里）
-func _apply_char_cards() -> void:
+func _apply_char_cards() -> bool:
+	var changed := false
 	for g in range(4):
 		var seat := _seat_of_group(g)
 		if seat >= _orders.size():
@@ -462,12 +458,16 @@ func _apply_char_cards() -> void:
 		# 本地 player_orders.json 只在自己那一家可信，2/3 号窗口那几家可能是猜的/空的。
 		var srv_main := int(main_info.get("card", 0))
 		var srv_sup := int(sup.get("card", 0))
-		if srv_main <= 0 and order.size() >= ORDER_COUNT:
-			srv_main = int(order[clampi(_cur_ri, 0, 3)])
-		if srv_sup <= 0 and order.size() >= ORDER_COUNT:
-			srv_sup = int(order[ORDER_COUNT - 1])
+		var ms0 := int(MAIN_SLOTS[g])
+		var ss0 := int(SUPPORT_SLOTS[g])
 		if srv_main <= 0 and srv_sup <= 0:
+			# 服务端还没给这一家的卡：**不拿本地卡序顶替**（会显示错的人 + 遮罩对不上），
+			# 直接把这家的两个位子强制盖住，等 char_states 到了再翻回来。
+			_force_mask[ms0] = true
+			_force_mask[ss0] = true
 			continue
+		_force_mask.erase(ms0)
+		_force_mask.erase(ss0)
 		# A 案：两个位子各摆各的卡、各遮各的（不再「协战发动后搬到主战位」——
 		# 那样主战卡会凭空消失，看起来就像协战卡跑到了主战位上）
 		var main_card := srv_main
@@ -479,10 +479,12 @@ func _apply_char_cards() -> void:
 		if int(_slot_card.get(ms, -1)) != main_card \
 				or (mb != null and mb.texture_normal == null):
 			_set_card(ms, main_card)
+			changed = true
 		var sb2 := _slots.get(ss, null) as TextureButton
 		if srv_sup > 0 and (int(_slot_card.get(ss, -1)) != srv_sup \
 				or (sb2 != null and sb2.texture_normal == null)):
 			_set_card(ss, srv_sup)
+			changed = true
 		# 拿不到协战卡号就什么都不做（别把位子藏起来 —— 会露出桌布，
 		# 而且别人那一家能看到遮罩图层、看起来像「有卡」，更难判断）
 		# 协战覆盖期间：协战位整张藏起来（卡已经在主战位上了，不能显示两张）
@@ -491,6 +493,7 @@ func _apply_char_cards() -> void:
 		if _debug_cards and seat == _view_seat:
 			print("[CARDS] 我 seat=%d  主战=%d 协战=%d  位子→卡 %s"
 				% [seat, main_card, srv_sup, str(_slot_card)])
+	return changed
 
 
 # 这个位子（1..8）要不要因为「没发动过 / 已过期」而遮住
@@ -512,7 +515,7 @@ func _char_masked(slot: int) -> bool:
 	#   所以手动遮罩只在上面的「自己那家」分支里判）。
 	var st: Dictionary = _char_states.get(seat, {})
 	if st.is_empty():
-		return false
+		return true                     # 还没有这一家的状态 → 先盖住（宁可看不见，别显示错的人）
 	# 按「位子上实际摆的那张卡」去 char_states 里找它的状态（A 案：按卡算）
 	var shown := int(_slot_card.get(slot, -1))
 	if shown <= 0:
@@ -524,7 +527,7 @@ func _char_masked(slot: int) -> bool:
 			d = cand
 			break
 	if d.is_empty():
-		return false                    # 服务端还没给这张卡的状态 → 先按现有样子显示
+		return true                     # 状态里找不到这张卡（卡序没同步 / 已过期）→ 盖住
 	if bool(d.get("expired", false)):
 		return true                     # 两风场过了 → 永久遮罩
 	return not bool(d.get("open", false))   # 没发动过 → 默认遮罩

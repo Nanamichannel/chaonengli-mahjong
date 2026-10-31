@@ -21,6 +21,10 @@ var tween: Tween          # 只动 scale
 var fade: Tween           # 只动 modulate:a
 var _base_scale := Vector2.ONE
 var _base_mult := 1.0            # 基准倍数（确认按钮放大 1.5 倍时由外面设）
+# ★ 缩放支点：false = 中心；true = 底边中心（放大只往上长，底部保持不动）
+#   必须存在这里，否则 _update_pivot() 会被 resized 信号反复重置回中心，
+#   表现就是「确认按钮放大后底部比手牌低一截」。
+var pivot_bottom := false
 
 
 func _ready() -> void:
@@ -33,11 +37,16 @@ func _ready() -> void:
 
 
 func _update_pivot() -> void:
-	pivot_offset = size * 0.5
+	if pivot_bottom:
+		pivot_offset = Vector2(size.x * 0.5, size.y)
+	else:
+		pivot_offset = size * 0.5
 
 
 # 外面改「基准大小」：动画（悬停/按下）都以这个为 1.0 基准，不会把放大覆盖掉
 func set_base_mult(m: float) -> void:
+	pivot_bottom = m > 1.001               # 放大时才把支点放到底边
+	_update_pivot()
 	if is_equal_approx(m, _base_mult):
 		return
 	_base_mult = m

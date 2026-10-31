@@ -10348,12 +10348,16 @@ func set_start_btn_kind(btn: TextureButton, picked: bool) -> void:
 	# 确认态整体放大 CONFIRM_BTN_SCALE 倍（用 scale + 居中 pivot：
 	# 不动 size/position，免得和 _sync_prompt_btns 的布局打架）
 	# 以「底边中心」为基准放大：底部始终和手牌底部对齐，只往上长
-	btn.pivot_offset = Vector2(btn.size.x * 0.5, btn.size.y)
 	var m := CONFIRM_BTN_SCALE if picked else 1.0
 	if btn.has_method("set_base_mult"):
+		btn.set("pivot_bottom", picked)     # 放大时支点在底边 → 底部不动
 		btn.call("set_base_mult", m)
-	elif not btn.scale.is_equal_approx(Vector2.ONE * m):
-		btn.scale = Vector2.ONE * m
+		btn.pivot_offset = Vector2(btn.size.x * 0.5, btn.size.y) if picked else btn.size * 0.5
+	else:
+		# 没挂动画脚本的按钮（c26 / future 等）：手动设 pivot + scale
+		btn.pivot_offset = Vector2(btn.size.x * 0.5, btn.size.y) if picked else btn.size * 0.5
+		if not btn.scale.is_equal_approx(Vector2.ONE * m):
+			btn.scale = Vector2.ONE * m
 
 
 # ── 统一刷新：每个技能面板的「开始按钮」按「有没有选东西」切图 ──────────────
@@ -10385,6 +10389,11 @@ func _refresh_start_btn_kinds() -> void:
 	set_start_btn_kind(c26_btn, true)          # 出现时必然已排好
 	set_start_btn_kind(future_btn_ok, true)    # 同上
 	set_start_btn_kind(deal_skip_btn, false)   # 发牌阶段的「跳过」
+	# 外部面板（按钮在各自脚本里 new 的）：语义都是「选好之后确认」
+	set_start_btn_kind(c30_panel.start_btn, true)     # 向听
+	set_start_btn_kind(c32_panel.start_btn, true)     # 新手运
+	if hand_pick != null:
+		set_start_btn_kind(hand_pick.start_btn, true)  # 手牌选择
 
 
 

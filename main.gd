@@ -13171,9 +13171,18 @@ func discard_slot(side: String, rect: Rect2, slot: Vector2, col: int, row: int, 
 # 画一个牌河。两种走法：
 #   ① 场景里预置了格子（UI/Pile/<谁>/格01…）→ 用那些节点（★ 每个格子都能挂动效）
 #   ② 没有（节点被删了）→ 退回老办法：临场复制 fPai 模板、用完就删
+# 每条牌河上一次画的内容指纹（内容+风盘矩形+朝向）→ 没变就一个节点都不碰
+var _pile_sig := {}
+
 func _render_discard_pile(container: Node2D, pile: Array, rotated_flags: Array, side: String) -> void:
 	if container == null or fpai == null:
 		return
+	var _r0 := fengpan_effective_rect()
+	var _sig := "%s|%s|%.1f,%.1f,%.1f,%.1f|%s" % [side, str(pile), _r0.position.x,
+		_r0.position.y, _r0.size.x, _r0.size.y, str(rotated_flags)]
+	if String(_pile_sig.get(side, "")) == _sig:
+		return                                   # 这条牌河没变化 → 不重画（不重建节点）
+	_pile_sig[side] = _sig
 	var rect := fengpan_effective_rect()
 	if rect.size.x <= 0.0:
 		return

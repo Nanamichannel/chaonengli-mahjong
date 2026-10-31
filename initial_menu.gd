@@ -160,6 +160,7 @@ const SkinPatch := preload("res://skin.gd")   # 外部皮肤（exe 同目录 ski
 
 
 func _ready() -> void:
+	Engine.max_fps = 60
 	call_deferred("_test_seats_maybe")      # 测试用：有 test_seats.cfg 就直接进牌桌
 	get_tree().auto_accept_quit = false     # 关窗口要先清记录再退
 	cs = get_node_or_null("/root/ClientState")
@@ -492,8 +493,63 @@ func _net_why(r: Dictionary) -> String:
 	return "%s 连不上：%s（%s）" % [mode, why, addr]
 
 
+# ── F3 调试 HUD（菜单版）：卡的时候截图，一眼看出是渲染还是网络 ──
+var _hud: Label = null
+var _hud_show := false
+var _hud_acc := 0.0
+var last_req_ms := 0
+
+
+func _hud_tick(delta: float) -> void:
+	if _hud == null and _hud_show:
+		_hud = Label.new()
+		_hud.name = "PerfHud"
+		_hud.position = Vector2(24, 60)
+		_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hud.z_index = 400
+		_hud.add_theme_font_size_override("font_size", 20)
+		_hud.add_theme_color_override("font_color", Color(0.55, 1.0, 0.65))
+		_hud.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		_hud.add_theme_constant_override("outline_size", 5)
+		add_child(_hud)
+	if _hud != null:
+		_hud.visible = _hud_show
+	if not _hud_show:
+		return
+	_hud_acc += delta
+	if _hud_acc < 0.5:
+		return
+	_hud_acc = 0.0
+	var fps := Engine.get_frames_per_second()
+	var win := get_viewport().get_visible_rect().size
+	_hud.text = "【菜单】FPS %d | 帧 %.1fms | 最近请求 %dms | 窗口 %dx%d | 缩放 %.2f" % [
+		fps, 1000.0 / maxf(float(fps), 1.0), last_req_ms,
+		int(win.x), int(win.y), DisplayServer.screen_get_scale()]
+
+
+func _process(delta: float) -> void:
+	_hud_tick(delta)
+
+
+func _input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if k == null or not k.pressed or k.echo:
+		return
+	if k.keycode == KEY_F3:
+		_hud_show = not _hud_show
+		get_viewport().set_input_as_handled()
+	elif k.keycode == KEY_F11:
+		DisplayServer.window_set_mode(
+			DisplayServer.WINDOW_MODE_WINDOWED
+			if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+			else DisplayServer.WINDOW_MODE_FULLSCREEN)
+		get_viewport().set_input_as_handled()
+
+
 func _join_lobby() -> void:
+	var _t0 := Time.get_ticks_msec()
 	var r: Dictionary = srv.request({"op": "lobby_join", "seat": -1})
+	last_req_ms = Time.get_ticks_msec() - _t0
 	if not bool(r.get("ok", false)):
 		var why := String(r.get("error", "未知错误"))
 		if why.find("已满") >= 0:

@@ -642,6 +642,7 @@ const SkinPatch := preload("res://skin.gd")   # 外部皮肤（exe 同目录 ski
 
 
 func _ready() -> void:
+	Engine.max_fps = 60
 	randomize()
 	_btn_tune_load()          # 按钮微调（user://btn_tune.cfg，没有就用 @export 的值）
 	call_deferred("_dev_autoplay_maybe")	# 开发用：有 autoplay.cfg 才自动打

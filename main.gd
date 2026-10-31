@@ -325,7 +325,7 @@ func _remember_skill_btn(card_no: int, index: int) -> void:
 	var idn := get_node_or_null("Identity")
 	if idn == null:
 		return
-	var cn := idn.get_node_or_null("Card%d" % int(card_no))
+	var cn := idn.get_node_or_null("Card%02d" % int(card_no))
 	if cn == null:
 		return
 	var sb := cn.get_node_or_null("Skill%d" % (int(index) + 1)) as Control

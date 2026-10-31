@@ -9,4 +9,5 @@ extends Node
 var seat := -1                 # 0..3，-1 = 还没认领
 var lobby: Dictionary = {}     # 服务端大厅快照（phase / seats / pool / turn）
 var orders: Array = []         # 四家各自的 5 张最终顺序（进牌桌时从服务端抄下来）
-var picks: Array = []          # 本家选到的 5 张（未排序）
+var picks: Array = []
+var room := ""               # 大厅里选的房间号（进牌桌时用同一个）          # 本家选到的 5 张（未排序）

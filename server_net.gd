@@ -72,6 +72,10 @@ func _load_cfg() -> void:
 		url = DEFAULT_URL
 		room = "default"
 		token = ""
+		# ★ 这条以前直接 return，把「大厅选的房间号」整段跳过了 →
+		#   大厅在 1145、进牌桌却连回 default（两家的卡序/遮罩完全不一样，
+		#   桌面人物卡跟大厅选的对不上）。现在两条路都走同一个房间解析。
+		_apply_room_memo()
 		enabled = _parse_url()
 		if enabled:
 			print("[net] 联机模式（内置地址）：%s  房间=%s" % [url, room])
@@ -94,15 +98,8 @@ func _load_cfg() -> void:
 	timeout_ms = int(dd.get("timeout_ms", timeout_ms))
 	if timeout_ms < 1000:
 		timeout_ms = 1000
-	# 玩家在初始菜单里选过的房间号（本机记忆）优先级最高
-	if FileAccess.file_exists(ROOM_MEMO):
-		var rf := FileAccess.open(ROOM_MEMO, FileAccess.READ)
-		if rf != null:
-			var memo := rf.get_as_text().strip_edges()
-			rf.close()
-			if room_ok(memo) or memo == "":
-				if memo != "":
-					room = memo
+	# 玩家在初始菜单里选过的房间号（本机记忆 / 大厅记忆）优先级最高
+	_apply_room_memo()
 	enabled = _parse_url()
 	if enabled:
 		# 调试的时候一眼能看出来现在连的是谁
@@ -138,6 +135,40 @@ func _parse_url() -> bool:
 	return _host != "" and _port > 0
 
 
+# ── 房间号的三个来源：配置文件 < user://room.txt < ClientState.room（大厅里选的，进牌桌也要认）──
+#   以前这段只在「有 net.cfg」的分支里跑，导出版（内置地址）直接跳过 →
+#   大厅 1145 / 牌桌 default 的事故。现在两条分支都调它。
+func _apply_room_memo() -> void:
+	var memo := _read_room_memo()
+	if memo != "" and room_ok(memo):
+		room = memo
+	var cs := _client_state()
+	if cs != null:
+		var v = cs.get("room")
+		if v != null:
+			var r2 := String(v).strip_edges()
+			if r2 != "" and room_ok(r2):
+				room = r2
+
+
+func _read_room_memo() -> String:
+	if not FileAccess.file_exists(ROOM_MEMO):
+		return ""
+	var rf := FileAccess.open(ROOM_MEMO, FileAccess.READ)
+	if rf == null:
+		return ""
+	var memo := rf.get_as_text().strip_edges()
+	rf.close()
+	return memo
+
+
+func _client_state() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null("ClientState")
+
+
 # ── 房间号（运行时切换用）───────────────────────────────────────────
 # 房间号只做「一张四人桌」的隔离键：服务端按 /rpc/<房间号> 建独立库、独立 4 个座位。
 # 玩家在初始菜单里选的房间会记进 user://room.txt（本机记忆，优先级高于 net.cfg 的 room），
@@ -168,6 +199,10 @@ func set_room(r: String) -> bool:
 	if not room_ok(want):
 		return false
 	room = want
+	# 记到 ClientState：换场景（菜单 → 牌桌）后新建的 ServerBridge 也能拿到同一个房间号
+	var cs := _client_state()
+	if cs != null:
+		cs.set("room", want)
 	var f := FileAccess.open(ROOM_MEMO, FileAccess.WRITE)
 	if f != null:
 		f.store_string(want)

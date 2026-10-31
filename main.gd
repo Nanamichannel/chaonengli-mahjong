@@ -10346,6 +10346,37 @@ func set_start_btn_kind(btn: TextureButton, picked: bool) -> void:
 		btn.texture_normal = t
 
 
+# ── 统一刷新：每个技能面板的「开始按钮」按「有没有选东西」切图 ──────────────
+#   没选 → tiaoguo（跳过）；选了 → queren（确认）。
+#   放在 _process 里当兜底：不管哪个回调改了选择状态，下一帧自动跟上，
+#   不用去 24 个回调里各插一句。
+#   注：只在「选满才出现」的按钮（c26 / future）出现时必然是已选 → 直接给确认图。
+func _refresh_start_btn_kinds() -> void:
+	set_start_btn_kind(oracle_start_btn, oracle_pick != "")
+	set_start_btn_kind(c09_btn, not c09_picks.is_empty())
+	set_start_btn_kind(c10_btn, not c10_picks.is_empty() or not c10_sel.is_empty())
+	set_start_btn_kind(c11_btn, not c11_picks.is_empty())
+	set_start_btn_kind(c11s2_btn, not c11s2_sel.is_empty())
+	set_start_btn_kind(sf_btn, not sf_picks.is_empty())
+	set_start_btn_kind(zl_btn, not zl_picks.is_empty())
+	set_start_btn_kind(dy_btn, dy_kind != "")
+	set_start_btn_kind(pofa_btn, pofa_picks.size() >= 2)
+	set_start_btn_kind(hs_btn, not hs_picks.is_empty())
+	set_start_btn_kind(sw_start_btn, sw_kinds.size() == 2)
+	set_start_btn_kind(sw_hand_btn, sw_hand_picks.size() == 2)
+	set_start_btn_kind(c05_start_btn, not c05_picks.is_empty())
+	set_start_btn_kind(c05_hide_btn, c05_hide_picks.size() >= 3)
+	set_start_btn_kind(wind_start_btn, not wind_picks.is_empty())
+	set_start_btn_kind(flow_start_btn, not flow_picks.is_empty() or flow_target >= 0)
+	set_start_btn_kind(gb_btn, not gb_picks.is_empty())
+	set_start_btn_kind(board_start_btn, skill2_picks.size() == 2)
+	set_start_btn_kind(c25_btn, false)          # C25Cancel：取消/跳过
+	set_start_btn_kind(yd_btn, not yd_picks.is_empty())
+	set_start_btn_kind(c26_btn, true)          # 出现时必然已排好
+	set_start_btn_kind(future_btn_ok, true)    # 同上
+	set_start_btn_kind(deal_skip_btn, false)   # 发牌阶段的「跳过」
+
+
 
 func _board_open() -> void:
 	if board_ui != null or game_over:
@@ -13443,6 +13474,7 @@ func _process(delta: float) -> void:
 		_result_confirm_tick(delta)
 	_skill_panel_stale_close()
 	_sync_prompt_btns()          # 「开始按钮」跟着未副露手牌的最右边走
+	_refresh_start_btn_kinds() # 开始按钮：没选=跳过图，选了=确认图
 	swap_panel.tick()            # 通用面板自己贴位置
 	_sync_chow_choices()         # 「吃」的选搭子面板跟着手牌走
 	ym_panel.tick()

@@ -334,7 +334,7 @@ func _make_net_badge() -> void:
 	net_badge = Label.new()
 	net_badge.name = "NetBadge"
 	net_badge.position = Vector2(24, 22)
-	net_badge.size = Vector2(900, 34)
+	net_badge.size = Vector2(1560, 34)
 	net_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	net_badge.add_theme_font_size_override("font_size", 20)
 	net_badge.add_theme_color_override("font_color", Color(1.0, 0.72, 0.42))
@@ -475,6 +475,23 @@ func _flash_room_btn(t: String) -> void:
 var _last_join_err := ""
 
 
+# 连不上时到底为什么：把「哪个地址 + 什么原因」显示出来，朋友截图就能定位
+func _net_why(r: Dictionary) -> String:
+	var mode := "单机"
+	var addr := ""
+	if srv != null and srv.net != null:
+		if not bool(srv.net.enabled):
+			return "当前是单机模式（没有服务器地址）—— 请换最新版 exe"
+		mode = "联机"
+		addr = String(srv.net.status_text())
+	var why := String(r.get("error", "")).strip_edges()
+	if why == "" and srv != null and srv.net != null:
+		why = String(srv.net.last_error).strip_edges()
+	if why == "":
+		why = "服务端没有回应"
+	return "%s 连不上：%s（%s）" % [mode, why, addr]
+
+
 func _join_lobby() -> void:
 	var r: Dictionary = srv.request({"op": "lobby_join", "seat": -1})
 	if not bool(r.get("ok", false)):
@@ -482,8 +499,9 @@ func _join_lobby() -> void:
 		if why.find("已满") >= 0:
 			_set_hint("房间已满（4/4）—— 有人退出后会自动加入")
 		else:
-			_set_hint("连不上服务端 —— 服务端开着吗？（server\\start_server.bat）")
-			_net_badge_show("连不上服务端 —— 双击 server\\start_server.bat 起来后再试")
+			var why2 := _net_why(r)
+			_set_hint(why2)
+			_net_badge_show(why2)
 		if why != _last_join_err:
 			_last_join_err = why
 			print("initial_menu: 加入大厅失败，稍后自动重试：", why)
@@ -507,7 +525,7 @@ func _poll() -> void:
 	if bool(r.get("ok", false)):
 		_apply_lobby(r.get("lobby", {}))
 	elif srv.net != null and bool(srv.net.enabled) and bool(srv.net.offline()):
-		_net_badge_show("连不上服务端 —— 双击 server\\start_server.bat 起来后再试")
+		_net_badge_show(_net_why(r))
 	else:
 		_net_badge_show("")
 

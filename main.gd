@@ -3769,11 +3769,57 @@ func _sf_heat() -> void:
 	if not bool(srv_state.get("heat_can", false)):
 		_toast("加热：摸牌后发动，一局一次")
 		return
-	var items: Array = []
-	for k in _cold_kinds():
-		items.append({"label": "加热 %s" % String(k),
-			"cb": func(): _sf_heat_use(String(k))})
-	_cg_show("加热：选一个冷系牌种（四张全变赤宝）", items)
+	_cg_heat_grid()
+
+
+# 加热：冷系牌种做成**牌面按钮**，点一张直接发动；右边一个「跳过」= 不加热
+func _cg_heat_grid() -> void:
+	_cg_close()
+	var host: Node = get_parent()
+	if host == null:
+		host = self
+	cg_ui = Control.new()
+	cg_ui.name = "HeatGridUI"
+	cg_ui.z_index = 300                       # 牌墩 15/16、技能按钮 20 → 不遮挡
+	host.add_child(cg_ui)
+	cg_ui.position = Vector2.ZERO
+	cg_active = true
+	var head := Label.new()
+	head.text = "加热：点一张冷系牌（四张全变赤宝）"
+	head.add_theme_font_size_override("font_size", 22)
+	head.add_theme_color_override("font_color", Color(1, 1, 0.85))
+	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	head.add_theme_constant_override("outline_size", 6)
+	head.position = Vector2(40, 40)
+	cg_ui.add_child(head)
+	var kinds: Array = _cold_kinds()
+	var tw := 62.0
+	var th := 86.0
+	var gap := 6.0
+	var per := 13
+	for i in range((kinds as Array).size()):
+		var kind := String(kinds[i])
+		var b := TextureButton.new()
+		b.name = "H%s" % kind
+		b.texture_normal = load(TileBank.VERT_DIR + TileBank.face_file(kind) + ".png") as Texture2D
+		b.ignore_texture_size = true
+		b.stretch_mode = TextureButton.STRETCH_SCALE
+		b.focus_mode = Control.FOCUS_NONE
+		b.position = Vector2(40.0 + float(i % per) * (tw + gap),
+			100.0 + float(int(i / per)) * (th + 20.0))
+		b.size = Vector2(tw, th)
+		b.pressed.connect(_cg_heat_pick.bind(kind))
+		cg_ui.add_child(b)
+	var cols := mini(per, (kinds as Array).size())
+	var sk := ui_btn("pass", 170.0)           # 跳过：不加热
+	sk.position = Vector2(40.0 + float(cols) * (tw + gap) + 24.0, 100.0)
+	sk.pressed.connect(_cg_close)
+	cg_ui.add_child(sk)
+
+
+func _cg_heat_pick(kind: String) -> void:
+	_cg_close()
+	_sf_heat_use(kind)
 
 
 func _sf_heat_use(k: String) -> void:
@@ -4554,6 +4600,19 @@ func _cg_close() -> void:
 	cg_ui = null
 
 
+# 把「确认 + 跳过」两个按钮当成**一个整体**水平居中：
+#   cx/cy = 整体中心点（cy 是这一行的高度中点，两个按钮各自垂直居中）
+func _place_btn_pair(left: Control, right: Control, cx: float, cy: float,
+		gap := 26.0) -> void:
+	if left == null or right == null:
+		return
+	var w := left.size.x + gap + right.size.x
+	var h := maxf(left.size.y, right.size.y)
+	var x0 := cx - w * 0.5
+	left.position = Vector2(x0, cy - left.size.y * 0.5)
+	right.position = Vector2(x0 + left.size.x + gap, cy - right.size.y * 0.5)
+
+
 # 二选一询问：标题 + 「确认」「跳过」两张贴图（不叠字）
 func _cg_answer_pair(title: String, cb_yes: Callable, cb_no: Callable) -> void:
 	_cg_close()
@@ -4576,17 +4635,16 @@ func _cg_answer_pair(title: String, cb_yes: Callable, cb_no: Callable) -> void:
 	head.position = Vector2(vp.x * 0.5 - 320.0, vp.y * 0.5 - 90.0)
 	cg_ui.add_child(head)
 	var ok := ui_btn("ok", 220.0)
-	ok.position = Vector2(vp.x * 0.5 - 230.0, vp.y * 0.5 - 30.0)
 	ok.pressed.connect(func():
 		_cg_close()
 		cb_yes.call())
 	cg_ui.add_child(ok)
 	var no := ui_btn("pass", 190.0)
-	no.position = Vector2(vp.x * 0.5 + 20.0, vp.y * 0.5 - 20.0)
 	no.pressed.connect(func():
 		_cg_close()
 		cb_no.call())
 	cg_ui.add_child(no)
+	_place_btn_pair(ok, no, vp.x * 0.5, vp.y * 0.5 - 20.0)
 
 
 # 竖向列表选择器：items = [{"label": String, "cb": Callable}]
@@ -4732,13 +4790,13 @@ func _cg_show_kind_grid(title: String, on_pick: Callable = Callable(), on_ok: Ca
 		b.add_child(num)
 	var ok := ui_btn("ok", 220.0)              # 贴图，不叠字
 	ok.name = "OK"
-	ok.position = Vector2(40, 100.0 + 2.0 * (th + 30.0) + 6.0)
 	ok.pressed.connect(_cg_ok_pressed)
 	cg_ui.add_child(ok)
 	var cl := ui_btn("pass", 170.0)
-	cl.position = Vector2(290, ok.position.y)
 	cl.pressed.connect(_cg_kind_close)
 	cg_ui.add_child(cl)
+	# 两个按钮作为整体居中（这一行在牌种网格下方）
+	_place_btn_pair(ok, cl, vp.x * 0.5, 100.0 + 2.0 * (th + 30.0) + 6.0 + 62.0)
 
 
 # 关掉牌种网格（顺手把前路 / 强运的临时选择清掉）
@@ -4764,45 +4822,6 @@ func _cg_refresh_grid() -> void:
 		var num := b.get_node_or_null("Num") as Label
 		if num != null:
 			num.text = str(idx + 1) if idx >= 0 else ""
-
-
-func _cg_show(title: String, items: Array) -> void:
-	_cg_close()
-	cg_active = true
-	var vp := get_viewport_rect().size
-	var host: Node = get_parent()
-	if host == null:
-		host = self
-	cg_ui = Control.new()
-	cg_ui.name = "ChoiceUI"
-	cg_ui.z_index = 300
-	host.add_child(cg_ui)
-	cg_ui.position = Vector2.ZERO
-	var head := Label.new()
-	head.text = title
-	head.add_theme_font_size_override("font_size", 24)
-	head.add_theme_color_override("font_color", Color(1, 1, 0.85))
-	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	head.add_theme_constant_override("outline_size", 6)
-	head.position = Vector2(40, 40)
-	cg_ui.add_child(head)
-	var y := 90.0
-	for it in (items as Array):
-		var d: Dictionary = it
-		var b := Button.new()
-		b.text = String(d.get("label", ""))
-		b.focus_mode = Control.FOCUS_NONE
-		b.position = Vector2(40, y)
-		b.size = Vector2(360, 44)
-		var cb = d.get("cb", Callable())
-		if cb is Callable and (cb as Callable).is_valid():
-			b.pressed.connect(func(): _cg_fire(cb))
-		cg_ui.add_child(b)
-		y += 52.0
-	var cl := ui_btn("pass", 170.0)            # 贴图，不叠字
-	cl.position = Vector2(40, y + 8.0)
-	cl.pressed.connect(_cg_close)
-	cg_ui.add_child(cl)
 
 
 func _cg_fire(cb: Callable) -> void:
@@ -8867,13 +8886,12 @@ func _c38s1_make_ui() -> void:
 		c38_nodes["h%d" % j] = b
 	# ── 确认 / 取消（贴图，不叠字）──
 	c38_ok = ui_btn("ok", 240.0)
-	c38_ok.position = Vector2(vp.x * 0.5 - 130.0, 430.0)
 	c38_ok.pressed.connect(_c38s1_confirm)
 	c38_ui.add_child(c38_ok)
 	var cancel := ui_btn("pass", 190.0)
-	cancel.position = Vector2(vp.x * 0.5 + 130.0, 430.0)
 	cancel.pressed.connect(_c38s1_close)
 	c38_ui.add_child(cancel)
+	_place_btn_pair(c38_ok, cancel, vp.x * 0.5, 430.0 + 67.0)   # 这一行的高度中点
 
 
 func _c38s1_refresh() -> void:

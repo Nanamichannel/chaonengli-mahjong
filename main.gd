@@ -358,6 +358,7 @@ func _hud_tick(delta: float) -> void:
 		_hud.name = "PerfHud"
 		_hud.position = Vector2(20, 56)
 		_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hud.z_index = 400                 # 压在牌山/风盘/面板（250~320）上面，不能再被遮挡
 		_hud.add_theme_font_size_override("font_size", 20)
 		_hud.add_theme_color_override("font_color", Color(0.55, 1.0, 0.65))
 		_hud.add_theme_color_override("font_outline_color", Color(0, 0, 0))

@@ -283,7 +283,10 @@ var srv_note := ""                              # 上一次失败原因
 var my_seat := 0                                # 0..3
 var waiting_for_others := false                 # 现在是不是在等别人出牌（等的时候要轮询）
 var poll_accum := 0.0
-const POLL_SEC := 0.35                          # 等别人时的轮询间隔（秒）
+# ★ 上云后调慢：没推送（反代没转发 WebSocket / 掉线）时全靠这个间隔拉状态。
+#   0.35 → 0.5 秒，服务端出网流量省 ~30%，人手感觉不出差别；
+#   有长连接推送时这值根本不生效（下面会被抬到 2 秒）。
+const POLL_SEC := 0.5                           # 等别人时的轮询间隔（秒）
 												# 配合 https 长连接复用（每次请求 2~3ms），
 												# 从 0.6 压到 0.35：别人出牌后肉眼几乎同步
 const POLL_IDLE_SEC := 1.0                      # 轮到我 / 结算后也慢一点问一次（别人可能开了新局）
@@ -349,6 +352,107 @@ var _hud_acc := 0.0
 var last_req_ms := 0
 var _push_n := 0
 var _apply_n := 0
+
+
+# ── 性能探针（开发用，不影响对局）──────────────────────────────────
+# 每个项目都测两次：**清掉缓存**（= 优化前的行为）与**走缓存**（= 现在）。
+# 用法：控制台 / MCP 调 perf_bench_ms()（默认每种 30 轮，单位毫秒）。
+func perf_bench_ms(rounds: int = 30) -> Dictionary:
+	var out := {}
+	var r := maxi(1, rounds)
+	var t0 := Time.get_ticks_usec()
+	for i in range(r):
+		_hand_view_sig = ""
+		refresh_hand()
+	out["1_手牌重画_优化前"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
+	t0 = Time.get_ticks_usec()
+	for i in range(r):
+		refresh_hand()
+	out["1_手牌重画_现在"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
+
+	t0 = Time.get_ticks_usec()
+	for i in range(r):
+		_entity_sig = ""
+		_apply_entity_states(srv_state)
+	out["2_136张实体_优化前"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
+	t0 = Time.get_ticks_usec()
+	for i in range(r):
+		_apply_entity_states(srv_state)
+	out["2_136张实体_现在"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
+
+	t0 = Time.get_ticks_usec()
+	for i in range(r):
+		_pbr_frame = -1
+		_pbr_memo.clear()
+		_sync_prompt_btns()
+	out["3_开始按钮摆位_优化前"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
+	t0 = Time.get_ticks_usec()
+	for i in range(r):
+		_pbr_frame = -1
+		_sync_prompt_btns()
+	out["3_开始按钮摆位_现在"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
+
+	t0 = Time.get_ticks_usec()
+	for i in range(r):
+		_btn_ok.clear()
+		_refresh_start_btn_kinds()
+	out["4_确认跳过切图_优化前"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
+	t0 = Time.get_ticks_usec()
+	for i in range(r):
+		_refresh_start_btn_kinds()
+	out["4_确认跳过切图_现在"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
+
+	t0 = Time.get_ticks_usec()
+	for i in range(r * 10):
+		_hand_slots_n = -1
+		_hand_slots()
+	out["5_手牌格子查表_优化前"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r * 10)
+	t0 = Time.get_ticks_usec()
+	for i in range(r * 10):
+		_hand_slots()
+	out["5_手牌格子查表_现在"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r * 10)
+
+	# 6) 整份 state 应用（这个才是用户真正能感觉到的「一顿」）
+	#    我的回合会有自动摸牌等推进副作用 → 只有不是我的回合时才测
+	if not srv_state.is_empty() and int(srv_state.get("turn", -1)) != my_seat:
+		t0 = Time.get_ticks_usec()
+		for i in range(maxi(1, r / 3)):
+			_last_state_hash = 0
+			srv_apply_state(srv_state, [])
+		out["6_整份state_优化前"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(maxi(1, r / 3))
+		t0 = Time.get_ticks_usec()
+		for i in range(r * 3):
+			srv_apply_state(srv_state, [])
+		out["6_整份state_现在"] = float(Time.get_ticks_usec() - t0) / 1000.0 / float(r * 3)
+
+	for k in out.keys():
+		out[k] = snappedf(out[k], 0.001)
+	return out
+
+
+# 每帧固定开销（_process 里那串 tick）：量「一帧不干正事也要花多少毫秒」
+func perf_bench_process_ms(rounds: int = 200) -> float:
+	var r := maxi(1, rounds)
+	var t0 := Time.get_ticks_usec()
+	for i in range(r):
+		_skill_panel_stale_close()
+		_sync_c05_dead_buttons()
+		_refresh_start_btn_kinds()
+		_sync_prompt_btns()
+		swap_panel.tick()
+		ym_panel.tick()
+		press_panel.tick()
+		c25b_panel.tick()
+		c27_panel.tick()
+		c30_panel.tick()
+		c32_panel.tick()
+		c33_panel.tick()
+		c43_panel.tick()
+		c45_panel.tick()
+		c46_panel.tick()
+		c24_panel.tick()
+		_sync_chow_choices()
+	return float(Time.get_ticks_usec() - t0) / 1000.0 / float(r)
 
 
 func _hud_tick(delta: float) -> void:
@@ -10819,13 +10923,21 @@ func _btn_tune_report() -> void:
 	_toast("按钮微调 · " + line)
 
 
+var _btn_tex_cache := {}                   # kind -> Texture2D（贴图在场景里固定，缓存一次就够）
+
 func btn_tex(kind: String) -> Texture2D:
+	# ★ 性能：_process 每帧要问二十多次（_refresh_start_btn_kinds / 各面板 tick），
+	#   每次都 get_node + 取贴图纯属白干。只缓存取到的那份（null 不缓存，
+	#   否则 _ready 之前问过一次就会永久变白板）。
+	if _btn_tex_cache.has(kind):
+		return _btn_tex_cache[kind] as Texture2D
 	var nm: String = START_BTN_NODE.get(kind, "BtnTiaoguo")
 	var n := get_node_or_null("UI/Btn/" + nm)
 	if n == null or not (n is TextureButton):
 		return null
 	var t := (n as TextureButton).texture_normal
 	if t != null:
+		_btn_tex_cache[kind] = t
 		return t
 	return null
 
@@ -10852,6 +10964,12 @@ func ui_btn(kind: String, width: float) -> TextureButton:
 func set_start_btn_kind(btn: TextureButton, picked: bool) -> void:
 	if btn == null or not is_instance_valid(btn):
 		return
+	# ★ 性能：本函数被 _process 每帧调二十多次。记录态没变 → 直接走人，
+	#   否则每帧都要比贴图、写字典（几十个按钮 × 60 帧/秒全是白工）。
+	if _btn_ok.has(btn) and bool(_btn_ok[btn]) == picked and is_equal_approx(btn.scale.x, 1.0):
+		var _t0 := btn_tex("ok" if picked else "pass")
+		if _t0 == null or btn.texture_normal == _t0:
+			return
 	var t := btn_tex("ok" if picked else "pass")
 	if t != null and btn.texture_normal != t:
 		btn.texture_normal = t
@@ -11701,6 +11819,15 @@ func _apply_entity_states(st2: Dictionary) -> void:
 	var tiles: Array = st2.get("tiles", [])
 	if typeof(tiles) != TYPE_ARRAY or tiles.is_empty():
 		return
+	# ★ 性能：136 张实体逐张 apply_state / 改亮度是这里最贵的一步。
+	#   牌位没变（tiles 深 hash 一致）+ 选牌/立直/窗口没变 → 一张都不用重摆。
+	var _esig := "%d|%s|%d|%s|%d|%d" % [tiles.hash(), str(get_viewport_rect().size),
+		int(hand_pick.active) if hand_pick != null else 0,
+		str(hand_pick.picks.hash()) if hand_pick != null else "-",
+		int(riichi_selecting), int(hand_offset.x * 100.0)]
+	if _esig == _entity_sig:
+		return
+	_entity_sig = _esig
 	var vp := get_viewport_rect().size
 	var rect := fengpan_effective_rect()
 	# fengpan_effective_rect() 是 Main 的局部坐标，TileBank 用屏幕坐标 → 补上 Main 的全局偏移
@@ -11996,13 +12123,14 @@ func _apply_entity_states(st2: Dictionary) -> void:
 	if hand_container != null:
 		for sl in _hand_slots():
 			var anim := (sl as Control).get_node_or_null("Anim")
-			if anim != null:
+			if anim != null and anim.get_child_count() > 0:     # 平时是空的 → 直接跳过
 				for c in anim.get_children():
 					anim.remove_child(c)
 					c.queue_free()
-	if discard_container != null:
+	if discard_container != null and not _piles_hidden_done:
 		for sl in _pile_slots(discard_container):
 			(sl as Node2D).visible = false
+		_piles_hidden_done = true
 	for who in OPP_ORDER:
 		var cont = opp_discard_containers.get(who, null)
 		if cont != null:
@@ -12022,6 +12150,13 @@ func _apply_entity_states(st2: Dictionary) -> void:
 	tile_bank.end_frame()
 
 
+# ── 性能：状态 / 渲染去重用的记号（见各函数里的 ★ 性能 注释）─────────────
+var _last_state_hash := 0                          # 上一份 state 的内容 hash
+var _last_state_size := -1                         # 上一份 state 的字段数（防 hash 碰撞）
+var _entity_sig := ""                              # 上一次牌实体摆放的指纹
+var _push_seat_sent := -999                        # 已告知长连接的座位号
+var _piles_hidden_done := false                     # 老画法的牌河格子已隐藏过（只需要一次）
+
 func srv_apply_state(st, events = null) -> void:
 	if typeof(st) != TYPE_DICTIONARY:
 		return
@@ -12034,6 +12169,18 @@ func srv_apply_state(st, events = null) -> void:
 		push_warning("main.gd: 收到 %d 号位的状态，本窗口是 %d 号位 —— 丢掉这次同步"
 			% [got_seat, my_seat])
 		return
+	# ★ 性能（掉帧主因）：0.35s 轮询 + 长连接推送经常把**一模一样**的 state 送过来，
+	#   以前每来一次就把手牌节点、牌河、136 张实体全部重画一遍。
+	#   内容没变（hash + 字段数一致）且没有事件要重放 → 整个渲染流程直接跳过。
+	#   （同一份 state 的重放是幂等的，跳过不影响任何逻辑；有事件时必定重放。）
+	if typeof(events) == TYPE_ARRAY and not (events as Array).is_empty():
+		_last_state_hash = 0
+	else:
+		var _sh: int = st2.hash()
+		if _sh != 0 and _sh == _last_state_hash and st2.size() == _last_state_size:
+			return
+		_last_state_hash = _sh
+		_last_state_size = st2.size()
 	# 换了一局？（F2 开新局、或别的窗口开了新局）→ 牌山/手牌/牌河全部重来
 	# 庄家换人、或我换了座位视角 → 风盘的「東」要转过去，牌山的「东面」也要跟着换
 	srv_state = st2
@@ -12699,7 +12846,18 @@ func _layout_hand_area() -> void:
 #   贴在未副露手牌最右边，上边缘和牌的上边缘对齐。
 #   ★ 位置一律用 global_position 赋值：Main 这个 Control 带了 offset(39,-15)，
 #     用局部 position 会把按钮带歪（以前「严重偏下」就是这么来的）。
+var _pbr_frame := -1
+var _pbr_memo := {}
+
 func prompt_btn_rect(aspect: float) -> Rect2:
+	# ★ 性能：每帧被「所有技能面板的开始按钮」各问一次（20+ 次），
+	#   同一帧、同一宽高比的结果必然一样 → 一帧只真算一次。
+	var _fr := Engine.get_process_frames()
+	if _fr != _pbr_frame:
+		_pbr_frame = _fr
+		_pbr_memo.clear()
+	elif _pbr_memo.has(aspect):
+		return _pbr_memo[aspect]
 	var vp := get_viewport_rect().size
 	var slots := _hand_slots()
 	var h := tile_size.y
@@ -12714,7 +12872,8 @@ func prompt_btn_rect(aspect: float) -> Rect2:
 		row_left = hand_container.global_position.x
 		row_top = hand_container.global_position.y + HOVER_RAISE
 	var sz := Vector2(h / maxf(aspect, 0.05), h)
-	var n := display_tiles().size()
+	# 手牌张数不该每次重排一遍 display_tiles()（14 张牌的数组复制 + 插入）
+	var n := hand_tiles.size() + (1 if drawn_tile != "" else 0)
 	var right := row_left + tile_size.x
 	if n > 0:
 		right = row_left + tile_x(n - 1) + tile_size.x         # 未副露手牌的最右边
@@ -12728,7 +12887,9 @@ func prompt_btn_rect(aspect: float) -> Rect2:
 	var y := clampf(row_top, 8.0, maxf(8.0, vp.y - sz.y - 8.0))
 	# ★ 这里只给「一开始的位置」：跳过态就用它，不再叠加任何偏移。
 	#   确认态的偏移在 _sync_prompt_btns 里加（用户口径：跳过按钮保持原位）
-	return Rect2(Vector2(x, y), sz)
+	var _r := Rect2(Vector2(x, y), sz)
+	_pbr_memo[aspect] = _r
+	return _r
 
 
 func prompt_btn_pos(bw: float, bh: float) -> Vector2:
@@ -12793,17 +12954,27 @@ func tile_x(index: int) -> float:
 # 手牌：14 个格子是场景节点（UI/Hand/格01…格14），每格下面有一个 Anim 层。
 #   代码只做：给格子换牌的形象、显示/隐藏、把「摸到的那张」那一格留出空隙。
 #   动效挂 Anim 层（代码永远不碰它）→ 换牌也不会把动画弄丢。
+var _hand_slots_cache: Array = []     # 14 个格子（场景里固定）→ 缓存，别每帧重排
+var _hand_slots_n := -1
+
 func _hand_slots() -> Array:
-	var out: Array = []
+	# ★ 性能：这函数每帧会被「悬停抬起 / 开始按钮摆位 / 手牌重画 / 吃碰面板」叫十几遍，
+	#   每次都遍历子节点 + 字符串排序太浪费。只在子节点数量变了时才重建。
+	var kids := hand_container.get_child_count() if hand_container != null else 0
+	if kids == _hand_slots_n and not _hand_slots_cache.is_empty():
+		return _hand_slots_cache
+	_hand_slots_n = kids
+	_hand_slots_cache = []
 	if hand_container == null:
-		return out
+		return _hand_slots_cache
+	var out: Array = []
 	for c in hand_container.get_children():
 		if String(c.name).begins_with("格"):
 			out.append(c)
-	if out.size() < 2:
-		return []
-	out.sort_custom(func(a, b): return String(a.name) < String(b.name))
-	return out
+	if out.size() >= 2:
+		out.sort_custom(func(a, b): return String(a.name) < String(b.name))
+		_hand_slots_cache = out
+	return _hand_slots_cache
 
 
 # 认领格子：样式 + 信号只接一次（格子固定，不用每次重画都重接）
@@ -12865,7 +13036,23 @@ func _layout_hand_slots() -> void:
 		b.position = Vector2(tile_x(i), 0.0)
 
 
+var _hand_view_sig := ""
+
 func refresh_hand() -> void:
+	# ★ 性能：每次 state 应用都会走这里，而它会把 14 个格子的 Anim 子节点全删了重造
+	#   （duplicate 模板 + queue_free）。手牌内容、摸的那张、亮度依据、窗口尺寸都没变
+	#   → 一个节点都不重建。（state 级去重之后，这里再兜一层「state 变了但手牌没变」。）
+	var _picks: Array = hand_pick.picks if hand_pick != null else []
+	var _legal = srv_state.get("legal", [])
+	var _vk := get_viewport_rect().size if is_inside_tree() else Vector2.ZERO
+	var _sig := "%s|%s|%d|%s|%d|%s|%dx%d" % [str(hand_tiles), String(drawn_tile),
+		int(hand_pick.active) if hand_pick != null else 0, str(_picks.hash()),
+		int(riichi_selecting),
+		str((_legal as Array).hash()) if typeof(_legal) == TYPE_ARRAY else "-",
+		int(_vk.x), int(_vk.y)]
+	if _sig == _hand_view_sig and hand_container != null:
+		return
+	_hand_view_sig = _sig
 	hovered_index = -1
 	_layout_hand_area()
 	var slots := _hand_slots()
@@ -12873,6 +13060,25 @@ func refresh_hand() -> void:
 		_build_hand_legacy()          # 没有预置格子 → 老办法
 		return
 	var tiles := display_tiles()
+	# ★ 性能（关键）：现在视觉由 TileBank 实体画，`_apply_entity_states` 末尾还会把这里
+	#   的残留再删一遍。所以 LEGACY=false 时**不再**给每格 duplicate 模板牌 ——
+	#   以前每份 state 都要造 14 个节点、紧接着又被删掉，纯白干 + queue_free 抖动。
+	#   格子只保留「接点击 / 显隐 / 排位」这三件事。
+	var _ent = srv_state.get("tiles", [])
+	var _ent_ok := tile_bank != null and typeof(_ent) == TYPE_ARRAY and not (_ent as Array).is_empty()
+	if not LEGACY_TILE_RENDER and _ent_ok:
+		for i in range(slots.size()):
+			var slot := slots[i] as Button
+			if slot == null:
+				continue
+			var anim0 := slot.get_node_or_null("Anim")
+			if anim0 != null and anim0.get_child_count() > 0:
+				for c in anim0.get_children():      # 万一有老残留，清一次
+					anim0.remove_child(c)
+					c.queue_free()
+			slot.visible = i < tiles.size()
+		update_tile_positions()
+		return
 	for i in range(slots.size()):
 		var b := slots[i] as Button
 		if b == null:
@@ -12985,6 +13191,7 @@ func _apply_fengpan() -> void:
 	fengpan.rotation_degrees = 0.0
 	if fengpan_center_on_ring:
 		_fengpan_align_to_ring()
+	_fengpan_img_cur = ""             # 风盘刚被重排/重建过 → 强制下一帧重贴一次图
 	_update_fengpan_image()
 	refresh_discards()
 
@@ -13042,10 +13249,15 @@ func _fengpan_img_name() -> String:
 	return pre + String(FENGPAN_IMG_SUF[clampi(mw, 0, 3)])
 
 
+var _fengpan_img_cur := ""
+
 func _update_fengpan_image() -> void:
 	if fengpan == null:
 		return
 	var want := _fengpan_img_name()
+	if want == _fengpan_img_cur and is_instance_valid(fengpan):
+		return              # 已经显示这张 → 不用每次 state 都把 8 个子 Sprite 摸一遍
+	_fengpan_img_cur = want
 	for c in fengpan.get_children():
 		if not (c is Sprite2D):
 			continue
@@ -13232,16 +13444,26 @@ func _render_discard_pile(container: Node2D, pile: Array, rotated_flags: Array, 
 
 
 # 牌河里预置的格子（按名字排序：格01…格24）；少于 2 个就当作「没有」
+var _pile_slots_cache := {}          # container -> Array（格子在场景里固定，缓存住）
+
 func _pile_slots(container: Node2D) -> Array:
-	var out: Array = []
+	# ★ 性能：每份 state 都要为「我 + 三家」各调一次，里面遍历子节点再排序太浪费。
 	if container == null:
-		return out
+		return []
+	var kids := container.get_child_count()
+	var key := container.get_instance_id()
+	var hit = _pile_slots_cache.get(key, null)
+	if hit is Dictionary and int((hit as Dictionary).get("n", -1)) == kids:
+		return (hit as Dictionary).get("arr", [])
+	var out: Array = []
 	for c in container.get_children():
 		if String(c.name).begins_with("格"):
 			out.append(c)
-	if out.size() < 2:
-		return []
-	out.sort_custom(func(a, b): return String(a.name) < String(b.name))
+	if out.size() >= 2:
+		out.sort_custom(func(a, b): return String(a.name) < String(b.name))
+	else:
+		out = []
+	_pile_slots_cache[key] = {"n": kids, "arr": out}
 	return out
 
 
@@ -14036,7 +14258,9 @@ func _process(delta: float) -> void:
 					srv_apply_state(rr.get("state"), rr.get("events"))
 	# ★ 长连接推送：服务端状态一变就发新的 ver 过来 → 立刻拉一次，不用等轮询周期
 	if srv != null and srv.has_method("push_tick"):
-		srv.call("push_set_seat", my_seat)
+		if _push_seat_sent != my_seat:          # ★ 每帧重发纯属浪费，座位变了才发
+			_push_seat_sent = my_seat
+			srv.call("push_set_seat", my_seat)
 		var pr: Dictionary = srv.call("push_tick")
 		if not pr.is_empty():
 			var pv := String(pr.get("ver", ""))
@@ -15081,10 +15305,19 @@ func _opp_near_node_name(who: String) -> String:
 #   上家 B = 视觉最下面两张（B01/B02）；下家 D = 视觉最上面两张（D01/D02）；
 #   对家 C = 视觉最左边两张（C01/C02，因为他的右边就是我的左边）。
 # 同时让「摸到的那张」紧跟着剩下手牌的摸牌端，间距始终不变。
+var _opp_hand_sig := {}
+
 func _refresh_opp_hand(who: String) -> void:
 	if tapai == null:
 		return
 	var n: int = opp_hands.get(who, []).size()
+	# ★ 性能：每次 state 都会对四家各调一次，每次摸 13 个节点改 visible。
+	#   张数 + 锚点位置都没变 → 一个节点都不碰。
+	var _near0 := tapai.get_node_or_null(_opp_near_node_name(who)) as Node2D
+	var _sig := "%d|%s" % [n, str(_near0.position) if _near0 != null else ""]
+	if String(_opp_hand_sig.get(who, "")) == _sig:
+		return
+	_opp_hand_sig[who] = _sig
 	for i in range(OPP_HAND_COUNT):
 		var node := tapai.get_node_or_null("%s%02d" % [who, i + 1])
 		if node == null:

@@ -55,6 +55,7 @@ extends Control
 const SelFrame := preload("res://sel_frame.gd")   # 统一彩框（图片）
 const HandShow := preload("res://hand_show.gd")  # 通用「手牌展示」面板
 const WinAnnounce := preload("res://win_announce.gd")  # 胡牌/流局播报
+const MatchAnnounce := preload("res://match_announce.gd")  # 半庄终局排行播报
 const WinConfirmButton := preload("res://win_confirm_button.gd")
 const HandPick := preload("res://hand_pick.gd")   # 统一「选手牌」界面
 const SkillPanel := preload("res://skill_panel.gd")  # 统一「技能选牌面板」
@@ -173,6 +174,11 @@ var game_over := false                 # 已和牌：停止一切行为
 var auto_next_scheduled := false       # 结算后已经排了「自动下一局」
 var hupai_label: Label                 # "胡牌"（旧节点，保留兼容）
 var win_announce: Control = null        # 新胡牌/流局播报
+var match_announce: Control = null      # 半庄终局：四家名次播报
+var match_active := false               # 终局播报正在显示
+var _match_waiting := false             # 我已经点过确认，等别人
+var _match_returned := false            # 已经回大厅（防重复）
+var _match_acc := 0.0
 var win_confirm_btn: Control = null      # 四家结算确认
 var result_confirmed := false
 var result_confirm_sig := ""
@@ -12487,6 +12493,99 @@ func srv_show_result(res: Dictionary) -> void:
 
 # 结算画面停一会儿，再按服务端规则进下一局（连庄 / 本场 / 场次推进都由服务端算）。
 # ── 结算确认：四个人都点后，服务端才放行下一局 ─────────────────────────
+# ── 半庄终局播报（四家名次 → 确认 → 一起回大厅）─────────────────────
+func _match_announce_get() -> Control:
+	if match_announce != null and is_instance_valid(match_announce):
+		return match_announce
+	var host: Node = get_parent()
+	if host == null:
+		host = self
+	var layer := host.get_node_or_null("MatchAnnounceLayer") as CanvasLayer
+	if layer == null:
+		layer = CanvasLayer.new()
+		layer.name = "MatchAnnounceLayer"
+		layer.layer = 30
+		host.add_child(layer)
+	match_announce = MatchAnnounce.new()
+	match_announce.name = "MatchAnnounce"
+	match_announce.visible = false
+	layer.add_child(match_announce)
+	match_announce.position = Vector2.ZERO
+	match_announce.size = get_viewport_rect().size
+	return match_announce
+
+
+func _show_match_final(rank, confirmed) -> void:
+	if match_active:
+		return
+	match_active = true
+	_match_waiting = false
+	_match_acc = 0.0
+	var a := _match_announce_get()
+	a.set_content({
+		"rank": rank if typeof(rank) == TYPE_ARRAY else [],
+		"my_seat": my_seat,
+		"confirmed": confirmed if typeof(confirmed) == TYPE_ARRAY else [],
+		"humans": srv_humans,
+	})
+	a.position = Vector2.ZERO
+	a.size = get_viewport_rect().size
+	a.visible = true
+	if not a.confirmed.is_connected(_match_confirm_press):
+		a.confirmed.connect(_match_confirm_press)
+	print("[终局] 半庄结束，名次：", rank)
+
+
+func _match_confirm_press() -> void:
+	_match_waiting = true
+	var r := srv_request({"op": "match_confirm", "seat": my_seat})
+	if r.is_empty():
+		_toast(_srv_err("终局确认：服务端没有回应"))
+		return
+	_match_apply(r)
+
+
+func _match_apply(r: Dictionary) -> void:
+	var done := bool(r.get("all_done", false))
+	var conf = r.get("confirmed", [])
+	if match_announce != null and is_instance_valid(match_announce):
+		var rk = r.get("final_rank", [])
+		if typeof(rk) == TYPE_ARRAY and not (rk as Array).is_empty() 				and (match_announce.rank_rows as Array).is_empty():
+			match_announce.rank_rows = rk
+			match_announce.queue_redraw()
+		match_announce.set_state(conf if typeof(conf) == TYPE_ARRAY else [], done)
+	if done:
+		match_active = false
+		_back_to_lobby()
+
+
+func _backend_lobby_ready() -> bool:
+	return true
+
+
+func _back_to_lobby() -> void:
+	if _match_returned:
+		return
+	_match_returned = true
+	print("[终局] 四家都已确认 → 回大厅")
+	await get_tree().create_timer(0.9).timeout
+	get_tree().change_scene_to_file("res://初始菜单.tscn")
+
+
+# 点过确认后每 1.5 秒问一次「别人点了没」，全齐就回大厅
+func _match_tick(delta: float) -> void:
+	if not match_active or _match_returned or not _match_waiting:
+		return
+	_match_acc += delta
+	if _match_acc < 1.5:
+		return
+	_match_acc = 0.0
+	var r := srv_request({"op": "match_confirm", "seat": my_seat})
+	if r.is_empty():
+		return
+	_match_apply(r)
+
+
 func _result_confirm_button_get() -> Control:
 	if win_confirm_btn != null and is_instance_valid(win_confirm_btn):
 		return win_confirm_btn
@@ -12575,6 +12674,8 @@ func _auto_next_round() -> void:
 		_result_confirm_apply(r.get("result_confirm", {}))
 		return
 	if bool(r.get("match_finished", false)):
+		# 半庄打完 → 弹「半庄终了」四家名次播报，四家确认后一起回大厅
+		_show_match_final(r.get("final_rank", []), r.get("confirmed", []))
 		return
 	var st = r.get("state")
 	if typeof(st) != TYPE_DICTIONARY:
@@ -14238,6 +14339,7 @@ func _process(delta: float) -> void:
 	_lease_tick(delta)
 	if game_over:
 		_result_confirm_tick(delta)
+	_match_tick(delta)
 	_skill_panel_stale_close()
 	_sync_c05_dead_buttons()     # Card05 王牌点击区：位置跟牌墩走
 	_refresh_start_btn_kinds()  # 先定「跳过/确认」状态（决定贴图 + 是否放大）

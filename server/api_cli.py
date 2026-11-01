@@ -469,11 +469,18 @@ def op_next(db: DB, req: dict) -> dict:
             # 东风战打完东四结束；半庄打完南四结束；西/北风只有更长赛制才会用到
             finished = (mode == "east_only") or (mode == "hanchan" and wind == "nan")
             if finished:
-                final = db.finish_match(row["match_id"])
+                # ★ 幂等：finish_match 会给天梯分加减，重复调用会重复加
+                if str(row["status"]) == "finished":
+                    final = _match_final(db, int(row["match_id"]))
+                else:
+                    final = db.finish_match(row["match_id"])
                 state = _state(db, rid, None if seat < 0 else seat)
                 return {"ok": True, "state": state, "events": [], "result": None,
                         "round_id": rid, "created": False, "match_finished": True,
-                        "final": final, "humans": sorted(_human_seats(db))}
+                        "final": final, "final_rank": _final_rank(final),
+                        "confirmed": sorted(_match_confirmed(db, int(row["match_id"]))),
+                        "match_id": int(row["match_id"]),
+                        "humans": sorted(_human_seats(db))}
             wind = {"dong": "nan", "nan": "xi", "xi": "bei", "bei": "dong"}.get(wind, "dong")
             number = 1
     started = op_start(db, {**req, "wind": wind, "number": number,
@@ -482,6 +489,105 @@ def op_next(db: DB, req: dict) -> dict:
     started["created"] = True
     started["next_of"] = rid
     return started
+
+
+MATCH_CONFIRM_KEY = "match_confirm_%d"   # match_id -> 已确认终局的座位
+MATCH_CLEARED_KEY = "match_cleared_%d"   # match_id -> "1"（房间数据已清）
+
+
+def _final_rank(final) -> list:
+    """{座位: 分数} → 1/2/3/4 名（分数从高到低；同分按座位号）。"""
+    try:
+        rows = [(int(s), int(v)) for s, v in (final or {}).items()]
+    except (TypeError, ValueError):
+        return []
+    rows.sort(key=lambda x: (-x[1], x[0]))
+    return [{"seat": s, "score": sc, "rank": i + 1} for i, (s, sc) in enumerate(rows)]
+
+
+def _match_id_of(db: DB) -> int | None:
+    rid = _get_round_id(db)
+    if rid is None:
+        return None
+    row = db._row("SELECT match_id FROM rounds WHERE round_id=?", (int(rid),))
+    return int(row["match_id"]) if row else None
+
+
+def _match_final(db: DB, mid: int) -> dict:
+    row = db._row("SELECT final_json FROM matches WHERE match_id=?", (int(mid),))
+    if not row or not row["final_json"]:
+        return {}
+    try:
+        return json.loads(str(row["final_json"])) or {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def _match_confirmed(db: DB, mid: int) -> set:
+    row = db._row("SELECT value FROM meta WHERE key=?", (MATCH_CONFIRM_KEY % int(mid),))
+    if not row:
+        return set()
+    try:
+        return {int(x) for x in (json.loads(str(row["value"])) or []) if int(x) in range(4)}
+    except (ValueError, TypeError):
+        return set()
+
+
+def _match_finished_info(db: DB, rid) -> dict:
+    """这一局所属的半庄已经打完了吗？是 → 带上终局排名（供轮询兜底）。"""
+    if rid is None:
+        return {}
+    row = db._row("SELECT m.match_id AS mid, m.status AS st, m.final_json AS fj "
+                  "FROM rounds r JOIN matches m ON m.match_id = r.match_id "
+                  "WHERE r.round_id=?", (int(rid),))
+    if not row or str(row["st"]) != "finished":
+        return {}
+    try:
+        final = json.loads(str(row["fj"])) if row["fj"] else {}
+    except (ValueError, TypeError):
+        final = {}
+    mid = int(row["mid"])
+    return {"match_finished": True, "final": final, "final_rank": _final_rank(final),
+            "match_id": mid, "confirmed": sorted(_match_confirmed(db, mid))}
+
+
+def op_match_confirm(db: DB, req: dict) -> dict:
+    """半庄终局确认：四家都点过确认 → 清房间数据，客户端各自回大厅。"""
+    seat = int(req.get("seat", -1))
+    mid = _match_id_of(db)
+    if mid is None:
+        # 数据已经被清掉了（有人先确认完）→ 直接告诉客户端「都结束了，可以退」
+        return {"ok": True, "all_done": True, "confirmed": [0, 1, 2, 3],
+                "final_rank": [], "cleared": True}
+    final = _match_final(db, mid)
+    rank = _final_rank(final)
+    cleared = False
+    with db.tx():
+        cur = _match_confirmed(db, mid)
+        if 0 <= seat <= 3:
+            cur.add(seat)
+        db.conn.execute("INSERT INTO meta(key,value) VALUES(?,?) "
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        (MATCH_CONFIRM_KEY % mid, json.dumps(sorted(cur))))
+        humans = set(_human_seats(db))
+        all_done = bool(humans) and humans.issubset(cur)
+        # ★ 全员确认 → 清这个房间的对局数据（每个 match 只清一次）
+        if all_done:
+            flag = db._row("SELECT value FROM meta WHERE key=?", (MATCH_CLEARED_KEY % mid,))
+            if not flag:
+                db.conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
+                                (MATCH_CLEARED_KEY % mid, "1"))
+                cleared = True
+    if cleared:
+        try:
+            op_wipe(db, {"seat": seat, "force": True})
+            log_line = "[match] %d 号半庄终局，四家已确认 → 房间数据已清理" % mid
+            print(log_line, flush=True)
+        except Exception as e:                              # noqa: BLE001
+            print("[match] 清理失败：%s" % e, flush=True)
+    return {"ok": True, "all_done": bool(all_done), "confirmed": sorted(cur),
+            "final_rank": rank, "cleared": cleared, "match_id": mid,
+            "state": None, "events": [], "result": None}
 
 
 def op_new_hanchan(db: DB, req: dict) -> dict:
@@ -579,8 +685,10 @@ def op_poll(db: DB, req: dict) -> dict:
         return {"ok": True, "state": None, "events": [], "result": None,
                 "round_id": rid, "ver": ver, "same": True, "humans": humans}
     g = _game(db, rid)
-    return {"ok": True, "state": st, "events": [], "result": g.result,
-            "round_id": rid, "ver": ver, "same": False, "humans": humans}
+    out = {"ok": True, "state": st, "events": [], "result": g.result,
+           "round_id": rid, "ver": ver, "same": False, "humans": humans}
+    out.update(_match_finished_info(db, rid))          # 半庄打完 → 带终局排名
+    return out
 
 
 def op_state(db: DB, req: dict) -> dict:
@@ -592,9 +700,11 @@ def op_state(db: DB, req: dict) -> dict:
         row = db._row("SELECT status FROM rounds WHERE round_id=?", (rid,)) if rid else None
         barrier = (_result_confirm_state(db, int(rid), -1 if seat is None else int(seat))
                    if row is not None and str(row["status"]) != "playing" else None)
-    return {"ok": True, "state": st, "events": [],
-            "result": st and st.get("result"), "result_confirm": barrier,
-            "round_id": rid, "humans": sorted(_human_seats(db))}
+    out = {"ok": True, "state": st, "events": [],
+           "result": st and st.get("result"), "result_confirm": barrier,
+           "round_id": rid, "humans": sorted(_human_seats(db))}
+    out.update(_match_finished_info(db, rid))          # 半庄打完 → 带终局排名
+    return out
 
 
 def _auto_ai(db: DB) -> bool:
@@ -710,7 +820,8 @@ _RIICHI_BLOCK_OPS = {
 # 以后新增 op 忘登记会直接抛错（历史 bug：白名单漏了 deal_skill 等 8 个发动点）。
 _NO_GATE_OPS = {
     # ── 非技能：流程 / 查询 / 游戏动作 ──
-    "join", "result_confirm", "next", "new_hanchan", "start", "deal_step", "state", "poll", "advance",
+    "join", "result_confirm", "next", "new_hanchan", "match_confirm",
+    "start", "deal_step", "state", "poll", "advance",
     "act", "wall", "step", "tenpai", "furiten", "ron", "judge",
     "wipe", "view_hand",
     "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
@@ -1186,6 +1297,7 @@ op_c32s1_swap = _simple("c32s1_swap", lambda g, s, r: g.c32s1_swap(
 _C34_FREE_OPS = {
     # 基础：看状态 / 推进 / 打牌 / 荣和 / 见逃 / 纯判定
     "join", "state", "step", "advance", "act", "pass", "ron", "tenpai", "furiten",
+    "match_confirm",
     "judge", "wall", "view_hand", "deal_step", "wipe", "next", "start",
     "new_hanchan", "test_seats",
     # 大厅
@@ -2313,6 +2425,7 @@ OPS = {
     "result_confirm": op_result_confirm,
     "next": op_next,
     "new_hanchan": op_new_hanchan,
+    "match_confirm": op_match_confirm,        # 半庄终局：四家确认 → 清房间
     "start": op_start,
     "deal_step": op_deal_step,
     "state": op_state,

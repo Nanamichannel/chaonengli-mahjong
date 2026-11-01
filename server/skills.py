@@ -222,8 +222,38 @@ def _round_no(wind: str, number: int) -> int:
     return base + max(1, min(4, int(number))) - 1
 
 
+def _round_cards_of(db, seat: int) -> list[int]:
+    """本局开始时的卡序快照（meta: round_cards_<round_id>）。
+
+    ★ 为什么需要：以前每局都现读 lobby_state。而大厅在某些情况下会被 reset
+      （比如所有座位租约都过期后有人 join），order 一没，cards_in_order 就退回
+      「33 张全卡」→ 玩家看到的人物卡跟大厅选的完全对不上。
+      开局那一刻把卡序抄进本局，之后就再也不受大厅影响。
+    """
+    try:
+        r = db._row("SELECT value FROM meta WHERE key='local_round_id'")
+        rid = int(r["value"]) if r else None
+    except (TypeError, ValueError, AttributeError):
+        rid = None
+    if rid is None:
+        return []
+    try:
+        row = db._row("SELECT value FROM meta WHERE key=?",
+                      ("round_cards_%d" % int(rid),))
+        if not row:
+            return []
+        snap = json.loads(str(row["value"])) or {}
+        o = [int(v) for v in (snap.get(str(int(seat))) or [])]
+        return o if len(o) >= 5 else []
+    except (ValueError, TypeError, AttributeError):
+        return []
+
+
 def order_of(db, seat: int) -> list[int]:
     """这家选的 5 张卡（前 4 张按角色轮换 = 主战，第 5 张 = 协战）"""
+    snap = _round_cards_of(db, seat)
+    if snap:
+        return snap
     row = db._row("SELECT value FROM meta WHERE key='lobby_state'")
     if not row:
         return []

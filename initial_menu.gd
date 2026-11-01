@@ -59,6 +59,7 @@ var title: Label
 var hint: Label
 var seat_box: ColorRect
 var seat_labels: Array = []
+var bot_btns: Array = []          # 每行一个「加人机 / 移除人机」按钮
 var ready_label: Label
 var ready_frame: ReferenceRect
 
@@ -290,13 +291,25 @@ func _build_ui() -> void:
 		var lb := Label.new()
 		lb.name = "Seat%d" % g
 		lb.position = Vector2(1444, 796 + g * 44)
-		lb.size = Vector2(440, 40)
+		lb.size = Vector2(296, 40)
 		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		lb.add_theme_font_size_override("font_size", 21)
 		lb.add_theme_color_override("font_outline_color", Color(0.04, 0.04, 0.08))
 		lb.add_theme_constant_override("outline_size", 4)
 		ui.add_child(lb)
 		seat_labels.append(lb)
+
+		# 人机开关：空位 → 「加人机」；已是人机 → 「移除人机」；自己那行不显示
+		var bb := Button.new()
+		bb.name = "SeatBot%d" % g
+		bb.position = Vector2(1748, 799 + g * 44)
+		bb.size = Vector2(126, 34)
+		bb.focus_mode = Control.FOCUS_NONE
+		bb.add_theme_font_size_override("font_size", 17)
+		bb.add_theme_color_override("font_color", Color(0.86, 0.93, 1.0))
+		bb.pressed.connect(_on_seat_bot_pressed.bind(g))
+		ui.add_child(bb)
+		bot_btns.append(bb)
 
 	ready_label = Label.new()
 	ready_label.name = "ReadyCount"
@@ -870,6 +883,8 @@ func _refresh_seats() -> void:
 		if is_ready:
 			ready_n += 1
 		var picks: Array = st.get("picks", [])
+		var bots_arr: Array = lobby.get("bots", [])
+		var is_bot := bots_arr.has(s)
 		var state_text := "等待中"
 		if phase == "draft":
 			var done := bool(pending[s]) if s < pending.size() else false
@@ -882,6 +897,13 @@ func _refresh_seats() -> void:
 			state_text = "已就绪"
 		elif is_ready:
 			state_text = "已准备"
+		if is_bot:
+			state_text = "人机 · 自动摸切/跳过技能"
+		var bb: Button = bot_btns[g] if g < bot_btns.size() else null
+		if bb != null:
+			# 只在「等待准备」阶段能增删：draft/order 中途加人机会打乱发好的牌
+			bb.visible = (s != my_seat) and phase == "waiting" and my_seat >= 0
+			bb.text = "移除人机" if is_bot else "加人机"
 		var lb: Label = seat_labels[g] if g < seat_labels.size() else null
 		if lb != null:
 			lb.text = " %s·%d号   %s" % [SEAT_NAMES[g], s, state_text]
@@ -907,6 +929,23 @@ func _refresh_seats() -> void:
 		var phase_cn := {"waiting": "等待准备", "draft": "传递选卡", "order": "调整顺序", "play": "即将开始"}
 		title.text = "天马 · %s —— 本窗口 %s" % [
 			String(phase_cn.get(phase, phase)), _seat_display_name(my_seat)]
+
+
+# 点座位旁边的「加人机 / 移除人机」
+#   ★ 目标座位用 bot_seat 传：seat 是「谁在操作」（服务端会拿它续租约）。
+func _on_seat_bot_pressed(g: int) -> void:
+	if my_seat < 0:
+		return
+	var s: int = (my_seat + g) % 4
+	var is_bot: bool = (lobby.get("bots", []) as Array).has(s)
+	var r: Dictionary = srv.request({
+		"op": "lobby_remove_bot" if is_bot else "lobby_add_bot",
+		"seat": my_seat, "bot_seat": s})
+	if not bool(r.get("ok", false)):
+		_set_hint(String(r.get("error", "操作失败")))
+		return
+	_set_hint("")
+	_apply_lobby(r.get("lobby", {}))
 
 
 func _refresh_ready_frame() -> void:

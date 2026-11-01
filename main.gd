@@ -539,6 +539,12 @@ func _srv_handle(r: Dictionary) -> Dictionary:
 		#   判断退化成「只认 0 号位」→ 1 个人坐 1 号位时没人发牌，界面卡死。
 		if typeof(r.get("humans")) == TYPE_ARRAY:
 			out_same["humans"] = r.get("humans")
+		# ★ 半庄结束的信息也必须带回去：状态没变化时（同一个 ver）这个分支直接返回，
+		#   以前把 match_finished 吞掉了 → 终局分数播报永远不弹，只看到最后那一局的流局。
+		if bool(r.get("match_finished", false)):
+			out_same["match_finished"] = true
+			out_same["final_rank"] = r.get("final_rank", [])
+			out_same["confirmed"] = r.get("confirmed", [])
 		return out_same
 	srv_up = bool(r.get("ok", false))
 	srv_note = "" if srv_up else String(r.get("error", ""))
@@ -14370,6 +14376,9 @@ func _process(delta: float) -> void:
 					srv_humans = rr.get("humans")
 				if not bool(rr.get("same", false)):
 					srv_apply_state(rr.get("state"), rr.get("events"))
+				# 半庄打完了 → 弹终局名次播报（不管是谁点下的最后一下确认）
+				if bool(rr.get("match_finished", false)) and not match_active:
+					_show_match_final(rr.get("final_rank", []), rr.get("confirmed", []))
 	# ★ 长连接推送：服务端状态一变就发新的 ver 过来 → 立刻拉一次，不用等轮询周期
 	if srv != null and srv.has_method("push_tick"):
 		if _push_seat_sent != my_seat:          # ★ 每帧重发纯属浪费，座位变了才发

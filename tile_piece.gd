@@ -303,15 +303,36 @@ func set_meld_clickable(v: bool) -> void:
 
 
 # 选中的牌河牌：黄色框
+# ── 彩框（彩虹描边）：两个来源共用同一道框，各记一份，互不覆盖 ──
+#   _frame_pick  = 技能选牌（点选牌河牌 / 选副露）
+#   _frame_claim = 鸣牌提示（这张牌能被吃 / 碰 / 杠）
+var _frame_pick := false
+var _frame_claim := false
+
+
 func set_selected_frame(v: bool) -> void:
-	# 彩框 = 一张图片（Sprite2D），盖在牌上；不吃鼠标、不做 Control 命中
+	if _frame_pick == v:
+		return
+	_frame_pick = v
+	_frame_sync()
+
+
+func set_claim_frame(v: bool) -> void:
+	if _frame_claim == v:
+		return
+	_frame_claim = v
+	_frame_sync()
+
+
+func _frame_sync() -> void:
+	# 彩框 = 自绘的彩虹描边（sel_frame_item.gd），盖在牌上；不吃鼠标
 	var sz := _base_size                              # 局部分尺寸：父节点 scale 会再乘一次
 	if _sel_frame == null:
 		_sel_frame = SelFrame.attach(self, sz)
 	else:
 		SelFrame.fit(_sel_frame, sz)
 	if _sel_frame != null:
-		_sel_frame.visible = v
+		_sel_frame.visible = _frame_pick or _frame_claim
 
 
 func _on_hit_gui_input(event: InputEvent) -> void:

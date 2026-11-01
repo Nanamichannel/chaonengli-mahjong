@@ -130,7 +130,11 @@ func _make_ui(tex_path: String) -> void:
 	ui.z_index = 250
 	holder.add_child(ui)
 	ui.position = Vector2.ZERO
-	var tex := load(tex_path) as Texture2D
+	var tex: Texture2D = null
+	if host != null and host.has_method("btn_tex"):
+		tex = host.call("btn_tex", "ok") as Texture2D      # 用牌桌的「确认」贴图（自带字）
+	if tex == null:
+		tex = load(tex_path) as Texture2D
 	var bh := 70.0
 	if tex != null and tex.get_width() > 0:
 		bh = BTN_W * float(tex.get_height()) / float(tex.get_width())
@@ -146,12 +150,4 @@ func _make_ui(tex_path: String) -> void:
 	if on_confirm.is_valid():
 		start_btn.pressed.connect(on_confirm)
 	ui.add_child(start_btn)
-	var lbl := Label.new()
-	lbl.text = "开始"
-	lbl.add_theme_font_size_override("font_size", 28)
-	lbl.add_theme_color_override("font_color", Color(0.06, 0.1, 0.2))
-	lbl.size = Vector2(BTN_W, 40)
-	lbl.position = Vector2(0, bh * 0.5 - 20.0)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	start_btn.add_child(lbl)
+	

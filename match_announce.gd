@@ -25,19 +25,21 @@ var humans: Array = []
 var busy := false                  # 已经点过确认，等别人
 var all_done := false
 
-var _btn: Button = null
+var _btn: Control = null     # 用 win_confirm_button.gd（青玉底+金字，自绘）
 var _font: Font = null
+
+
+func _btn_total() -> int:
+	return maxi(1, humans.size())
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	_btn = Button.new()
+	_btn = Control.new()
 	_btn.name = "Confirm"
-	_btn.text = "确认"
-	_btn.focus_mode = Control.FOCUS_NONE
-	_btn.add_theme_font_size_override("font_size", 28)
-	_btn.add_theme_color_override("font_color", Color(0.05, 0.10, 0.12))
-	_btn.pressed.connect(_on_btn)
+	_btn.set_script(load("res://win_confirm_button.gd"))
+	if _btn.has_signal("confirmed"):
+		_btn.connect("confirmed", _on_btn)
 	add_child(_btn)
 	_layout_btn()
 
@@ -68,9 +70,8 @@ func set_content(data: Dictionary) -> void:
 	humans = data.get("humans", []) if typeof(data.get("humans")) == TYPE_ARRAY else []
 	busy = false
 	all_done = false
-	if _btn != null:
-		_btn.text = "确认"
-		_btn.disabled = false
+	if _btn != null and _btn.has_method("set_state"):
+		_btn.call("set_state", false, confirmed_seats.size(), _btn_total())
 	_layout_btn()
 	queue_redraw()
 
@@ -80,12 +81,9 @@ func set_state(confirmed_now: Array, done: bool, wait_text := "") -> void:
 	all_done = done
 	busy = true
 	if _btn != null:
-		if done:
-			_btn.visible = false
-		else:
-			_btn.visible = true
-			_btn.disabled = true
-			_btn.text = wait_text if wait_text != "" else "等待其他家…"
+		_btn.visible = not done
+		if _btn.has_method("set_state"):
+			_btn.call("set_state", done, confirmed_seats.size(), _btn_total())
 	queue_redraw()
 
 
@@ -93,9 +91,8 @@ func _on_btn() -> void:
 	if busy or all_done:
 		return
 	busy = true
-	if _btn != null:
-		_btn.disabled = true
-		_btn.text = "等待其他家…"
+	if _btn != null and _btn.has_method("set_state"):
+		_btn.call("set_state", true, confirmed_seats.size(), _btn_total())
 	confirmed.emit()
 
 

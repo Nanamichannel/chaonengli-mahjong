@@ -528,11 +528,25 @@ func _manual_muted_slot(slot: int) -> bool:
 	return shown > 0 and int(_support_mute.get(seat, 0)) == shown
 
 
+# 这个位子上摆的那张卡「寿命到头」了吗？（服务端 char_states 里的 expired）
+func _slot_expired(slot: int) -> bool:
+	var seat := _seat_of_group((slot - 1) >> 1)
+	var st: Dictionary = _char_states.get(seat, {})
+	var shown := int(_slot_card.get(slot, -1))
+	if st.is_empty() or shown <= 0:
+		return false
+	for kind2 in ["main", "support"]:
+		var cand: Dictionary = st.get(kind2, {}) if typeof(st.get(kind2)) == TYPE_DICTIONARY else {}
+		if int(cand.get("card", -1)) == shown:
+			return bool(cand.get("expired", false))
+	return false
+
+
 func _char_masked(slot: int) -> bool:
 	var seat := _seat_of_group((slot - 1) >> 1)
 	if seat == _view_seat:
-		# 自己的卡：只有「手动遮罩的协战卡」才盖（否则自己看自己永远不遮）
-		return _manual_muted_slot(slot)
+		# 自己的卡：手动遮罩的协战卡 + 寿命到头的卡（到期 = 永久盖，不能取消）
+		return _manual_muted_slot(slot) or _slot_expired(slot)
 	# 别人的卡：没发动过 / 两风场过期 → 盖。
 	# ★ 【云外镜】(26S1)：我持有它时，服务端会给别人所有**没过期**的卡 open=True
 	#   → 下面 `not open` 为假 → **无视遮罩**（这条不能被手动遮罩逻辑挡掉，

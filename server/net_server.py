@@ -471,7 +471,13 @@ class Handler(BaseHTTPRequestHandler):
             # 同一房间的请求排队跑：SQLite 是单写者，排队比让它们互相等锁更快、更稳
             lock = _room_locks.setdefault(room, threading.Lock())
             with lock:
-                out = api_cli.handle(req, db_path=db_path)
+                # A14: same room must be serial (concurrent ops overwrite round_flags)
+                _locks = globals().setdefault("_ROOM_LOCKS", {})
+                _lk = _locks.get(room)
+                if _lk is None:
+                    _lk = _locks[room] = __import__("threading").Lock()
+                with _lk:
+                    out = api_cli.handle(req, db_path=db_path)
             out.setdefault("room", room)
         except Exception as e:                                   # noqa: BLE001
             log("[ERR ] %s/%s seat=%s %s\n%s" % (room, op, seat, e,

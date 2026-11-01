@@ -454,6 +454,11 @@ def owns_card(db, g, seat: int, card: int, *, strict: bool = False) -> bool:
     ri = _round_index(g.round_wind, g.round["number"])
     if int(card) not in (order[ri], order[4]):
         return False
+    # A10：寿命到头 = 永久失效（以前只画遮罩，服务端照样认 -> 卡还能发动）
+    _used = (_char_use(db) or {}).get("%d:%d" % (int(seat), int(card)))
+    if _used is not None:
+        if _round_no(g.round_wind, g.round["number"]) > int(_used) + 1:
+            return False
     # 协战卡被玩家手动遮罩 → 这张卡的一切技能判定都不成立
     if int(card) == int(order[4]) and int(support_muted(db, g, int(seat))) == int(card):
         return False

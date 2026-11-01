@@ -40,6 +40,7 @@ import lobby as lobby_mod                                # noqa: E402
 import skills                                            # noqa: E402
 from game import Game, RuleError                         # noqa: E402
 import game as game_mod                                  # noqa: E402
+import bot_ai                                           # 人机打牌 AI（kobalab/majiang-ai 移植）                                  # noqa: E402
 from rules import agari, tenpai, wallmodel                # noqa: E402
 from tiles import counts_of, parse_hand, sort_tiles      # noqa: E402
 
@@ -701,7 +702,38 @@ def _deal_catchup(g, max_steps: int = 3) -> int:
     return n
 
 
+# ── A2/A13：任何「只能某一家答」的询问，超时一律自动放行 ──────────────
+#   今晚踩过的：配牌技能窗口、向听换牌流程、海神还牌。一个人没点就锁死全桌。
+#   每分钟被 op_poll 调几十次，每个 *_timeout() 内部自己判「还没到点 → 返回 False」。
+_BOT_TIME = 0.0
+
+
+def _tick_timeouts(g) -> list:
+    """把各种挂起询问推到「超时就跳过」。全部 try/except：缺函数/状态不对都不影响。"""
+    out = []
+    for name in ("deal_skill_timeout", "deal_flow_timeout", "haishin_timeout",
+                 "kangpo_timeout", "pofa_timeout", "c42s2_timeout",
+                 "youyin_meld_timeout", "future_timeout", "c35_timeout",
+                 "c40s2_timeout", "c45s2_timeout", "c26_timeout", "act_timeout"):
+        fn = getattr(g, name, None)
+        if fn is None:
+            continue
+        try:
+            r = fn()
+        except Exception:
+            continue
+        if r:
+            out.append({"event": "timeout", "what": name, "ret": r if isinstance(r, dict) else True})
+    return out
+
+
 def op_poll(db: DB, req: dict) -> dict:
+    try:
+        _rid_t = _get_round_id(db)
+        if _rid_t:
+            _tick_timeouts(_game(db, _rid_t))   # A2/A13: 挂起询问超时自动放行
+    except Exception:
+        pass
     """轻量轮询：客户端带上次的 ver，没变化就只回 {"same": true}。
 
     没变化时**不回 state**（几十字节），客户端直接用本地那份。
@@ -752,6 +784,237 @@ def _auto_ai(db: DB) -> bool:
     return testfile.auto_ai()
 
 
+def _bot_discard(g, seat: int) -> str:
+    """人机打牌：AI 选一张，但**必须**是服务端 legal 允许的牌。
+
+    人机的手牌可能被别人的技能换掉 / 暗置 / 加杠，所以：
+      · 每次都从 DB 现读手牌（bot_ai.choose_discard 里读的就是 g.hand）
+      · 结果先和 legal_actions 对一遍，对不上就退回「摸切 → 手里第一张」
+      · 全程 try/except，绝不因为「选牌失败」把整桌卡死
+    """
+    legal: list[str] | None = None
+    try:
+        for a in g.legal_actions(seat):
+            if str(a.get("action")) == "discard":
+                ts = a.get("tiles") or []
+                if ts:
+                    legal = [str(x) for x in ts]
+                break
+    except Exception:
+        legal = None
+
+    cand = ""
+    try:
+        cand = bot_ai.choose_discard(g, seat)
+    except Exception:
+        cand = ""
+
+    def _norm(x: str) -> str:
+        return ("5" + x[1]) if len(x) == 2 and x[0] == "0" else x
+
+    drawn = ""
+    hand: list[str] = []
+    try:
+        drawn = g.drawn_tile(seat) or ""
+        hand = list(g.hand(seat) or [])
+    except Exception:
+        pass
+
+    order = [cand, drawn] + hand
+    for x in order:
+        if not x:
+            continue
+        if legal is None:
+            return x
+        if x in legal:
+            return x
+        for y in legal:                       # 赤五 0m 和普通 5m 当同一种
+            if _norm(y) == _norm(x):
+                return y
+    if legal:
+        return legal[0]
+    return hand[-1] if hand else ""
+
+
+def _bot_skip_asks(g, bots) -> list[dict]:
+    """人机被问到任何技能 → 一律跳过（用户口径 2026-11-01）。
+
+    只认「这一笔询问确实在等人机回答」的那几种，全部包 try/except；
+    返回本次产生的事件（非空 = 有进展，主循环继续推）。
+    """
+    ev: list[dict] = []
+    bots = set(int(b) for b in bots)
+
+    # ① 配牌技能窗口（deal_wait 里等人的座位）
+    try:
+        if getattr(g, "phase", "") == "deal_skill":
+            for s in sorted(set(getattr(g, "deal_wait", set()) or set()) & bots):
+                try:
+                    g.deal_action(s, "skip")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # ② 复制（c41）：池子里有东西就是在等人挑
+    try:
+        for s in sorted(set((getattr(g, "c41_ask", {}) or {}).keys()) & bots):
+            try:
+                ev.append(g.c41s1_skip(s))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # ③ 看破（kangpo）：被问的人里有人机 → 放行
+    try:
+        for s in sorted(bots):
+            # ★ kangpo_list() 是「这一局所有技能」的清单（给玩家挑一个剔除），
+            #   不是待答询问！以前拿它判「有人机在等看破」→ 永远为真 →
+            #   主循环每次都 continue，人机一张牌都打不出去（牌河不增长）。
+            try:
+                mine = g.act_ask_view(int(s))
+            except Exception:
+                mine = []
+            if mine:
+                try:
+                    ev.append(g.kangpo_skip(s))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # ④ 夺目（c42s2）：挂起的结算在等几家回答
+    try:
+        st = getattr(g, "c42s2_settle", None)
+        if isinstance(st, dict):
+            for s in sorted(set(st.get("waiting") or []) & bots):
+                try:
+                    ev.append(g.c42s2_answer(s, -1))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # ⑤ 破发（pofa）：被问的人机直接「过」
+    try:
+        pd = getattr(g, "pofa_pending", None)
+        if isinstance(pd, dict):
+            for s in sorted(set(pd.get("waiting") or []) & bots):
+                try:
+                    ev.append(g.pofa_pass(s))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # ⑥ 面板类技能：人机持有的话，面板会一直挂着等人点 → 用各自的「跳过/超时」
+    #    这里全部「先确认这一手确实是人机在等」，再调服务端那条安全的默认路径。
+    def _probe(fn, s):
+        try:
+            return bool(fn(s))
+        except Exception:
+            return False
+
+    # 三色同刻 / 三色同顺（c35）
+    try:
+        for s in sorted(bots):
+            if _probe(lambda x: g.c35_view(x), s):
+                try:
+                    g.c35_skip(s)
+                    ev.append({"event": "bot_skip", "seat": s, "what": "c35"})
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    # 神境（c45s2）
+    try:
+        for s in sorted(bots):
+            v = None
+            try:
+                v = g.c45s2_view(s)
+            except Exception:
+                v = None
+            if v:
+                try:
+                    ev.append(g.c45s2_auto())
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    # 恶听（c40s2）
+    try:
+        for s in sorted(bots):
+            tg = -1
+            try:
+                tg = int(g.c40s2_view_target(s))
+            except Exception:
+                tg = -1
+            if tg >= 0:
+                try:
+                    ev.append(g.c40s2_auto())
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    # 未来（c24s2 排序）
+    try:
+        for s in sorted(bots):
+            ft = None
+            try:
+                ft = g.future_view(s)
+            except Exception:
+                ft = None
+            if ft:
+                try:
+                    g.future_abort()
+                    ev.append({"event": "bot_skip", "seat": s, "what": "future"})
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    # 友引（副露摊面子）
+    try:
+        if getattr(g, "youyin_meld_seat", -1) in bots:
+            try:
+                ev.append(g.youyin_meld_skip())
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # 向听（c30s1）/ 新手运（c32s1）：各自有「交牌/换牌」两步，超时会自动走
+    try:
+        for s in sorted(bots):
+            if _probe(lambda x: g.c30_ask_for(x) == x, s):
+                try:
+                    g.c30s1_auto(s)
+                    ev.append({"event": "bot_skip", "seat": s, "what": "c30"})
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    try:
+        for s in sorted(bots):
+            if g.c32_give_target() == s:
+                try:
+                    ev.append(g.c32s1_auto(s))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    # 宝牌的集合（c25s2）：人机必须换 → 用服务端自己的自动换
+    try:
+        for s in sorted(bots):
+            if _probe(lambda x: g.c25s2_need(x) if hasattr(g, "c25s2_need") else False, s):
+                try:
+                    ev.append(g.c25s2_auto_swap(s))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return ev
+
+
 def _drive_others(db: DB, g: Game, human: int, limit: int = 24) -> list[dict]:
     """不是人类玩家的位置，交给服务器自己摸打（简单打刚摸那张）。
 
@@ -760,10 +1023,19 @@ def _drive_others(db: DB, g: Game, human: int, limit: int = 24) -> list[dict]:
     if not _auto_ai(db):
         return []                           # 关掉代打：谁的座位谁自己动
     humans = _human_seats(db) | {human}     # human = 发起请求的这个窗口
+    bots = {0, 1, 2, 3} - humans
     events: list[dict] = []
     for _ in range(limit):
         if g.phase == "ended":
             break
+        # 人机被问到技能 → 全部跳过（配牌 / 复制 / 看破 / 夺目 / 破发）
+        try:
+            _skip_ev = _bot_skip_asks(g, bots)
+        except Exception:
+            _skip_ev = []
+        if _skip_ev:
+            events.extend(_skip_ev)
+            continue
         p = getattr(g, "pending", None)
         if g.phase == "claim" and p:
             others = [s for s in p["options"] if s not in humans and s not in p["answers"]]
@@ -778,8 +1050,14 @@ def _drive_others(db: DB, g: Game, human: int, limit: int = 24) -> list[dict]:
             events.append(g.advance())
             continue
         if g.phase == "discard":
-            d = g.drawn_tile(g.turn) or ((g.hand(g.turn) or ["1m"])[-1])
-            events.append(g.act(g.turn, "discard", tile=d))
+            # ★ 人机不再无脑摸切：走 bot_ai（kobalab/majiang-ai 的思路）
+            t0 = _bot_discard(g, int(g.turn))
+            try:
+                events.append(g.act(int(g.turn), "discard", tile=t0))
+            except Exception:
+                # 万一 AI 给的牌服务端不认（被换牌/暗置/加杠过）→ 退回摸切
+                d = g.drawn_tile(g.turn) or ((g.hand(g.turn) or [""])[-1])
+                events.append(g.act(int(g.turn), "discard", tile=d))
             continue
         break
     return events
@@ -2835,6 +3113,19 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                             "error": "现在有人在等回答，稍后"}
         # 拦截树：可被拦的技能发动 → 先建节点；有人要答就停在这里（op 不执行）
         _gp = _gate_pair(op, req)
+        # A7【阻止】(31-2)：本回合被阻止过的「同一家 + 同一技能」不许再发一次
+        if _gp and isinstance(seat, int) and 0 <= int(seat) <= 3 and not req.get("_act_ran"):
+            _rid_s = req.get("round_id") or _get_round_id(db)
+            if _rid_s:
+                _gs = _game(db, _rid_s)
+                try:
+                    _stopd = _gs.c31s2_stopped_now(int(seat), int(_gp[0]), int(_gp[1]))
+                except Exception:
+                    _stopd = False
+                if _stopd:
+                    return {"ok": False, "state": _gs.state_for(int(seat)), "events": [],
+                            "result": _gs.result, "round_id": _rid_s,
+                            "error": "这个技能本回合已经被【阻止】了，这一巡不能再发动"}
         # ★ 注定发不动的（已经用过 / 时机不对）→ 不问看破，让 op 自己回真正的原因。
         #   不加这一条，客户端收到的永远是 need_kangpo =「等对方拦截」死循环。
         if (_gp and not req.get("_gate_ok") and not req.get("_act_ran")

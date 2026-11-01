@@ -5300,6 +5300,9 @@ func _cg_link_pick() -> void:
 
 
 func _cg_link_use(target: int) -> void:
+	# ★ 用户口径（2026-11-01）：用完【连接】手牌点不动、只能打摸的那张。
+	#   根因是 cg_kind 停在 "link_target" 没人清 → _skill_input_busy() 永远 true。
+	_cg_close()
 	if target == my_seat:
 		_toast("不能连自己")
 		return
@@ -11401,6 +11404,20 @@ const SEAT_PICK_SCRIPT := "res://seat_picker.gd"
 const SEAT_PICK_NO_SELF := ["c40s1", "c40s2", "c45s2a", "dy", "sight", "link", "xn", "duel", "skill2"]
 
 
+# 自愈：cg_kind 还挂着，但选单 UI 已经没了（也没在选人）→ 收掉。
+# 不这么做的话，一次失败/被拦截的技能流程就能让手牌永远点不动。
+func _cg_stale_close() -> void:
+	if cg_kind == "" or cg_active:
+		return
+	if cg_ui != null and is_instance_valid(cg_ui):
+		return
+	if seat_pick_mode != "" or dy_active or duel_selecting or xn_selecting:
+		return
+	if skill2_card != 0 or sf_active or future_active:
+		return
+	_cg_close()
+
+
 func _seat_pick_node() -> Control:
 	if seat_pick != null and is_instance_valid(seat_pick):
 		return seat_pick
@@ -12470,6 +12487,7 @@ func srv_apply_state(st, events = null) -> void:
 	# ★ 必须在 _apply_entity_states 之后：牌河那张的 discard_seq / river_seat
 	#   是这一步才写进 TilePiece 的，放前面会锁到「上一张」（用户报的 off-by-one）
 	_claim_frames_sync(st2)
+	_legal_guard(st2)
 	# 最后：如果服务端说「轮到我摸牌了」，我自己把摸牌推下去（见下面的注释）
 	_auto_draw_if_my_turn()
 
@@ -14019,6 +14037,29 @@ func _declare_guobiao(tile: String) -> void:
 
 
 # 服务端拒绝后重新拉一次 state（真实原因在 srv_note，界面回到正常态）
+# 这张牌现在能不能打？——B2：一张都不能打 = 本地 state 过期，强制重拉一次。
+var _legal_fix_ms := 0
+
+
+func _legal_guard(st: Dictionary) -> void:
+	if game_over or dealing or srv_busy:
+		return
+	if String(st.get("phase", "")) != "discard" or int(st.get("turn", -1)) != my_seat:
+		return
+	var tiles := display_tiles()
+	if (tiles as Array).is_empty():
+		return
+	for x in tiles:
+		if srv_can_discard_with(String(x)):
+			return
+	var now := Time.get_ticks_msec()
+	if now - _legal_fix_ms < 2000:
+		return
+	_legal_fix_ms = now
+	_dev_log("[LEGAL] 本地 legal 不可用（%d 张都不许打）→ 强制重拉 state" % (tiles as Array).size())
+	_pull_state()
+
+
 func _pull_state() -> void:
 	var st := srv_request({"op": "state", "seat": my_seat})
 	if not st.is_empty():
@@ -14619,6 +14660,7 @@ func _process(delta: float) -> void:
 		_result_confirm_tick(delta)
 	_match_tick(delta)
 	_skill_panel_stale_close()
+	_cg_stale_close()
 	_sync_c05_dead_buttons()     # Card05 王牌点击区：位置跟牌墩走
 	_refresh_start_btn_kinds()  # 先定「跳过/确认」状态（决定贴图 + 是否放大）
 	_sync_prompt_btns()          # 再排版：贴着手牌右边，确认态放大 1.5 倍且底部对齐
@@ -14894,6 +14936,9 @@ func _setup_opponents() -> void:
 
 # 那家摸完 OPP_DRAW_DELAY 秒后自动打出 → 手牌回到 13 张
 func _opp_auto_discard(who: String) -> void:
+	# ★ 同上：自己的座位不许走「对手自动打牌」这条
+	if who == who_of_seat(my_seat):
+		return
 	if game_over:
 		return
 	if not opp_pending or opp_drawn.get(who, "") == "":
@@ -15251,8 +15296,13 @@ func _chow_choose() -> void:
 	if groups.size() == 1:
 		if not srv_c29s1_ask().is_empty():
 			_c29s1_op("c29s1_chi")            # 只有一种吃法 → 服务端取 choices[0]
-		else:
-			srv_act("chi")
+			return
+		# ★ 只有「服务端确实开了鸣牌窗口」才自动吃（避免状态串了时莫名吃一张）
+		if typeof(srv_state.get("claim")) != TYPE_DICTIONARY:
+			return
+		if (groups[0] as Array).size() != 2:
+			return
+		srv_act("chi")
 		return
 	chi_groups = groups
 	chi_selecting = true
@@ -15882,6 +15932,9 @@ func find_feed_tile(hand: Array) -> String:
 # 其他家吃下（上家 = discarder 打出的 tile_id）
 func do_opp_chow(who: String, discarder: String, tile_id: String) -> bool:
 	if game_over or tile_id == "" or who == discarder:
+		return false
+	# ★ 自己那一家只由服务端 state 驱动；这里绝不能给自己「演」一手自动吃
+	if who == who_of_seat(my_seat):
 		return false
 	var hand: Array = opp_hands.get(who, [])
 	var groups := find_chow_groups_in(hand, tile_id)

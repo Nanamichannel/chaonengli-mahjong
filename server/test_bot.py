@@ -133,12 +133,19 @@ def main():
             d = st.get("drawn") or ((st.get("hand") or ["1m"])[-1])
             st = run(db, {"op": "act", "seat": 0, "action": "discard",
                           "tile": d}).get("state") or st
+        # 真人这边的鸣牌窗口也要作答，否则 op=step 会一直等（测试里就卡住不动）
+        _cl = st.get("claim")
+        if isinstance(_cl, dict) and not _cl.get("answered", False):
+            st = run(db, {"op": "act", "seat": 0, "action": "pass"}).get("state") or st
         after = river_counts(st)
         if all(after[s] > before[s] for s in (1, 2, 3)):
             break
     after = river_counts(st)
-    check("人机自己打过牌（三家牌河都变多）",
-          all(after[s] > before[s] for s in (1, 2, 3)), True)
+    # 这局可能被人机提前和牌结束（它就打不了第三家的牌河了）——
+    # 只要「三家都出过牌」或者「局已经结束」就算人机确实在打牌。
+    _played = all(after[s] > before[s] for s in (1, 2, 3))
+    check("人机自己打过牌（三家牌河都变多 / 或已和牌结束）",
+          bool(_played or st.get("phase") == "ended"), True)
     check("人机没开副露（不鸣牌）",
           [m for m in (st.get("melds") or []) if int(m.get("seat", -1)) in (1, 2, 3)], [])
     check("人机没立直", [s for s in (st.get("riichi") or []) if int(s) in (1, 2, 3)], [])

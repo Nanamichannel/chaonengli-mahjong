@@ -323,6 +323,7 @@ class Game:
         self.deal_flow: dict | None = None
         # Card31 S2【阻止】：每个持有者对每名玩家**每小局**最多一次
         self.c31s2_used: dict[int, set[int]] = {}
+        self.c31s2_stopped: dict[str, str] = {}     # A7: 本回合已被【阻止】的技能
         self.c33s1_on: set[int] = set()       # 染手：本小局用过的人
         self.c33s1_last: dict = {}            # 染手：上次的请求（看破放行重放用）
         self.c33s2_armed: int = -1            # 记忆：等着把下一张打暗置的人
@@ -606,6 +607,7 @@ class Game:
         self.deal_flow = df if isinstance(df, dict) and df else None
         self.c31s2_used = {int(k): set(int(x) for x in v)
                            for k, v in (f.get("c31s2_used") or {}).items()}
+        self.c31s2_stopped = dict(f.get("c31s2_stopped") or {})
         self.c33s1_on = {int(x) for x in (f.get("c33s1_on") or [])}
         self.c33s1_last = dict(f.get("c33s1_last") or {})
         _c33s2 = f.get("c33s2_armed")
@@ -929,6 +931,7 @@ class Game:
             "deal_flow": self.deal_flow,
             "c31s2_used": {str(k): sorted(int(x) for x in v)
                            for k, v in self.c31s2_used.items()},
+            "c31s2_stopped": dict(self.c31s2_stopped),
             "c33s1_on": sorted(int(x) for x in self.c33s1_on),
             "c33s1_last": dict(self.c33s1_last or {}),
             "c33s2_armed": int(self.c33s2_armed),
@@ -2108,7 +2111,20 @@ class Game:
         self.haishin_step[int(seat)] = 0
         # 破发窗口不在这里关：别家立直后要留给我决定（摸牌或破发时才清）                   # 打出牌了 → 不再是「交换后直接和牌」          # 打完牌了，「技能导致的自摸」窗口关闭
         if self.phase == "deal_skill" or self.deal_flow:
-            raise RuleError("配牌技能还没结算完，不能切牌")
+            # A0: phase 已经推进到 discard，说明配牌流程早走完了 -> 收掉残留，别再挡
+            if str(self.phase) != "deal_skill":
+                self.deal_flow = None
+                try:
+                    self.deal_wait.clear()
+                except Exception:
+                    pass
+                try:
+                    self.deal_deadline = 0.0
+                except Exception:
+                    pass
+                self.save_flags()
+            else:
+                raise RuleError("配牌技能还没结算完，不能切牌")
         if self.phase != "discard" or seat != self.turn:
             raise RuleError("还没轮到你打牌")
         if self.armed_skill and int(self.armed_skill.get("seat", -1)) == seat:
@@ -2505,6 +2521,22 @@ class Game:
         except Exception:
             return 0
         return int(data.get(str(int(seat)), 0) or 0)
+
+    def _turn_token(self) -> str:
+        """当前这一手的标记：谁在打 + 他打过几张。换人/换巡就变。"""
+        tn = self.turn
+        if tn is None:
+            return "-"
+        try:
+            return "%d-%d" % (int(tn), int(self.turn_count(int(tn))))
+        except Exception:
+            return "%d-?" % int(tn)
+
+    def c31s2_stopped_now(self, seat: int, card: int, skill: int) -> bool:
+        """A7：这个「座位+技能」在本回合是不是已经被【阻止】过。"""
+        key = "%d:%d:%d" % (int(seat), int(card), int(skill))
+        got = self.c31s2_stopped.get(key)
+        return got is not None and got == self._turn_token()
 
     def c31_block_price(self, seat: int) -> int:
         return int(self.C31_BLOCK_BASE) * (2 ** max(0, self.c31_block_used(int(seat))))
@@ -5243,6 +5275,9 @@ class Game:
             n["price"] = int(price)
         elif kind == "stop":
             self.c31s2_used.setdefault(by, set()).add(tgt)
+            # A7：本回合这个技能不许再发一次（否则花钱阻止毫无意义）
+            self.c31s2_stopped["%d:%d:%d" % (int(tgt), int(card), int(skill))] = \
+                self._turn_token()
         elif kind == "imm":
             left = self.c43s2_left(by)
             self.c43s2_uses[by] = max(0, left - 1)
@@ -11535,9 +11570,26 @@ class Game:
             with self.db.tx():
                 self.db.conn.execute("UPDATE rounds SET riichi_sticks = 0 WHERE round_id=?",
                                      (self.round_id,))
+        # A12：收付表必须守恒（供托已经单独加进 winner 了）。
+        #   不守恒就是某个钩子写死了数值（历史上出现过 {2:+10000, 1:-2000}）。
+        _dsum = sum(int(v) for v in deltas.values())
+        if _dsum != 0:
+            print("[SCORE] 收付不守恒！round=%s result=%s han=%s fu=%s points=%s "
+                  "deltas=%s sum=%d"
+                  % (self.round_id, result, han, fu, total, deltas, _dsum), flush=True)
+            res["deltas_sum"] = _dsum
+        # 宝牌明细也一起落库（以前 dora={}，出了"少算一张"根本查不出来）
+        _dora_detail = {}
+        for _y in (res.get("yaku") or []):
+            if str(_y.get("name", "")).startswith("宝牌"):
+                _dora_detail = dict(_y.get("detail") or {})
+                _dora_detail["han"] = int(_y.get("han", 0))
+                break
         self.db.finish_round(self.round_id, result, winner_seat=winner, loser_seat=loser,
                              han=han, fu=fu, points=total,
-                             yaku=[y["name"] for y in res["yaku"]], dora={}, deltas=deltas)
+                             yaku=[{"name": y["name"], "han": int(y.get("han", 0)),
+                                    "detail": y.get("detail")} for y in res["yaku"]],
+                             dora=_dora_detail, deltas=deltas)
         self.phase = "ended"                 # ← 停止游戏：legal_actions 变空、advance 不再发牌
         self.round_phase = "end"
         self.result = {"result": result, "winner": winner, "loser": loser,

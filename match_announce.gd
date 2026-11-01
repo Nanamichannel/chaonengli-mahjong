@@ -91,8 +91,9 @@ func _on_btn() -> void:
 	if busy or all_done:
 		return
 	busy = true
-	if _btn != null and _btn.has_method("set_state"):
-		_btn.call("set_state", true, confirmed_seats.size(), _btn_total())
+	if all_done:
+		return
+	busy = true
 	confirmed.emit()
 
 

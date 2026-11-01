@@ -12512,7 +12512,9 @@ func _match_announce_get() -> Control:
 	if layer == null:
 		layer = CanvasLayer.new()
 		layer.name = "MatchAnnounceLayer"
-		layer.layer = 30
+		# ★ 必须比 WinAnnounceLayer(31) 高：南四那一局的「流局/和牌播报」还开着，
+		#   层级低就会被整块盖住（2026-11-01 现场：只看到流局，看不到分数）。
+		layer.layer = 32
 		host.add_child(layer)
 	match_announce = MatchAnnounce.new()
 	match_announce.name = "MatchAnnounce"
@@ -12529,6 +12531,12 @@ func _show_match_final(rank, confirmed) -> void:
 	match_active = true
 	_match_waiting = false
 	_match_acc = 0.0
+	# 把「和牌/流局播报」收掉：它是上一小局的结算，分数播报才是终局
+	if win_announce != null and is_instance_valid(win_announce):
+		win_announce.visible = false
+	if win_announce != null and is_instance_valid(win_announce):
+		win_announce.scale = Vector2.ONE
+		win_announce.modulate = Color(1, 1, 1, 1)
 	var a := _match_announce_get()
 	a.set_content({
 		"rank": rank if typeof(rank) == TYPE_ARRAY else [],

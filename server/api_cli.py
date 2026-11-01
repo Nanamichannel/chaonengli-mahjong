@@ -348,12 +348,18 @@ def _result_players(db: DB, round_id: int) -> set[int]:
 
 def _result_confirm_state(db: DB, round_id: int, seat: int = -1) -> dict:
     humans = _result_players(db, round_id)           # 首次读取后锁定，避免租约轮询抖动
+    live = set(_human_seats(db))                     # ★ 现在真正还在发请求的座位
     required = set(range(4))
     confirmed = _result_confirmed(db, round_id)
-    confirmed |= (required - humans)                 # AI 位自动确认
+    confirmed |= (required - humans)                 # 从没在线过的座位（AI / 人机）→ 自动确认
+    # ★ 锁定时在线、现在已经没有租约的座位也算确认。
+    #   现场（2026-11-01）：界面一直显示 3/4，最后一个人永远不点 —— 因为
+    #   _result_players 在某一刻把「当时有过租约的座位」锁定成了 humans，
+    #   那些座位后来其实没人了（人机 / 关掉的窗口），却还在等它确认。
+    confirmed |= (humans - live)
     return {"round_id": int(round_id), "confirmed": sorted(confirmed),
             "required": sorted(required), "ready": required.issubset(confirmed),
-            "humans": sorted(humans)}
+            "humans": sorted(humans), "live": sorted(live)}
 
 
 def op_result_confirm(db: DB, req: dict) -> dict:

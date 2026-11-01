@@ -34,3 +34,9 @@ screenshots/
 *.tmp
 /_*.png
 server/_tl.txt
+
+# 部署包 / 服务器口令（千万别传）
+tianma-server.tar.gz
+net.cfg
+net.cfg.*
+server/net_config.json

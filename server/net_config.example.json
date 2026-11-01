@@ -1,5 +1,5 @@
 {
-  "_说明": "复制成 net_config.json 再改。db 相对 server/ 目录；token 留空 = 不校验（只适合局域网）。allow_auto_rooms=false 时只能用下面列出的房间 —— 公网部署必须设 false，否则随便一个 /rpc/任意名字 就能开一个不带口令的新房间，token 等于白设。",
+  "_说明": "复制成 net_config.json 再改。db 相对 server/ 目录；token 留空 = 不校验（只适合局域网）。allow_auto_rooms=true 时任意房间名都能开，但新房间会继承 default 的口令。room_idle_minutes = 闲置多少分钟就自动清理那个房间（0 或负数 = 不清理；net_config.json 里列出的房间永远不会被清理）。",
   "allow_auto_rooms": false,
   "default_room": "default",
   "rooms": {
@@ -7,5 +7,6 @@
       "token": "把这里换成你自己的口令",
       "db": "data/mahjong.db"
     }
-  }
+  },
+  "room_idle_minutes": 10
 }

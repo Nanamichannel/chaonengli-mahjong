@@ -67,6 +67,15 @@ DEFAULT_ROOM = "default"
 #   开着的时候，任何人拿 /rpc/随便写 就能开一个**不带口令**的新房间 ——
 #   等于绕过了房间 token。公网部署请在 net_config.json 里写 "allow_auto_rooms": false。
 ALLOW_AUTO_ROOMS = True
+
+# ── 闲置房间回收 ──────────────────────────────────────────────────
+# 自动建的房间（1009 / abc …）如果 10 分钟没人来，就关连接 + 删库。
+#   · net_config.json 里显式配过的房间（default）**永不回收** —— 那是正式档案
+#   · 还有人挂着长连接（WebSocket）的房间不算闲置
+#   · room_idle_minutes 可以调；<= 0 表示关掉回收
+ROOM_IDLE_SEC = 600.0
+CONFIGURED_ROOMS: set[str] = set()
+ROOM_LAST_SEEN: dict[str, float] = {}
 _room_locks: dict[str, threading.Lock] = {}
 _lock_guard = threading.Lock()
 
@@ -134,7 +143,7 @@ def _do_push(room: str, ver: str, seats: list) -> None:
 
 def load_config(path: str) -> None:
     """读 net_config.json；没有就用「单房间 default + 老的 mahjong.db」。"""
-    global ROOMS, DEFAULT_ROOM, ALLOW_AUTO_ROOMS
+    global ROOMS, DEFAULT_ROOM, ALLOW_AUTO_ROOMS, ROOM_IDLE_SEC, CONFIGURED_ROOMS
     rooms: dict[str, dict] = {}
     default = "default"
     allow_auto = True
@@ -147,6 +156,11 @@ def load_config(path: str) -> None:
             cfg = {}
         default = str(cfg.get("default_room") or "default")
         allow_auto = bool(cfg.get("allow_auto_rooms", True))
+        try:
+            _m = float(cfg.get("room_idle_minutes", 10))
+        except (TypeError, ValueError):
+            _m = 10.0
+        ROOM_IDLE_SEC = max(0.0, _m * 60.0)
         for name, spec in (cfg.get("rooms") or {}).items():
             spec = spec if isinstance(spec, dict) else {}
             db = str(spec.get("db") or os.path.join("data", "room_%s.db" % name))
@@ -158,6 +172,7 @@ def load_config(path: str) -> None:
                              "db": os.path.join(HERE, "data", "mahjong.db")}}
     ROOMS = rooms
     ALLOW_AUTO_ROOMS = allow_auto
+    CONFIGURED_ROOMS = set(rooms.keys())        # 这些永不回收
     DEFAULT_ROOM = default if default in rooms else sorted(rooms)[0]
     for name in rooms:
         _room_locks.setdefault(name, threading.Lock())
@@ -177,7 +192,8 @@ def room_of(name: str) -> str:
         if name not in ROOMS:
             if not ALLOW_AUTO_ROOMS:
                 return ""                    # 调用方当 404 处理（公网推荐这样）
-            # ★ 自动建的房间**继承 default 的口令**：否则任何人不带口令开一个
+            ROOM_LAST_SEEN[name] = time.time()
+        # ★ 自动建的房间**继承 default 的口令**：否则任何人不带口令开一个
             #   /rpc/随便什么 就能玩，token 形同虚设。
             inherit = str((ROOMS.get(DEFAULT_ROOM) or {}).get("token") or "")
             db = os.path.join(HERE, "data", "room_%s.db" % name)
@@ -185,6 +201,7 @@ def room_of(name: str) -> str:
             _room_locks.setdefault(name, threading.Lock())
             log("[room] 自动创建房间 %s → %s（口令%s）"
                 % (name, db, "继承 default" if inherit else "：无"))
+        ROOM_LAST_SEEN[name] = time.time()
         return name
 
 
@@ -194,6 +211,70 @@ def room_of(name: str) -> str:
 #   · net_config.json 里显式配过的房间不删（那是"正式房间"）
 #   · 只删超过 STALE_HOURS 小时没被写过的（启动时没人在玩，安全）
 STALE_HOURS = 72.0
+
+
+def reap_idle_rooms() -> int:
+    """回收闲置房间：10 分钟没人来 → 关连接、删库、从路由表里摘掉。
+
+    安全前提（三条都满足才动）：
+      · 不是 net_config.json 里显式配过的房间
+      · 没有活跃的 WebSocket 长连接
+      · 没有请求正在处理（拿得到房间锁）
+    """
+    if ROOM_IDLE_SEC <= 0:
+        return 0
+    now = time.time()
+    with _lock_guard:
+        victims = [n for n, t in list(ROOM_LAST_SEEN.items())
+                   if n not in CONFIGURED_ROOMS and n != DEFAULT_ROOM
+                   and (now - float(t)) >= ROOM_IDLE_SEC]
+    killed = 0
+    for name in victims:
+        try:
+            if ws_push.peers(name) > 0:
+                continue                    # 还有人挂着长连接 → 不算闲置
+            with _lock_guard:
+                lock = _room_locks.get(name)
+            if lock is None:
+                lock = _room_locks.setdefault(name, threading.Lock())
+            if not lock.acquire(blocking=False):
+                continue                    # 正在处理请求，下一轮再看
+            try:
+                with _lock_guard:
+                    spec = ROOMS.pop(name, None)
+                    ROOM_LAST_SEEN.pop(name, None)
+                    _room_locks.pop(name, None)
+                    _push_locks.pop(name, None)
+                    _push_last.pop(name, None)
+                if not spec:
+                    continue
+                db_path = str(spec.get("db") or "")
+                api_cli.drop_cached_db(db_path)
+                for suf in ("", "-wal", "-shm"):
+                    p = db_path + suf
+                    if p and os.path.exists(p):
+                        try:
+                            os.remove(p)
+                        except OSError:
+                            pass
+                log("[clean] 房间 %s 闲置超过 %.0f 分钟 → 已清理"
+                    % (name, ROOM_IDLE_SEC / 60.0))
+                killed += 1
+            finally:
+                lock.release()
+        except Exception as e:                               # noqa: BLE001
+            log("[clean] 清理房间 %s 失败：%s" % (name, e))
+    return killed
+
+
+def _reaper_loop() -> None:
+    while True:
+        interval = min(30.0, max(2.0, ROOM_IDLE_SEC / 4.0)) if ROOM_IDLE_SEC > 0 else 30.0
+        time.sleep(interval)
+        try:
+            reap_idle_rooms()
+        except Exception:                                    # noqa: BLE001
+            pass
 
 
 def purge_stale_rooms() -> None:
@@ -436,7 +517,11 @@ def main() -> int:
     log("  数据：%s" % os.path.join(HERE, "data"))
     log("  日志：%s" % LOG_PATH)
     log("=" * 64)
-    purge_stale_rooms()          # 清掉长期没人用的房间库（见 STALE_HOURS）
+    purge_stale_rooms()          # 启动时清掉长期没人用的房间库（见 STALE_HOURS）
+    if ROOM_IDLE_SEC > 0:
+        log("  闲置回收：%d 分钟没动静的房间自动清理（配置里配过的房间除外）"
+            % int(ROOM_IDLE_SEC // 60))
+        threading.Thread(target=_reaper_loop, name="room-reaper", daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

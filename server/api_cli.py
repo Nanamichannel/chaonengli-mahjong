@@ -2496,6 +2496,20 @@ def _open_db(db_path: str):
         return d
 
 
+def drop_cached_db(db_path: str) -> None:
+    """把某个房间的缓存连接关掉（闲置房间回收时用，见 net_server.reap_idle_rooms）。"""
+    if not db_path:
+        return
+    key = os.path.abspath(db_path)
+    with _DB_CACHE_LOCK:
+        slot = _DB_CACHE.pop(key, None)
+    if slot:
+        try:
+            slot["db"].close()
+        except Exception:                                # noqa: BLE001
+            pass
+
+
 def close_cached_dbs() -> None:
     with _DB_CACHE_LOCK:
         slots = list(_DB_CACHE.values())

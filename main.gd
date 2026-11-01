@@ -526,7 +526,14 @@ func _srv_handle(r: Dictionary) -> Dictionary:
 		# 服务端说没变化 → 直接用本地那份（行为完全不变，但省掉 21KB + 解析）
 		srv_up = true
 		srv_note = ""
-		return {"ok": true, "state": srv_state, "events": [], "result": null, "same": true}
+		var out_same := {"ok": true, "state": srv_state, "events": [], "result": null,
+			"same": true}
+		# ★ humans 必须带回去：「谁在线」不在 state 里，只在响应顶层。
+		#   以前这个分支把它丢了 → 客户端 srv_humans 永远是空 → 「配牌推进者」
+		#   判断退化成「只认 0 号位」→ 1 个人坐 1 号位时没人发牌，界面卡死。
+		if typeof(r.get("humans")) == TYPE_ARRAY:
+			out_same["humans"] = r.get("humans")
+		return out_same
 	srv_up = bool(r.get("ok", false))
 	srv_note = "" if srv_up else String(r.get("error", ""))
 	if not srv_up:
@@ -14084,7 +14091,10 @@ func show_hupai(win: Dictionary = {}) -> void:
 # 于是别的窗口就成了最小号，自动接手把配牌推完）
 func _is_deal_driver() -> bool:
 	if srv_humans.is_empty():
-		return my_seat == 0
+		# ★ 不知道谁在线 → 谁都可以推。deal_step 在服务端是「按 deal_i 顺计划走」，
+		#   多个人同时推不会重复发牌（事务串行 + 进度指针），顶多多几个请求。
+		#   以前这里写「只认 0 号位」，一旦人是 1/2/3 号位就永久卡死（2026-11-01 现场）。
+		return true
 	var mn := 3
 	for h in srv_humans:
 		mn = mini(mn, int(h))

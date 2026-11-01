@@ -512,6 +512,28 @@ def _state_ver(st) -> str:
     return hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def _deal_catchup(g, max_steps: int = 3) -> int:
+    """配牌兜底：客户端没人推进时，服务端自己往前推几步。
+
+    ★ 现场事故（2026-11-01）：客户端只有「座位号最小的真人」负责推配牌
+      （main.gd 的 _is_deal_driver）。而状态没变化时服务端回 {"same": true}
+      不带 humans 字段 → 客户端拿不到「谁在线」，判断退化成「只认 0 号位」。
+      1 个人玩 + 3 个人机时人是 1 号位 → 没人推 → 一张牌都不发，界面卡死。
+
+    deal_step 是按 deal_i 顺着计划走的，重复调用既不会重复发牌也不会跳步，
+    所以这里由服务端补推是安全的（客户端正常推的时候，两边最多各推一步，
+    由事务串行化，进度以 deal_i 为准）。
+    """
+    n = 0
+    try:
+        while n < max_steps and getattr(g, "round_phase", "") == "deal":
+            g.deal_step()
+            n += 1
+    except Exception:                                    # noqa: BLE001
+        pass
+    return n
+
+
 def op_poll(db: DB, req: dict) -> dict:
     """轻量轮询：客户端带上次的 ver，没变化就只回 {"same": true}。
 
@@ -520,7 +542,9 @@ def op_poll(db: DB, req: dict) -> dict:
     rid = req.get("round_id") or _get_round_id(db)
     seat = req.get("seat")
     seat = int(seat) if isinstance(seat, int) else None
-    st = _state(db, rid, seat)
+    with db.tx():
+        _deal_catchup(_game(db, rid))          # ← 配牌没人推时由服务端补
+        st = _state(db, rid, seat)
     ver = _state_ver(st)
     humans = sorted(_human_seats(db))
     if str(req.get("ver", "")) == ver:
@@ -534,10 +558,12 @@ def op_poll(db: DB, req: dict) -> dict:
 def op_state(db: DB, req: dict) -> dict:
     rid = req.get("round_id") or _get_round_id(db)
     seat = req.get("seat")
-    st = _state(db, rid, None if seat is None else int(seat))
-    row = db._row("SELECT status FROM rounds WHERE round_id=?", (rid,)) if rid else None
-    barrier = (_result_confirm_state(db, int(rid), -1 if seat is None else int(seat))
-               if row is not None and str(row["status"]) != "playing" else None)
+    with db.tx():
+        _deal_catchup(_game(db, rid))          # ← 同上：配牌兜底
+        st = _state(db, rid, None if seat is None else int(seat))
+        row = db._row("SELECT status FROM rounds WHERE round_id=?", (rid,)) if rid else None
+        barrier = (_result_confirm_state(db, int(rid), -1 if seat is None else int(seat))
+                   if row is not None and str(row["status"]) != "playing" else None)
     return {"ok": True, "state": st, "events": [],
             "result": st and st.get("result"), "result_confirm": barrier,
             "round_id": rid, "humans": sorted(_human_seats(db))}

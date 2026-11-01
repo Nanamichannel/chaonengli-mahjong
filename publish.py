@@ -48,7 +48,6 @@ def _read_token() -> str:
     return ""
 
 EMPTY_TOKEN = 'const DEFAULT_TOKEN := ""'
-FILLED_TOKEN = 'const DEFAULT_TOKEN := "%s"' % TOKEN
 
 
 def main() -> int:

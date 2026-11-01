@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import sys
+import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -48,6 +49,12 @@ LEASE_KEY = "seat_lease_%d"      # 每个座位一条租约（谁在操作这个
 RESULT_CONFIRM_KEY = "result_confirm_%d"  # round_id -> 已确认结算的座位数组
 RESULT_PLAYERS_KEY = "result_players_%d"  # round_id -> 本次需要手动确认的真人座位
 LEASE_TTL = 12.0                 # 秒：这么久没发过请求，就认为这个窗口关了 → 交回 AI
+# ★ 客户端进程号只有「服务端和客户端在同一台机器」时才有意义。
+#   单机多窗口（本机 ServerBridge）＝ 进程查得到，用 pid 判活最快；
+#   联机（net_server）＝ 玩家在别的机器上，他的 pid 在这台服务器上根本不存在，
+#   拿它判活会得出「人都走了」→ 4 个人同时进房全撞 0 号位（已实测复现）。
+#   net_server 启动时会把它关掉。
+LEASE_PID_LOCAL_ONLY = True
 NICKNAMES = ["我", "下家", "对家", "上家"]                 # 座位 0/1/2/3 = 我 / 右 / 上 / 左
 
 
@@ -115,6 +122,13 @@ def _lease_value(pid=None) -> str:
     try:
         p = int(pid) if pid is not None else 0
     except (TypeError, ValueError):
+        p = 0
+    if p > 0 and not LEASE_PID_LOCAL_ONLY:
+        p = 0
+    if p > 0 and not _pid_alive(p):
+        # ★ 这个进程号在本机不存在 → 客户端在**别的机器**上（公网/局域网联机）。
+        #   跨机器的 pid 毫无意义，记下来只会让 _human_seats() 误判成「人已经走了」。
+        #   不记它 → 改按时间判活（LEASE_TTL = 12 秒，客户端每 2 秒就有一次请求，够用）。
         p = 0
     return f"{time.time():.3f}:{p}" if p > 0 else f"{time.time():.3f}"
 
@@ -647,6 +661,7 @@ _NO_GATE_OPS = {
     "wipe", "view_hand",
     "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
     "lobby_state", "lobby_unorder", "test_seats",
+    "lobby_add_bot", "lobby_remove_bot",      # 房间管理，不是技能，不问看破
     # ── 看破自己 / 取消 ──
     "kangpo", "kangpo_answer", "kangpo_skip", "skill_cancel", "card05_cancel",
     # ── 结算类技能：永远不能被看破 ──
@@ -1121,7 +1136,7 @@ _C34_FREE_OPS = {
     "new_hanchan", "test_seats",
     # 大厅
     "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
-    "lobby_state", "lobby_unorder",
+    "lobby_state", "lobby_unorder", "lobby_add_bot", "lobby_remove_bot",
     # 应答类（被别人问 / 取消 / 遮罩）：不是「自己发动技能」
     "deal_skill", "deal_swap", "south_wind_kinds", "south_wind_swap",
     "haishin_give", "haishin_swap", "haishin_pass",
@@ -2226,6 +2241,8 @@ def op_wall(db: DB, req: dict) -> dict:
 OPS = {
     "join": op_join,
     "lobby_join": lobby_mod.op_join,
+    "lobby_add_bot": lobby_mod.op_add_bot,       # 放入人机（自动摸切 / 跳过技能）
+    "lobby_remove_bot": lobby_mod.op_remove_bot,
     "lobby_state": lobby_mod.op_state,
     "lobby_ready": lobby_mod.op_ready,
     "lobby_pick": lobby_mod.op_pick,
@@ -2372,7 +2389,10 @@ if set(OPS) - _GATE_KNOWN or _GATE_KNOWN - set(OPS) or _gate_dup:
 #   · 只给 net_server 打开（CACHE_CONN=True）；测试脚本保持默认 False，
 #     否则测试里删库文件会撞到未关闭的连接（WinError 32）。
 CACHE_CONN = False
-_DB_CACHE: dict = {}
+_DB_CACHE: dict = {}            # key -> {"db": DB, "used": float}
+_DB_CACHE_MAX = 50              # ★ 最多缓存这么多房间的连接
+_DB_CACHE_IDLE = 60.0           # ★ 只淘汰「空闲超过这么久」的（还在用的绝不关）
+_DB_CACHE_LOCK = threading.Lock()
 
 
 def _open_db(db_path: str):
@@ -2380,25 +2400,51 @@ def _open_db(db_path: str):
 
     原来 handle() 每次都 db.init_schema()（查 meta 表 = 碰磁盘），
     实测这就是「空闲 200ms 后第一个请求要 57~72ms」的来源。
+
+    ★ LRU：以前这个字典**只增不减**，每开一个新房间就多一条 sqlite 连接
+      （每连接 cache_size = 16MB），跑上几天内存就被僵尸房间吃满。
+      现在超过 _DB_CACHE_MAX 条就把最久没用的关掉。
     """
     if not CACHE_CONN:
         return DB(db_path)
     key = os.path.abspath(db_path)
-    d = _DB_CACHE.get(key)
-    if d is None:
+    now = time.time()
+    with _DB_CACHE_LOCK:
+        slot = _DB_CACHE.pop(key, None)          # 先摘出来 → 重新插到末尾 = LRU
+        if slot is not None:
+            slot["used"] = now
+            _DB_CACHE[key] = slot
+            return slot["db"]
         d = DB(key)
         d.init_schema()
-        _DB_CACHE[key] = d
-    return d
+        _DB_CACHE[key] = {"db": d, "used": now}
+        # 超上限 → 淘汰最久没用、且**空闲够久**的（空闲中的才可能没人在用）
+        if len(_DB_CACHE) > _DB_CACHE_MAX:
+            order = sorted(_DB_CACHE.items(), key=lambda kv: kv[1]["used"])
+            for old_key, old_slot in order:
+                if len(_DB_CACHE) <= _DB_CACHE_MAX:
+                    break
+                if now - old_slot["used"] < _DB_CACHE_IDLE:
+                    break                        # 剩下的都是热连接，先留着
+                if old_key == key:
+                    continue
+                _DB_CACHE.pop(old_key, None)
+                try:
+                    old_slot["db"].close()
+                except Exception:                # noqa: BLE001
+                    pass
+        return d
 
 
 def close_cached_dbs() -> None:
-    for d in list(_DB_CACHE.values()):
+    with _DB_CACHE_LOCK:
+        slots = list(_DB_CACHE.values())
+        _DB_CACHE.clear()
+    for s in slots:
         try:
-            d.close()
+            s["db"].close()
         except Exception:                                     # noqa: BLE001
             pass
-    _DB_CACHE.clear()
 
 
 def handle(req: dict, db_path: str = DB_PATH) -> dict:

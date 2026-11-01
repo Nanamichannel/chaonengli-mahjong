@@ -1,0 +1,38 @@
+# 天马麻将 —— Caddy 反代（自动 HTTPS + 自动转发 WebSocket）
+#
+# 安装 Caddy：
+#   sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+#   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+#     | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+#   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+#     | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+#   sudo apt update && sudo apt install -y caddy
+#
+# 然后：把下面第一行换成你自己的域名 → 写到 /etc/caddy/Caddyfile
+#       sudo systemctl reload caddy
+#
+# 前提：域名 A 记录已经指到这台服务器的公网 IP，且 80/443 都放行了。
+
+mahjong.example.com {
+    # ★ 不要加 encode gzip：服务端自己已经 gzip 了，重复压缩会出问题
+    reverse_proxy 127.0.0.1:8000
+
+    # 长连接（WebSocket 推送）要放宽超时，Caddy 默认其实够，这里显式写死
+    header {
+        Strict-Transport-Security "max-age=31536000"
+    }
+
+    log {
+        output file /var/log/caddy/tianma.log {
+            roll_size 20mb
+            roll_keep 5
+        }
+    }
+}
+
+# ── 如果暂时没有域名，只有公网 IP（没有 HTTPS，token 会明文传）──
+# 删掉上面整段，用这个（把 IP 换成你的）：
+#
+# :80 {
+#     reverse_proxy 127.0.0.1:8000
+# }

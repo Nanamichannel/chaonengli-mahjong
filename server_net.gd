@@ -25,7 +25,13 @@ const ROOM_MEMO := "user://room.txt"
 # 内置默认服务器：导出版「双击就联机」，朋友不用写 net.cfg。
 #   · 编辑器里不生效（OS.has_feature("template") == false）→ 单机调试不受影响
 #   · exe 同目录放 net.cfg 会覆盖这里（想连别的服务器/单机就放一个）
-const DEFAULT_URL := "https://desktop-an1ub6a.tail7ef5a6.ts.net"
+const DEFAULT_URL := "http://115.159.39.131:8000"   # 云服务器（2026-11-01 部署）
+# 房间口令：和服务器 net_config.json 里 "default" 房间的 token 必须一致。
+# ★ 仓库里**故意留空** —— 这是公开仓库，口令写进源码等于公开。
+#   实际口令放在 exe 同目录的 net.cfg 里（那个文件被 .gitignore 排除）：
+#     { "url": "...", "room": "default", "token": "<口令>" }
+#   net.cfg 里的 token 为空时才会用到这个常量。
+const DEFAULT_TOKEN := ""
 
 var enabled := false
 var url := ""
@@ -73,7 +79,7 @@ func _load_cfg() -> void:
 			return                               # 没有配置文件（且无内置地址 / 在编辑器里）= 单机模式
 		url = DEFAULT_URL
 		room = "default"
-		token = ""
+		token = DEFAULT_TOKEN
 		# ★ 这条以前直接 return，把「大厅选的房间号」整段跳过了 →
 		#   大厅在 1145、进牌桌却连回 default（两家的卡序/遮罩完全不一样，
 		#   桌面人物卡跟大厅选的对不上）。现在两条路都走同一个房间解析。
@@ -97,6 +103,8 @@ func _load_cfg() -> void:
 	if room == "":
 		room = "default"
 	token = String(dd.get("token", ""))
+	if token == "":
+		token = DEFAULT_TOKEN          # 玩家自己没填 → 用内置口令，开箱即用
 	timeout_ms = int(dd.get("timeout_ms", timeout_ms))
 	if timeout_ms < 1000:
 		timeout_ms = 1000

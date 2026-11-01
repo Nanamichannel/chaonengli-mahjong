@@ -63,17 +63,81 @@ LOG_PATH = os.path.join(LOG_DIR, "net_server.log")
 # 房间号 → {"token": str, "db": 绝对路径}
 ROOMS: dict[str, dict] = {}
 DEFAULT_ROOM = "default"
+# ★ 是否允许「请求一个没配置过的房间名就自动建一个库」。
+#   开着的时候，任何人拿 /rpc/随便写 就能开一个**不带口令**的新房间 ——
+#   等于绕过了房间 token。公网部署请在 net_config.json 里写 "allow_auto_rooms": false。
+ALLOW_AUTO_ROOMS = True
 _room_locks: dict[str, threading.Lock] = {}
 _lock_guard = threading.Lock()
+
+# ── 推送调度（★ 云上 CPU/延迟优化）──────────────────────────────────
+# 以前：动作处理完，**在请求线程里、握着房间锁**，把 4 个座位的 state 全算一遍
+#       （实测每份 22KB / 5ms → 一次动作白白多花 20ms，还是玩家在等的那 20ms）。
+# 现在：立刻回包给玩家；推送放到后台线程，而且只算「真的有长连接」的座位。
+#       一个都没连 = 一份都不算。
+_push_guard = threading.Lock()
+_push_locks: dict[str, threading.Lock] = {}
+_push_last: dict[str, str] = {}          # room -> 已经排上/推过的 ver
+
+
+def _push_lock_of(room: str) -> threading.Lock:
+    with _push_guard:
+        lk = _push_locks.get(room)
+        if lk is None:
+            lk = threading.Lock()
+            _push_locks[room] = lk
+        return lk
+
+
+def _schedule_push(room: str, ver: str, op: str) -> None:
+    if not ver or op == "poll":
+        return
+    try:
+        seats = sorted(ws_push.live_seats(room))
+    except Exception:                                        # noqa: BLE001
+        seats = []
+    if not seats:
+        return                          # 没人在线 → 一份 state 都不用算
+    with _push_guard:
+        if _push_last.get(room) == ver:
+            return                      # 这个版本已经排过了
+        _push_last[room] = ver
+    threading.Thread(target=_do_push, args=(room, ver, seats),
+                     name="push-%s" % room, daemon=True).start()
+
+
+def _do_push(room: str, ver: str, seats: list) -> None:
+    # 同一房间的「算 + 推」串行：两个线程乱序会把旧 state 推给客户端
+    with _push_lock_of(room):
+        db_path = (ROOMS.get(room) or {}).get("db")
+        if not db_path:
+            return
+        payloads: dict = {}
+        lock = _room_locks.setdefault(room, threading.Lock())
+        try:
+            with lock:
+                for s in seats:
+                    try:
+                        payloads[s] = api_cli.handle({"op": "state", "seat": s},
+                                                     db_path=db_path)
+                    except Exception:                    # noqa: BLE001
+                        payloads[s] = None
+        except Exception:                                # noqa: BLE001
+            payloads = None
+        try:
+            ws_push.notify(room, ver, payloads)
+        except Exception:                                # noqa: BLE001
+            pass
 
 
 # ────────────────────────── 配置 ──────────────────────────
 
 def load_config(path: str) -> None:
     """读 net_config.json；没有就用「单房间 default + 老的 mahjong.db」。"""
-    global ROOMS, DEFAULT_ROOM
+    global ROOMS, DEFAULT_ROOM, ALLOW_AUTO_ROOMS
     rooms: dict[str, dict] = {}
     default = "default"
+    allow_auto = True
     if path and os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -82,6 +146,7 @@ def load_config(path: str) -> None:
             print(f"[warn] 读不了 {path}：{e}（改用默认单房间）")
             cfg = {}
         default = str(cfg.get("default_room") or "default")
+        allow_auto = bool(cfg.get("allow_auto_rooms", True))
         for name, spec in (cfg.get("rooms") or {}).items():
             spec = spec if isinstance(spec, dict) else {}
             db = str(spec.get("db") or os.path.join("data", "room_%s.db" % name))
@@ -92,6 +157,7 @@ def load_config(path: str) -> None:
         rooms = {"default": {"token": "",
                              "db": os.path.join(HERE, "data", "mahjong.db")}}
     ROOMS = rooms
+    ALLOW_AUTO_ROOMS = allow_auto
     DEFAULT_ROOM = default if default in rooms else sorted(rooms)[0]
     for name in rooms:
         _room_locks.setdefault(name, threading.Lock())
@@ -109,6 +175,8 @@ def room_of(name: str) -> str:
         return DEFAULT_ROOM
     with _lock_guard:
         if name not in ROOMS:
+            if not ALLOW_AUTO_ROOMS:
+                return ""                    # 调用方当 404 处理（公网推荐这样）
             db = os.path.join(HERE, "data", "room_%s.db" % name)
             ROOMS[name] = {"token": "", "db": db}
             _room_locks.setdefault(name, threading.Lock())
@@ -249,6 +317,9 @@ class Handler(BaseHTTPRequestHandler):
                 and u.path.startswith("/ws"):
             query = parse_qs(u.query)
             room = room_of((u.path[len("/ws"):].strip("/")) or query.get("room", [""])[0])
+            if not room:
+                self._send(404, {"ok": False, "error": "房间不存在（服务端已关闭自动建房）"})
+                return
             if not self._token_ok(room, query):
                 self._send(403, {"ok": False, "error": "token 不对"})
                 return
@@ -266,8 +337,17 @@ class Handler(BaseHTTPRequestHandler):
                             "健康检查：GET /health\n")
             return
         if u.path == "/health":
+            # peers = 每个房间当前的长连接数。部署后先看这个：
+            # 全是 0 就说明 WebSocket 没通（反代少了 Upgrade 头），推送在退化
+            peers = {}
+            for _r in ROOMS:
+                try:
+                    peers[_r] = ws_push.peers(_r)
+                except Exception:                                # noqa: BLE001
+                    peers[_r] = -1
             self._send(200, {"ok": True, "rooms": sorted(ROOMS.keys()),
-                             "default": DEFAULT_ROOM, "ts": time.time()})
+                             "default": DEFAULT_ROOM, "ts": time.time(),
+                             "peers": peers, "push_total": sum(peers.values())})
             return
         self._send(404, {"ok": False, "error": "not found"})
 
@@ -279,6 +359,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"ok": False, "error": "not found"})
             return
         room = room_of((u.path[len("/rpc"):].strip("/")) or query.get("room", [""])[0])
+        if not room:
+            self._send(404, {"ok": False, "error": "房间不存在（服务端已关闭自动建房）"})
+            return
         if not self._token_ok(room, query):
             self._send(403, {"ok": False, "error": "token 不对"})
             return
@@ -304,18 +387,6 @@ class Handler(BaseHTTPRequestHandler):
             lock = _room_locks.setdefault(room, threading.Lock())
             with lock:
                 out = api_cli.handle(req, db_path=db_path)
-                # 状态变了 → 顺手把 4 个座位各自的 state 也算出来（视野已裁剪），
-                # 供长连接直接推送（客户端收到就不用再拉一次）
-                pushes = None
-                _v = out.get("ver") if isinstance(out, dict) else None
-                if _v and op not in ("poll",):
-                    pushes = {}
-                    for _s in range(4):
-                        try:
-                            pushes[_s] = api_cli.handle({"op": "state", "seat": _s},
-                                                         db_path=db_path)
-                        except Exception:                        # noqa: BLE001
-                            pushes[_s] = None
             out.setdefault("room", room)
         except Exception as e:                                   # noqa: BLE001
             log("[ERR ] %s/%s seat=%s %s\n%s" % (room, op, seat, e,
@@ -325,14 +396,15 @@ class Handler(BaseHTTPRequestHandler):
         dt = (time.time() - t0) * 1000.0
         flag = "" if out.get("ok") else "  ← %s" % str(out.get("error", ""))[:120]
         log("%s/%s seat=%s %.0fms%s" % (room, op, seat, dt, flag))
-        # 状态版本变了 → 立刻推给这个房间的长连接（同一个 ver 只推一次）
+        # ★ 先把回包发出去，再在后台算「在线座位」的 state 推给长连接。
+        #   玩家这一步不用等推送准备（以前是同步算 4 份，白送 20ms RTT）。
+        self._send(200, out)
         try:
             ver = out.get("ver") if isinstance(out, dict) else None
             if ver:
-                ws_push.notify(room, str(ver), pushes)
+                _schedule_push(room, str(ver), op)
         except Exception:                                        # noqa: BLE001
             pass
-        self._send(200, out)
 
 
 def main() -> int:
@@ -344,6 +416,9 @@ def main() -> int:
 
     load_config(args.config)
     api_cli.CACHE_CONN = True          # 常驻服务：复用 SQLite 连接（见 api_cli._open_db）
+    # ★ 联机：玩家在别的机器上，他的进程号在这台服务器上没有意义 → 座位租约只按时间判活。
+    #   不改的话，「四个人同时进房」会全被分到 0 号位（客户端 pid 查不到 → 以为座位空着）。
+    api_cli.LEASE_PID_LOCAL_ONLY = False
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     srv.daemon_threads = True
     ip = lan_ip()
@@ -353,6 +428,7 @@ def main() -> int:
     log("  本机局域网地址：http://%s:%d   （同一路由器的朋友填这个）" % (ip, args.port))
     log("  公网访问：先在路由器把 %d 端口映射到这台机器，或挂 frp / cloudflare tunnel" % args.port)
     log("  房间：%s" % ", ".join(sorted(ROOMS.keys())))
+    log("  自动建房：%s" % ("开（公网建议关掉）" if ALLOW_AUTO_ROOMS else "关（只能用上面这些房间）"))
     log("  数据：%s" % os.path.join(HERE, "data"))
     log("  日志：%s" % LOG_PATH)
     log("=" * 64)

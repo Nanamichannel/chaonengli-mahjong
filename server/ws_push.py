@@ -191,6 +191,17 @@ def notify(room: str, ver: str, payloads: dict | None = None) -> int:
     return sent
 
 
+def live_seats(room: str) -> set:
+    """这个房间里**真的连着**的座位号（-1 = 没认领座位的不算）。
+
+    net_server 用它决定「动作之后要给几个人算 state」——
+    以前不管有没有人连，一律算 4 份，单人玩的时候 3 份纯属白干。
+    """
+    with _lock:
+        return {int(c.seat) for c in (_rooms.get(room) or ())
+                if c.alive and int(c.seat) >= 0}
+
+
 def peers(room: str | None = None) -> int:
     with _lock:
         if room is None:

@@ -1,0 +1,28 @@
+# 天马麻将 服务端（systemd）
+# install.sh 会把 __HOST__ / __PORT__ / __USER__ / __APP_DIR__ 替换掉
+[Unit]
+Description=Tianma Mahjong Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__APP_DIR__/server
+ExecStart=__PY__ net_server.py --host __HOST__ --port __PORT__
+Restart=always
+RestartSec=3
+# 崩溃循环时别把机器拖死
+StartLimitBurst=10
+StartLimitIntervalSec=60
+# 房间多的时候连接数会涨（每房间一个 sqlite 连接 + 若干 WS）
+LimitNOFILE=8192
+# 日志走 journald（自带的 logs/net_server.log 也有，但以 journald 为准）
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=multi-user.target

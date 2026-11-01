@@ -1306,13 +1306,15 @@ var srv_humans: Array = []          # 服务端说「哪些座位有窗口在操
 # 认领座位：服务端把「没人认领的座位」继续当代打 AI；
 # 还没有牌局就顺手开一局（created = true），已经有局就接上（created = false）。
 func srv_join_seat(seat: int, quiet := false, render := true,
-		force := false) -> Dictionary:
+		force := false, keep := false) -> Dictionary:
 	# seat < 0 = 不指定，让服务端自动挑一个没人坐的位子
 	# ★ force 只有「按 1/2/3/4 手动切座位」才用。
 	#   启动时绝不能 force：F5 时上一个窗口可能还活着，force 会把 0 号位抢过来
 	#   → 两个窗口都显示「本窗口 = 0 号位」。
 	var r := srv_request({"op": "join", "seat": seat,
-		"force": bool(force) and int(seat) >= 0})
+		"force": bool(force) and int(seat) >= 0,
+		# keep = 「大厅刚把我分到这个位子，进牌桌还坐这儿」→ 服务端别把我挤走
+		"keep": bool(keep) and int(seat) >= 0})
 	if r.is_empty():
 		return {}
 	# 座位号只信服务端给的，而且一定夹在 0..3（响应异常时别把界面带到「4 号位」这种不存在的地方）
@@ -1602,7 +1604,7 @@ func start_deal() -> void:
 	# 新半庄的「第一个进程」希望坐 0 号位，但**不强占**：0 号位要是还有窗口活着，
 	# 服务端会自动给下一个空位（否则会出现两个「0 号位」窗口）。
 	var r := srv_join_seat(want_seat if want_seat >= 0 else (0 if new_hanchan else -1),
-		true, false, false)
+		true, false, false, from_menu)
 	# 大厅里四家调好的顺序：所有窗口写的是同一份，谁写都不会互相踩
 	if cst != null and typeof(cst.orders) == TYPE_ARRAY and (cst.orders as Array).size() == 4:
 		var owf := FileAccess.open("user://player_orders.json", FileAccess.WRITE)

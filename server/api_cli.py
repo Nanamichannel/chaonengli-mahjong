@@ -217,8 +217,15 @@ def op_join(db: DB, req: dict) -> dict:
         else:
             want = int(raw) % 4
             if want in humans and not req.get("force"):
-                # 想让的座位有人 → 找空位；四个都「有人」就抢租约最旧的（多半是死窗口留下的）
-                seat = free[0] if free else _stalest_seat(db)
+                # ★ 关键：humans 里那个「有人」可能就是我本人（大厅刚认领过座位，
+                #   进牌桌时要坐同一个位子）。以前一律当"别人占着"，于是把自己
+                #   挤到了下一个空位 —— 大厅选的是 0 号位的卡，进牌桌却坐 1 号位，
+                #   看到的是人机的卡（2026-11-01 现场）。
+                if req.get("keep") or humans == {want}:
+                    seat = want
+                else:
+                    # 真的有人想让的座位 → 找空位；四个都有人就抢租约最旧的
+                    seat = free[0] if free else _stalest_seat(db)
             else:
                 seat = want
         _touch_lease(db, seat, req.get("pid"))
@@ -300,6 +307,25 @@ def _local_room(db: DB) -> dict:
     return room
 
 
+def _snapshot_round_cards(db: DB, round_id: int) -> None:
+    """开局把「四家选的 5 张卡」抄进本局的 meta，供 skills.order_of 读。"""
+    try:
+        lobby = lobby_mod.load(db)
+        data = {}
+        for s in range(4):
+            st = lobby["seats"][s]
+            order = [int(v) for v in (st.get("order") or [])]
+            if len(order) < 5:
+                order = [int(v) for v in (st.get("picks") or [])][:5]
+            data[str(s)] = order
+        with db.tx():
+            db.conn.execute(
+                "INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
+                ("round_cards_%d" % int(round_id), json.dumps(data, ensure_ascii=False)))
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
 def op_start(db: DB, req: dict) -> dict:
     """开一局新牌：房间/比赛都复用，这里只开新的「一局」。"""
     room = _local_room(db)
@@ -312,6 +338,7 @@ def op_start(db: DB, req: dict) -> dict:
                               dealer_seat=int(req.get("dealer", 0)),
                               riichi_sticks=int(req.get("riichi_sticks", 0)))
     _set_round_id(db, round_id)
+    _snapshot_round_cards(db, round_id)      # ★ 卡序抄进本局，之后不看大厅
     g = _game(db, round_id)
     g.start()
     seat = int(req.get("seat", 0))

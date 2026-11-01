@@ -592,6 +592,12 @@ func _poll() -> void:
 	# ★ 非阻塞：发出去立刻返回，下一次进来再收（公网往返 200~300ms 也不冻界面）
 	if _bg_wait:
 		var rb: Dictionary = srv.bg_poll() if srv != null and srv.has_method("bg_poll") else {}
+		# ★ 请求可能已经结束了（超时 / 连接断了 / 被丢弃）：这时 bg_poll 只会回 {}。
+		#   以前这里直接 return，_bg_wait 永远不清 → 之后再也不发新请求 →
+		#   界面永久不刷新（2026-11-01 现场：别家加入没动静、点了牌还是 0/5，
+		#   点一下「取消确认」触发了同步请求才恢复）。
+		if srv != null and srv.has_method("bg_busy") and not bool(srv.call("bg_busy")):
+			_bg_wait = false
 		if rb.is_empty():
 			return                                  # 还没回来：这一帧什么都不做
 		_bg_wait = false

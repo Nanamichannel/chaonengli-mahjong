@@ -431,14 +431,22 @@ def op_add_bot(db, req: dict) -> dict:
     """
     from api_cli import _human_seats
     seat = int(req.get("bot_seat", -1))
+    # ★ 操作者自己的座位（seat 字段）：人机永远不能占它。
+    #   现场（2026-11-01）：玩家 1 号位的租约刚好过期，自动选位把 1 号位当"空的"，
+    #   于是人机坐进了玩家自己的位子 → 四家 joined 全 false，谁都进不来。
+    me = int(req.get("seat", -1))
     with db.tx():
         humans = _human_seats(db)
         bots = bot_seats(db)
+        if 0 <= me <= 3:
+            humans.add(me)                      # 自己一定算"有人"
         if seat < 0 or seat > 3:
             free = [s for s in range(4) if s not in humans and s not in bots]
             if not free:
                 return _error("房间已经满了（4/4）")
             seat = free[0]
+        if seat == me:
+            return _error("不能把放人机放到自己的座位上")
         if seat in humans:
             return _error("%d 号位有真人玩家，不能放人机" % seat)
         lobby = load(db)

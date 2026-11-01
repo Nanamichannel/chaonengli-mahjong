@@ -177,10 +177,14 @@ def room_of(name: str) -> str:
         if name not in ROOMS:
             if not ALLOW_AUTO_ROOMS:
                 return ""                    # 调用方当 404 处理（公网推荐这样）
+            # ★ 自动建的房间**继承 default 的口令**：否则任何人不带口令开一个
+            #   /rpc/随便什么 就能玩，token 形同虚设。
+            inherit = str((ROOMS.get(DEFAULT_ROOM) or {}).get("token") or "")
             db = os.path.join(HERE, "data", "room_%s.db" % name)
-            ROOMS[name] = {"token": "", "db": db}
+            ROOMS[name] = {"token": inherit, "db": db}
             _room_locks.setdefault(name, threading.Lock())
-            log(f"[room] 自动创建房间 {name} → {db}")
+            log("[room] 自动创建房间 %s → %s（口令%s）"
+                % (name, db, "继承 default" if inherit else "：无"))
         return name
 
 

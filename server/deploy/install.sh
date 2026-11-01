@@ -44,6 +44,12 @@ if [ -d rules ]; then
   mkdir -p "$APP_DIR/server/rules"
   cp -rf rules/. "$APP_DIR/server/rules/"
 fi
+# deploy/ 也要拷过去：备份脚本、Caddyfile 这些部署后还要用
+if [ -d deploy ]; then
+  mkdir -p "$APP_DIR/server/deploy"
+  cp -rf deploy/. "$APP_DIR/server/deploy/"
+  chmod +x "$APP_DIR/server/deploy/"*.sh 2>/dev/null || true
+fi
 # 没配置文件就按示例建一份（token 留空 = 不校验，公网请填上）
 if [ ! -f "$APP_DIR/server/net_config.json" ]; then
   cp -f net_config.example.json "$APP_DIR/server/net_config.json"

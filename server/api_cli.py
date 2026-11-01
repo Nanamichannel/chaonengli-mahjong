@@ -193,6 +193,14 @@ def _human_seats(db: DB) -> set:
         if now - ts >= LEASE_TTL:
             continue                            # 老数据没有进程号：只能按时间算
         out.add(s)
+    # ★ 人机座位永远不算「真人」。
+    #   人机本身不写租约，但只要曾经有窗口坐过那个座位（4 窗口测试 / 座位串过），
+    #   残留租约+持续请求就会让它一直算真人 → 服务端不敢替它摸切/跳过技能
+    #   → 轮到人机时整桌卡死（2026-11-01 现场：humans 变成 [0,1,2,3]）。
+    try:
+        out -= set(lobby_mod.bot_seats(db))
+    except Exception:                                    # noqa: BLE001
+        pass
     return out
 
 

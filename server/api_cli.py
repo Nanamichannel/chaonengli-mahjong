@@ -512,6 +512,26 @@ def _state_ver(st) -> str:
     return hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def _auto_drive(db: DB, g, seat) -> list:
+    """★ 通用兜底：轮次落在「没人在操作」的座位 → 服务器替他走一步。
+
+    现场事故（2026-11-01）：Card25 S2『宝牌的集合』换完牌，phase 回到 discard，
+    但轮次还在「刚摸牌的那家」身上。如果那是人机，客户端只在 claim/deal_skill
+    阶段才会发 op=step，于是没人触发他打牌 → 整桌永久卡死
+    （日志表现：`act ... 现在不能 discard（可选：[]）` 一直刷）。
+
+    放在 poll 里做：客户端每 0.5 秒必问一次，等于给所有技能兜了一层底。
+    turn 是活人的时候 _drive_others 会立刻 break，开销可忽略。
+    """
+    try:
+        if getattr(g, "round_phase", "") != "play" or g.phase == "ended":
+            return []
+        human = int(seat) if isinstance(seat, int) else -1
+        return _drive_others(db, g, human)
+    except Exception:                                    # noqa: BLE001
+        return []
+
+
 def _deal_catchup(g, max_steps: int = 3) -> int:
     """配牌兜底：客户端没人推进时，服务端自己往前推几步。
 
@@ -543,7 +563,9 @@ def op_poll(db: DB, req: dict) -> dict:
     seat = req.get("seat")
     seat = int(seat) if isinstance(seat, int) else None
     with db.tx():
-        _deal_catchup(_game(db, rid))          # ← 配牌没人推时由服务端补
+        _g_poll = _game(db, rid)
+        _deal_catchup(_g_poll)                 # ← 配牌没人推时由服务端补
+        _auto_drive(db, _g_poll, seat)         # ← 轮次落在人机身上时替他走
         st = _state(db, rid, seat)
     ver = _state_ver(st)
     humans = sorted(_human_seats(db))
@@ -2001,11 +2023,17 @@ def op_c25s2_arm(db: DB, req: dict) -> dict:
 def op_c25s2_swap(db: DB, req: dict) -> dict:
     """Card25 Skill2「宝牌的集合」：别人摸到宝牌 → 我拿一张非宝牌换过来（不能跳过）。"""
     rid = req.get("round_id") or _get_round_id(db)
-    g = _game(db, rid)
     seat = int(req.get("seat", 0))
-    r = g.c25s2_swap(seat, str(req.get("hand", "")))
-    return {"ok": True, "c25s2_swap": r, "state": g.state_for(seat), "events": [],
-            "result": g.result, "round_id": rid}
+    events: list = []
+    with db.tx():
+        g = _game(db, rid)
+        r = g.c25s2_swap(seat, str(req.get("hand", "")))
+        # ★ 换的是「别人刚摸的那张」，所以换完轮次还在那个人身上。
+        #   他不一定是真人（1 个人玩的时候是人机）→ 这里顺手把该动的都动掉，
+        #   否则客户端不会发 step，整桌就卡在「不能 discard」。
+        events += _drive_others(db, g, seat)
+        return {"ok": True, "c25s2_swap": r, "state": g.state_for(seat),
+                "events": events, "result": g.result, "round_id": rid}
 
 
 def op_press(db: DB, req: dict) -> dict:

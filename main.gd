@@ -1774,6 +1774,17 @@ func srv_sync_wall(st: Dictionary) -> void:
 		var vis = s.get("vis", null)
 		if vis != null and is_instance_valid(vis):
 			(vis as Node).call("show_dora", tile_id)
+	# ★ 自愈：一圈牌墩全都不可见、但服务端说牌山还有牌 → 重建一次（编号 + 拿走）
+	if int(st.get("live_left", 0)) > 8:
+		var _vis_n := 0
+		for _st in wall_stacks:
+			var _nd = _st.get("vis", null)
+			if _nd != null and is_instance_valid(_nd) and (_nd as CanvasItem).visible:
+				_vis_n += 1
+		if _vis_n == 0 and not wall_stacks.is_empty():
+			print("[WALL] 牌山整圈不可见 → 按 state 重建")
+			_refresh_wall_stacks()
+			_wall_retake(st)
 	# 指示牌被换过（Card11「魔术」/ Card05「策略」换王牌的牌）→ 王牌上那张也要换
 	for i in range(mini(dora_indicators.size(), dora.size())):
 		var now := String(dora[i])
@@ -1789,6 +1800,18 @@ func srv_sync_wall(st: Dictionary) -> void:
 
 
 # 一墩一墩排出的「编号顺序」：从骰子那一面起，沿牌山绕一圈
+# 牌山重建后按当前 state 重新扣一遍（自愈用）
+func _wall_retake(st: Dictionary) -> void:
+	srv_taken.clear()
+	srv_dora_n = -1
+	for no in (st.get("wall_taken", []) as Array):
+		var n2 := int(no)
+		if srv_taken.has(n2):
+			continue
+		srv_taken[n2] = true
+		take_wall_tile(n2)
+
+
 func wall_ring() -> Array:
 	var out: Array = []
 	var n: int = wall_stacks_per_side

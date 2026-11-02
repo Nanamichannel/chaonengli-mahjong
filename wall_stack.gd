@@ -174,8 +174,10 @@ func _apply_face() -> void:
 	var key := ("b_05" if vert else "b_04") if count >= 2 else ("b_02" if vert else "b_01")
 	var tex := _back_tex(key)
 	if tex == null:
-		sp.visible = false
-		visible = false
+		# ★ 取不到图（美术库还没就绪 / 资源缺失）时**保持原样**，绝不隐藏整墩：
+		#   以前这里 visible=false，一旦触发整圈牌山就永久消失。
+		if count > 0:
+			visible = true
 		return
 	var w := width
 	var two_h := 0.0

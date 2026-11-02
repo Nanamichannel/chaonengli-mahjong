@@ -13518,10 +13518,20 @@ func _fengpan_art_center_y() -> float:
 # 拉伸之后，画在盘面上的东西要按同一比例跟着走，否则相对盘面会跑偏：
 #   · 本场计数器（Huaban 叶子）  · 四家点数 Label
 #   y' = cy + (y - cy) * k     —— cy = 盘面中心，k = 拉伸倍数
+# 盘面上下沿在拉伸后的位移（风盘本地单位）：[上沿(负), 下沿(正)]
+func _fengpan_edge_shift(k: float) -> Array:
+	var cy := _fengpan_art_center_y()
+	var half := FENGPAN_TEX_RECT.size.y * 0.5
+	return [(cy - half) * (k - 1.0), (cy + half) * (k - 1.0)]
+
+
 func _fengpan_follow_hud(k: float) -> void:
 	if fengpan == null or not is_instance_valid(fengpan):
 		return
 	var cy := _fengpan_art_center_y()
+	var sh := _fengpan_edge_shift(k)
+	var d_top := float(sh[0])
+	var d_bot := float(sh[1])
 	for c in fengpan.get_children():
 		var n := c as Node2D
 		if n == null:
@@ -13530,7 +13540,16 @@ func _fengpan_follow_hud(k: float) -> void:
 			continue                       # 风盘图自己已经缩过了
 		if bool(n.get_meta("fengpan_hud_done", false)):
 			continue
-		n.position = Vector2(n.position.x, cy + (n.position.y - cy) * k)
+		var ny := cy + (n.position.y - cy) * k        # 默认：跟盘面同比例
+		if c is Control:
+			# 四家点数：**贴着上下沿**的那两个必须跟着沿走。
+			# （按比例缩放只走 42px，实际沿走了 58px → 差 16px，看着就是「歪」）
+			var ctrl := c as Control
+			var rr := fmod(absf(ctrl.rotation), PI)
+			var sideways := absf(rr - PI * 0.5) < 0.2  # 左右两家 ±90°，不贴上下沿
+			if not sideways:
+				ny = n.position.y + (d_bot if n.position.y >= cy else d_top)
+		n.position = Vector2(n.position.x, ny)
 		n.set_meta("fengpan_hud_done", true)
 
 

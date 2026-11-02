@@ -80,6 +80,7 @@ const RED_FIVES := {"0m": "5m", "0p": "5p", "0s": "5s"}
 const FPAI_NODE := "fPai"                  # 打出牌的形象库（Main 的子节点）
 const FENGPAN_NODE := "UI/风盘"             # 风盘 Sprite2D
 const DISCARDS_PER_ROW := 6                # 每排 6 张
+const DISCARD_GAP := 1.02                 # 牌河：牌与牌之间的间距倍数（1.0 = 紧贴）
 const DISCARD_SPAN_RATIO := 1.03           # 5 张牌宽 + 1 张牌长 = 风盘宽度 × 此比例（略长于风盘；1.0 = 正好相等）
 # 风盘图（1920×1080）里「盘面本体」的有效区域（奶白外框实测 bbox 510~1467 / 106~946，外沿 +12）
 const FENGPAN_TEX_SIZE := Vector2(1920, 1080)
@@ -368,7 +369,7 @@ const ROUND_HUD_W := 420.0
 #     ask     = 技能询问        → 到点按当前亮着的「跳过 / 开始」按钮（没选牌 = 跳过）
 #   ★ 用「指纹」重置，不是「每来一份 state 就重置」——
 #     0.35s 轮询 + 推送会不停送 state，那样永远到不了 20 秒。
-const TM_SEC := 20.0
+const TM_SEC := 35.0
 var _tm_mode := ""
 var _tm_fp := ""
 var _tm_left := 0.0
@@ -12590,6 +12591,25 @@ func srv_apply_melds(st: Dictionary) -> void:
 			opp_meld_counts[who] = int(opp_meld_counts.get(who, 0)) + 1
 
 
+func srv_nick_of(seat: int) -> String:
+	"""座位 → 本局昵称（服务端 state.scores 里带的），拿不到就退回「我/下家…」。"""
+	var s := int(seat)
+	if s < 0 or s > 3:
+		return ""
+	var arr = srv_state.get("scores")
+	if typeof(arr) == TYPE_ARRAY:
+		for it in (arr as Array):
+			if typeof(it) != TYPE_DICTIONARY:
+				continue
+			if int((it as Dictionary).get("seat", -1)) != s:
+				continue
+			var n := String((it as Dictionary).get("nickname", "")).strip_edges()
+			if n != "":
+				return n
+			break
+	return srv_name_of(s)
+
+
 func srv_name_of(seat: int) -> String:
 	# 座位号 → 显示用的「谁」（me / B 上家 / C 对家 / D 下家），按本窗口的座位算。
 	return who_of_seat(seat)
@@ -13484,6 +13504,30 @@ func _fengpan_img_name() -> String:
 
 var _fengpan_img_cur := ""
 
+# 风盘蓝框在图里是 981×862（不是正方形）→ 牌河纵向会挤。
+# 这里把 8 张风盘图的 Y 拉成正方形（Sprite2D 居中缩放），再贴回环心，位置不变。
+const FENGPAN_SQUARE_K := 981.0 / 862.0
+
+
+func _fengpan_make_square() -> void:
+	if fengpan == null or not is_instance_valid(fengpan):
+		return
+	var changed := false
+	for c in fengpan.get_children():
+		if not (c is Sprite2D):
+			continue
+		var sp := c as Sprite2D
+		if not _fengpan_is_wind_img(String(sp.name)):
+			continue
+		if bool(sp.get_meta("fengpan_sq", false)):
+			continue
+		sp.scale = Vector2(sp.scale.x, sp.scale.y * FENGPAN_SQUARE_K)
+		sp.set_meta("fengpan_sq", true)
+		changed = true
+	if changed:
+		_fengpan_align_to_ring()          # 缩放后仍以牌山环心为准
+
+
 func _update_fengpan_image() -> void:
 	if fengpan == null:
 		return
@@ -13497,6 +13541,7 @@ func _update_fengpan_image() -> void:
 		var sp := c as Sprite2D
 		if _fengpan_is_wind_img(String(sp.name)):
 			sp.visible = String(sp.name) == want
+	_fengpan_make_square()
 
 
 # 本场叶子（5 片，从左到右排好序）
@@ -13602,16 +13647,19 @@ func refresh_discards() -> void:
 
 # 一张牌在牌河里的位置与旋转：side = "me" / "B" / "C" / "D"
 func discard_slot(side: String, rect: Rect2, slot: Vector2, col: int, row: int, used: float, w: float) -> Vector3:
-	var per := rect.size.y / float(DISCARDS_PER_ROW)     # B/D 竖着排时一张占的高度
+	# ★ 间距一律按**牌的尺寸**算（以前 B/D 用 rect.size.y/6）：
+	#   风盘蓝框是 981×862 不是正方形 → rect.h/6=143.7 < 牌短边 159.7 → 每张重叠 16px。
+	var pitch_x := slot.x * DISCARD_GAP          # 牌短边 + 2% 缝
+	var pitch_y := slot.y * DISCARD_GAP          # 牌长边 + 2% 缝（换排时才用）
 	match side:
-		"B":    # 贴风盘左缘，牌向下排（6 张正好落在风盘高度内），再一排往左挪
-			return Vector3(rect.position.x - (row + 0.5) * slot.y, rect.position.y + (col + 0.5) * per, OPP_DISCARD_ROTATION["B"])
+		"B":    # 贴风盘左缘，牌向下排，再一排往左挪
+			return Vector3(rect.position.x - (row + 0.5) * pitch_y, rect.position.y + (col + 0.5) * pitch_x, OPP_DISCARD_ROTATION["B"])
 		"C":    # 贴风盘上缘，180°
-			return Vector3(rect.position.x + rect.size.x - (col + 0.5) * slot.x, rect.position.y - (row + 0.5) * slot.y, OPP_DISCARD_ROTATION["C"])
+			return Vector3(rect.position.x + rect.size.x - (col + 0.5) * pitch_x, rect.position.y - (row + 0.5) * pitch_y, OPP_DISCARD_ROTATION["C"])
 		"D":    # 贴风盘右缘，牌向上排，再一排往右挪
-			return Vector3(rect.position.x + rect.size.x + (row + 0.5) * slot.y, rect.position.y + rect.size.y - (col + 0.5) * per, OPP_DISCARD_ROTATION["D"])
+			return Vector3(rect.position.x + rect.size.x + (row + 0.5) * pitch_y, rect.position.y + rect.size.y - (col + 0.5) * pitch_x, OPP_DISCARD_ROTATION["D"])
 	# 我：贴风盘下缘，牌向右排
-	return Vector3(rect.position.x + used + w * 0.5, rect.position.y + rect.size.y + (row + 0.5) * slot.y, 0.0)
+	return Vector3(rect.position.x + used * DISCARD_GAP + w * 0.5, rect.position.y + rect.size.y + (row + 0.5) * pitch_y, 0.0)
 
 
 # 画一个牌河。两种走法：
@@ -14287,6 +14335,14 @@ func show_hupai(win: Dictionary = {}) -> void:
 			var head := "自摸" if (bool(win.get("tsumo", false)) \
 				or String(win.get("result", "")) == "tsumo") else "榮和"
 			method = head
+			# 用户口径 2026-11-02：顶部写昵称（荣和 = 昵称一 ← 昵称二）
+			var _wn := int(win.get("winner", my_seat))
+			var _ls := int(win.get("loser", -1))
+			if bool(win.get("tsumo", false)) \
+					or String(win.get("result", "")) == "tsumo":
+				method = "%s　自摸" % srv_nick_of(_wn)
+			elif _ls >= 0:
+				method = "%s ← %s　荣和" % [srv_nick_of(_wn), srv_nick_of(_ls)]
 			yaku_text = "・".join(names) + dora_txt
 			detail = "%s　%s%s" % [head, "、".join(names), dora_txt]
 			if int(win.get("yakuman", 0)) > 0:
@@ -14579,21 +14635,21 @@ func _tm_any_picks() -> bool:
 # ── 计时器：到点 ────────────────────────────────────────────────────
 func _tm_fire(mode: String, cur: Dictionary) -> void:
 	if _tm_any_picks():
-		_tm_left = TM_SEC                 # 正在选牌 → 再给 20 秒，不替他确认
+		_tm_left = TM_SEC                 # 正在选牌 → 再给 35 秒，不替他确认
 		return
 	_tm_sent = true
 	_tm_fire_ms = Time.get_ticks_msec()
 	_tm_visible(false)
 	if mode == "claim":
 		_dev_log("[TIMER] 鸣牌询问超时 → 自动过")
-		_toast("20 秒到：自动过")
+		_toast("35 秒到：自动过")
 		_on_action_button("pass")
 		return
 	if mode == "ask":
 		var b = cur.get("btn")
 		if b is TextureButton and is_instance_valid(b) and (b as TextureButton).visible:
 			_dev_log("[TIMER] 技能询问超时 → 按 %s" % String((b as TextureButton).name))
-			_toast("20 秒到：自动跳过这次询问")
+			_toast("35 秒到：自动跳过这次询问")
 			(b as TextureButton).emit_signal("pressed")
 		return
 	_tm_auto_discard()
@@ -14614,7 +14670,7 @@ func _tm_auto_discard() -> void:
 	if t == "":
 		return
 	_dev_log("[TIMER] 出牌超时 → 摸切 %s" % t)
-	_toast("20 秒到：自动摸切")
+	_toast("35 秒到：自动摸切")
 	srv_act("discard", {"tile": t})
 
 

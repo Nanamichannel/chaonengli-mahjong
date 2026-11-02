@@ -68,7 +68,7 @@ func _draw() -> void:
 
 	# 小标签：TSUMO/RON/DRAW（中文为主）
 	var method_col := C_MUTED if is_draw else C_GOLD
-	_text(f, c.x, rect.position.y + ph * 0.13, method, ph * 0.062, method_col, pw * 0.42)
+	_text(f, c.x, rect.position.y + ph * 0.13, method, ph * 0.062, method_col, pw * 0.76)
 
 	# 主标题：和 了 / 流 局
 	var title_fs := ph * 0.176

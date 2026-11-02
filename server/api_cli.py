@@ -1139,6 +1139,7 @@ _NO_GATE_OPS = {
     "wipe", "view_hand",
     "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
     "lobby_state", "lobby_unorder", "test_seats",
+    "rename",                       # 本局昵称：不是技能，不问看破
     "lobby_add_bot", "lobby_remove_bot",      # 房间管理，不是技能，不问看破
     # ── 看破自己 / 取消 ──
     "kangpo", "kangpo_answer", "kangpo_skip", "skill_cancel", "card05_cancel",
@@ -1616,6 +1617,7 @@ _C34_FREE_OPS = {
     # 大厅
     "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
     "lobby_state", "lobby_unorder", "lobby_add_bot", "lobby_remove_bot",
+    "rename",
     # 应答类（被别人问 / 取消 / 遮罩）：不是「自己发动技能」
     "deal_skill", "deal_swap", "south_wind_kinds", "south_wind_swap",
     "haishin_give", "haishin_swap", "haishin_pass",
@@ -2730,6 +2732,7 @@ OPS = {
     "lobby_remove_bot": lobby_mod.op_remove_bot,
     "lobby_state": lobby_mod.op_state,
     "lobby_ready": lobby_mod.op_ready,
+    "rename": lobby_mod.op_rename,          # 本局昵称
     "lobby_pick": lobby_mod.op_pick,
     "lobby_order": lobby_mod.op_order,
     "lobby_unorder": lobby_mod.op_unorder,

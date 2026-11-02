@@ -61,6 +61,8 @@ var seat_box: ColorRect
 var seat_labels: Array = []
 var bot_btns: Array = []          # 每行一个「加人机 / 移除人机」按钮
 var ready_label: Label
+var nick_label: Label
+var nick_edit: LineEdit
 var ready_frame: ReferenceRect
 
 
@@ -286,6 +288,30 @@ func _build_ui() -> void:
 	seat_box.size = Vector2(460, 270)
 	seat_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(seat_box)
+
+	# 本局昵称：准备前可改，四家互相看得见（回车 / 失焦即提交）
+	nick_label = Label.new()
+	nick_label.name = "NickLabel"
+	nick_label.position = Vector2(1430, 740)
+	nick_label.size = Vector2(104, 36)
+	nick_label.text = "本局昵称"
+	nick_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	nick_label.add_theme_font_size_override("font_size", 20)
+	nick_label.add_theme_color_override("font_color", Color(0.86, 0.9, 1.0))
+	nick_label.add_theme_color_override("font_outline_color", Color(0.04, 0.04, 0.08))
+	nick_label.add_theme_constant_override("outline_size", 4)
+	ui.add_child(nick_label)
+
+	nick_edit = LineEdit.new()
+	nick_edit.name = "NickEdit"
+	nick_edit.position = Vector2(1540, 736)
+	nick_edit.size = Vector2(210, 40)
+	nick_edit.max_length = 8
+	nick_edit.placeholder_text = "1~8 个字"
+	nick_edit.add_theme_font_size_override("font_size", 20)
+	nick_edit.text_submitted.connect(func(_s): _send_rename())
+	nick_edit.focus_exited.connect(_send_rename)
+	ui.add_child(nick_edit)
 
 	for g in range(4):
 		var lb := Label.new()
@@ -713,6 +739,26 @@ func _enter_game() -> void:
 
 
 # ── 点击 ───────────────────────────────────────────────────────────
+# 提交「本局昵称」（1~8 个字；空 → 不改）
+func _send_rename() -> void:
+	if srv == null or my_seat < 0 or nick_edit == null:
+		return
+	var want := String(nick_edit.text).strip_edges().substr(0, 8)
+	if want == "":
+		return
+	var seats: Array = lobby.get("seats", [])
+	var cur := ""
+	if my_seat < seats.size() and typeof(seats[my_seat]) == TYPE_DICTIONARY:
+		cur = String((seats[my_seat] as Dictionary).get("nick", "")).strip_edges()
+	if want == cur:
+		return
+	var r: Dictionary = srv.request({"op": "rename", "seat": my_seat, "nick": want})
+	if bool(r.get("ok", false)):
+		_apply_lobby(r.get("lobby", {}))
+	else:
+		_set_hint(String(r.get("error", "昵称没改成功")))
+
+
 func _on_start_pressed() -> void:
 	if entered or my_seat < 0:
 		return
@@ -912,13 +958,23 @@ func _refresh_seats() -> void:
 			bb.text = "移除人机" if is_bot else "加人机"
 		var lb: Label = seat_labels[g] if g < seat_labels.size() else null
 		if lb != null:
-			lb.text = " %s·%d号   %s" % [SEAT_NAMES[g], s, state_text]
+			var nk := String(st.get("nick", "")).strip_edges()
+			lb.text = " %s·%d号  %s%s" % [SEAT_NAMES[g], s,
+				(nk + "  ") if nk != "" else "", state_text]
 			var col := Color(0.86, 0.9, 1.0)
 			if is_ready:
 				col = Color(0.55, 1.0, 0.6)
 			if s == my_seat:
 				col = Color(1.0, 0.86, 0.3) if not is_ready else Color(1.0, 0.95, 0.45)
 			lb.add_theme_color_override("font_color", col)
+
+	# 输入框里同步「我的昵称」（正在打字时不覆盖）
+	if nick_edit != null and my_seat >= 0 and not nick_edit.has_focus():
+		var mynick := ""
+		if my_seat < seats.size() and typeof(seats[my_seat]) == TYPE_DICTIONARY:
+			mynick = String((seats[my_seat] as Dictionary).get("nick", "")).strip_edges()
+		if mynick != "" and String(nick_edit.text) != mynick:
+			nick_edit.text = mynick
 
 	if ready_label != null:
 		if phase == "waiting":

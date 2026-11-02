@@ -462,11 +462,24 @@ class DB:
                 (room_id, seed),
             )
             match_id = cur.lastrowid
+            # 本局昵称：大厅里改过的用它，否则用账号昵称
+            _nicks = {}
+            try:
+                _row = self._row("SELECT value FROM meta WHERE key='lobby_state'")
+                if _row:
+                    _lb = json.loads(_row["value"]) or {}
+                    for _i, _s in enumerate(_lb.get("seats") or []):
+                        _n = str((_s or {}).get("nick") or "").strip()
+                        if _n:
+                            _nicks[int(_i)] = _n[:8]
+            except Exception:
+                _nicks = {}
             for s in seats:
+                _nick = _nicks.get(int(s["seat"])) or s["nickname"]
                 self.conn.execute(
                     "INSERT INTO match_seats(match_id, seat, user_id, nickname, score) "
                     "VALUES(?,?,?,?,35000)",
-                    (match_id, s["seat"], s["user_id"], s["nickname"]),
+                    (match_id, s["seat"], s["user_id"], _nick),
                 )
             self.conn.execute("UPDATE rooms SET status = 'playing' WHERE room_id = ?", (room_id,))
         return match_id

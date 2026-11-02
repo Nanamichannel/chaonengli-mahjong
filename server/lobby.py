@@ -36,7 +36,8 @@ BOT_KEY = "seat_bot_%d"
 def _default() -> dict:
     return {
         "phase": "waiting",
-        "seats": [{"ready": False, "hand": [], "picks": [], "order": []} for _ in range(4)],
+        "seats": [{"ready": False, "hand": [], "picks": [], "order": [], "nick": ""}
+                  for _ in range(4)],
         "joined": [False, False, False, False],
         "pool": [],
         "round": 0,
@@ -85,6 +86,7 @@ def load(db) -> dict:
             "hand": [int(v) for v in (s.get("hand") or [])],
             "picks": [int(v) for v in (s.get("picks") or [])],
             "order": [int(v) for v in (s.get("order") or [])],
+            "nick": str(s.get("nick") or "")[:8],
         })
     out["seats"] = seats
     out["pool"] = [int(v) for v in (out.get("pool") or [])]
@@ -320,6 +322,36 @@ def op_join(db, req: dict) -> dict:
         save(db, lobby)
     return _ok(lobby, seat, {"humans": sorted(_human_seats(db)),
                              "bots": sorted(bot_seats(db))})
+
+
+def _clean_nick(raw) -> str:
+    """本局昵称：1~8 个字，去掉控制字符 / 首尾空白。"""
+    s = str(raw or "")
+    out = []
+    for ch in s:
+        if ord(ch) < 32 or ord(ch) == 127:
+            continue
+        out.append(ch)
+    s = "".join(out).strip()
+    return s[:8]
+
+
+def op_rename(db, req: dict) -> dict:
+    """本局昵称：准备前（waiting）改；已经开局就同步到 match_seats（播报要用）。"""
+    seat = int(req.get("seat", 0)) % 4
+    nick = _clean_nick(req.get("nick", ""))
+    if not nick:
+        return _error("昵称不能为空（1~8 个字）")
+    with db.tx():
+        lobby = load(db)
+        lobby["seats"][seat]["nick"] = nick
+        save(db, lobby)
+        row = db._row("SELECT match_id FROM matches ORDER BY match_id DESC LIMIT 1")
+        if row:
+            db.conn.execute(
+                "UPDATE match_seats SET nickname=? WHERE match_id=? AND seat=?",
+                (nick, int(row["match_id"]), seat))
+    return _ok(lobby, seat)
 
 
 def op_state(db, req: dict) -> dict:

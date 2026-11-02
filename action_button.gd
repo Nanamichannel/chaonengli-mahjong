@@ -113,6 +113,17 @@ func _finish_vanish() -> void:
 
 
 # 被外面强行隐藏时调一下：别把半透明 / 缩小状态留到下次显示
+# 服务端说「这个按钮应该显示」时调用：把残留的淡出/缩小补间掐掉，拉回正常状态。
+# （以前按下按钮会开始淡出；这时如果新 state 又要求显示同一个按钮，
+#   srv_layout_buttons 看到 visible 还是 true 就不重播入场 → 淡出走完 → 按钮彻底没了）
+func ensure_shown() -> void:
+	visible = true
+	_kill_tween()
+	_kill_fade()
+	scale = _base_scale
+	modulate.a = 1.0
+
+
 func reset_anim() -> void:
 	_kill_tween()
 	_kill_fade()

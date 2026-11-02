@@ -11808,6 +11808,9 @@ func srv_layout_buttons(opts: Array) -> void:
 		if not b.visible:
 			b.visible = true
 			b.call("play_appear")
+		elif b.has_method("ensure_shown") and float(b.modulate.a) < 0.999:
+			# 正在淡出（上一次按下的消失动画还没走完）→ 拉回来，别让按钮凭空消失
+			b.call("ensure_shown")
 
 
 # 加速（29S1）：吃 / 跳过都是**技能 op**（op=c29s1_chi / c29s1_skip），

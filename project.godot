@@ -13,6 +13,7 @@ config_version=5
 config/name="Tianma"
 run/main_scene="res://初始菜单.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
+run/max_fps=90
 config/icon="res://icon.svg"
 
 [autoload]
@@ -27,10 +28,7 @@ window/size/viewport_height=1080
 window/size/window_width_override=1600
 window/size/window_height_override=900
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
-window/size/resizable=true
-window/vsync/vsync_mode=1
-window/dpi/allow_hidpi=true
+window/vsync/vsync_mode=0
 
 [dotnet]
 

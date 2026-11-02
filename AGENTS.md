@@ -30,7 +30,22 @@
    改服务端后至少跑 `test_card05` / `test_card06` / `test_deal_skill` / `test_swap` / `test_game`。
 8. 语法检查：
    `N:\apps\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64.exe --headless --path N:\apps\tianma --check-only --script res://main.gd`
-9. 编辑器里开着 `main.gd` 时，改完必须让编辑器 **Reload** 再 Ctrl+S，否则旧内容覆盖改动。
+9. 编辑器里开着 `main.gd` 时，改完必须让编辑器重新加载，否则旧缓冲会把改动覆盖回去。
+   ★ **别叫用户手点**（用户口径 2026-11-02）——用 MCP 自己刷：
+   `execute_editor_script`: `load("res://main.gd").reload(true)` →
+   `EditorInterface.edit_script(load("res://main.gd"))` →
+   用 `EditorInterface.get_script_editor().get_current_script().source_code` 确认含新代码。
+   （`reload_project()` 只重扫文件系统，脚本资源还是缓存，`has_method` 仍为 false。）
+10. **每次改完都要导出 exe**（用户口径 2026-11-02）：
+    - 编辑器里：MCP `run_export(preset="天才麻将少女！", mode="release")`（返回很大，只看 tail 的 `success`）；
+    - 或命令行：
+      `N:\apps\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64.exe --headless --path N:\apps\tianma --export-release "天才麻将少女！" build\Tianma.exe`
+    - 产物 `build/Tianma.exe`（约 200 MB），导出模板在 `%APPDATA%\Godot\export_templates\4.7.2.stable.mono`。
+    - 服务端（`server/*.py`）不打包进 exe，改了服务端要重启服务端进程，不用重导。
+    - `build/` 里**只留 `Tianma.exe`**：`export_presets.cfg` 的 `debug/export_console_wrapper=0`
+      （以前会多生成一个 `Tianma.console.exe`）。
+    - 导出报「重命名 Tianma.tmp 失败」= 游戏正开着占用 exe → 先把 `Tianma.exe` 改名为
+      `Tianma_prev.exe` 再导，导完删掉它，别留一堆 exe。
 
 ## 上下文卫生（对你自己的要求）
 

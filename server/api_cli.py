@@ -675,7 +675,8 @@ def _auto_drive(db: DB, g, seat) -> list:
         if getattr(g, "round_phase", "") != "play" or g.phase == "ended":
             return []
         human = int(seat) if isinstance(seat, int) else -1
-        return _drive_others(db, g, human)
+        # 每次 poll 只推 2 步：单次请求保持轻，剩下的交给下一次 poll
+        return _drive_others(db, g, human, 2)
     except Exception:                                    # noqa: BLE001
         return []
 
@@ -927,7 +928,10 @@ def _bot_skip_asks(g, bots) -> list[dict]:
                     pass
     except Exception:
         pass
-    # 神境（c45s2）
+    # 替身（c45s2）：只有「真的有人在等第二位指定切牌」时才兜底
+    #   ★ 以前写 `if v:`（view 永远返回非空字典）→ 每轮都给每个机 append 一个
+    #     空操作事件 c45s2_skip → _drive_others 永远 continue → 人机一步都走不了
+    #     （2026-11-02 现场：【命中】暗置打出后整桌卡死）。
     try:
         for s in sorted(bots):
             v = None
@@ -935,7 +939,8 @@ def _bot_skip_asks(g, bots) -> list[dict]:
                 v = g.c45s2_view(s)
             except Exception:
                 v = None
-            if v:
+            w = v.get("wait") if isinstance(v, dict) else None
+            if isinstance(w, dict):
                 try:
                     ev.append(g.c45s2_auto())
                 except Exception:
@@ -1068,10 +1073,10 @@ def op_advance(db: DB, req: dict) -> dict:
     rid = req.get("round_id") or _get_round_id(db)
     seat = int(req.get("seat", 0))
     g = _game(db, rid)
-    events = _drive_others(db, g, seat)
+    events = _drive_others(db, g, seat, 2)
     if g.phase == "draw" and g.turn == seat and g.phase != "ended":
         events.append(g.advance())
-    events += _drive_others(db, g, seat)
+    events += _drive_others(db, g, seat, 2)
     return {"ok": True, "state": g.state_for(seat), "events": events,
             "result": g.result, "round_id": rid}
 
@@ -1096,7 +1101,8 @@ def op_act(db: DB, req: dict) -> dict:
         events.append(g.pass_claim(seat))
     else:
         events.append(g.act(seat, action, **kw))
-    events += _drive_others(db, g, seat)
+    # ★ 只推 1 步：让「我出牌」这条请求马上返回；其余三家由客户端下一次 poll 推进
+    events += _drive_others(db, g, seat, 1)
     return {"ok": True, "state": g.state_for(seat), "events": events,
             "result": g.result, "round_id": rid}
 

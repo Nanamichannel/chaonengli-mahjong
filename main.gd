@@ -280,6 +280,12 @@ var opp_hand_base := {}      # 三家手牌在场景里的基准（中心 + 每�
 const SRV_FROM_SEAT := {"B": 3, "C": 2, "D": 1}      # 上家/对家/下家 → 服务端座位号
 
 @export var use_server_rules := true                 # 关掉 = 纯离线兜底（调试用）
+
+# 牌「飞」的速度（打牌飞进牌河 / 摸牌飞进手牌 / 鸣牌飞过去）。只影响牌位动画，
+# 不影响和牌播报的长条、也不影响立直棒淡入等其它动画。
+#   1.0 = 原速；2.0 = 快一倍；0.5 = 慢一半；0 = 关掉（牌直接瞬移到位）
+@export_category("牌飞行（打牌 / 摸牌 / 鸣牌的牌位动画）")
+@export_range(0.0, 4.0, 0.05) var tile_fly_speed := 1.0
 var srv                                          # ServerBridge
 var srv_up := false                              # 上一次请求服务端是否正常回答
 var srv_note := ""                              # 上一次失败原因
@@ -359,7 +365,11 @@ var _hud_acc := 0.0
 
 # ── 右上角「东几局 几本场」白色小字（用户口径 2026-11-01）──────────────
 var _round_hud: Label = null
-@export var round_hud_margin := Vector2(28.0, 16.0)   # 距离屏幕右 / 上边
+var _round_info_on := true               # 右上角四行信息开着没有
+var _round_info_btn: BaseButton = null   # 右上角小开关（Main/UI/按钮）
+var _round_info_icon: Sprite2D = null   # 按钮图标是个 Sprite2D（不是 Button）
+var _round_info_probe := 0.0            # 右上角开关探测计时
+@export var round_hud_margin := Vector2(28.0, 62.0)   # 距离屏幕右 / 上边（上边让出按钮的位置）
 const ROUND_HUD_W := 420.0
 
 # ── 询问 / 出牌计时器（用户口径 2026-11-01）─────────────────────────────
@@ -485,10 +495,15 @@ func perf_bench_process_ms(rounds: int = 200) -> float:
 
 func _round_hud_sync(st: Dictionary) -> void:
 	_round_hud_ensure()
+	_round_hud.visible = _round_info_on
 	var w := _wind_cn(String(st.get("round_wind", st.get("wind", "dong"))))
 	var n := int(st.get("number", 1))
 	var h := int(st.get("honba", 0))
-	var txt := "%s%s局　%d 本场" % [w, _num_cn(n), h]
+	var up := srv_nick_of((my_seat + 3) % 4)
+	var opp := srv_nick_of((my_seat + 2) % 4)
+	var low := srv_nick_of((my_seat + 1) % 4)
+	var txt := "上家：%s\n对家：%s\n下家：%s\n%s%s局　%d 本场" % [
+		up, opp, low, w, _num_cn(n), h]
 	if _round_hud.text != txt:
 		_round_hud.text = txt
 
@@ -505,18 +520,102 @@ func _round_hud_ensure() -> void:
 	_round_hud.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
 	_round_hud.add_theme_constant_override("outline_size", 4)
 	_round_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_round_hud.size = Vector2(ROUND_HUD_W, 30)
+	_round_hud.size = Vector2(ROUND_HUD_W, 30.0 * 4.0)   # 四行
 	_round_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_round_hud)
 
 
+# 右上角「四行信息」的开关按钮：节点由用户在场景里放好（Main/UI/按钮）
+func _round_info_button_get() -> BaseButton:
+	if _round_info_btn != null and is_instance_valid(_round_info_btn):
+		return _round_info_btn
+	# ① 先按名字找（用户口径：Main/UI/按钮）
+	for p in ["UI/按钮", "UI/按钮2", "按钮"]:
+		var nd := get_node_or_null(p)
+		if nd is BaseButton:
+			_bind_info_btn(nd as BaseButton)
+			return _round_info_btn
+	# ② 名字改了也认：UI 下第一个 Button / TextureButton 就是它
+	var ui := get_node_or_null("UI")
+	if ui != null:
+		for ch in ui.get_children():
+			if ch is BaseButton:
+				_bind_info_btn(ch as BaseButton)
+				break
+	return _round_info_btn
+
+
+func _bind_info_btn(b: BaseButton) -> void:
+	_round_info_btn = b
+	_round_info_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	if not _round_info_btn.pressed.is_connected(_round_info_toggle):
+		_round_info_btn.pressed.connect(_round_info_toggle)
+
+
+# 按钮图标（用户在 Main/UI/按钮 放的是一个 Sprite2D，不是 Button）
+func _round_info_icon_get() -> Sprite2D:
+	if _round_info_icon != null and is_instance_valid(_round_info_icon):
+		return _round_info_icon
+	var nd := get_node_or_null("UI/按钮")
+	if nd is Sprite2D:
+		_round_info_icon = nd as Sprite2D
+	return _round_info_icon
+
+
+func _round_info_icon_rect() -> Rect2:
+	var sp := _round_info_icon_get()
+	if sp == null or sp.texture == null:
+		return Rect2()
+	var sz := sp.texture.get_size() * Vector2(absf(sp.global_scale.x), absf(sp.global_scale.y))
+	return Rect2(sp.global_position - sz * 0.5, sz)
+
+
+# 图标整块在屏幕外（用户摆的 y = -33，看不见也点不到）→ 拉回右上角
+func _round_info_icon_place() -> void:
+	var sp := _round_info_icon_get()
+	if sp == null or sp.texture == null:
+		return
+	if bool(sp.get_meta("placed", false)):
+		return
+	sp.set_meta("placed", true)
+	var vp := get_viewport_rect().size
+	var r := _round_info_icon_rect()
+	if r.size == Vector2.ZERO:
+		return
+	if r.position.y < 2.0 or r.end.y > vp.y - 2.0 or r.position.x < 2.0 or r.end.x > vp.x - 2.0:
+		# 用全局坐标摆（Main/UI 自己有偏移，改 position 会摆歪）
+		sp.global_position = Vector2(vp.x - r.size.x * 0.5 - 16.0, 10.0 + r.size.y * 0.5)
+
+
+# 点在图标上？（Sprite2D 没有信号，只能自己算矩形）
+func _round_info_hit(pos: Vector2) -> bool:
+	if _round_info_btn != null and is_instance_valid(_round_info_btn):
+		return false                 # 有真按钮的话走它自己的 pressed
+	var r := _round_info_icon_rect()
+	return r.size != Vector2.ZERO and r.has_point(pos)
+
+
+func _round_info_toggle() -> void:
+	_round_info_on = not _round_info_on
+	if _round_hud != null and is_instance_valid(_round_hud):
+		_round_hud.visible = _round_info_on
+
+
 func _round_hud_tick() -> void:
+	_round_info_probe += get_process_delta_time()
+	if _round_info_probe >= 1.0:            # 每帧查字符串太浪费，1 秒探一次就够
+		_round_info_probe = 0.0
+		if _round_info_btn == null:
+			_round_info_button_get()
+		_round_info_icon_place()
+	if _round_hud != null and is_instance_valid(_round_hud):
+		_round_hud.visible = _round_info_on
 	if _round_hud == null or not is_instance_valid(_round_hud):
 		return
 	var vp := get_viewport_rect().size
 	var want := Vector2(vp.x - ROUND_HUD_W - round_hud_margin.x, round_hud_margin.y)
-	if _round_hud.position.distance_to(want) > 0.5:
-		_round_hud.position = want
+	if _round_hud.global_position.distance_to(want) > 0.5:
+		_round_hud.global_position = want   # 全局坐标：Main 自己有偏移，用 position 会顶出屏幕右边
 
 
 func _hud_tick(delta: float) -> void:
@@ -866,12 +965,15 @@ const SkinPatch := preload("res://skin.gd")   # 外部皮肤（exe 同目录 ski
 
 
 func _ready() -> void:
-	Engine.max_fps = 60
+	Engine.max_fps = int(ProjectSettings.get_setting("application/run/max_fps", 90))   # 跟着 项目设置→运行→最大FPS（现在 90）
+	TilePiece.anim_scale = maxf(tile_fly_speed, 0.0)   # 牌飞行速度倍率（0 = 瞬移）
 	randomize()
 	_btn_tune_load()          # 按钮微调（user://btn_tune.cfg，没有就用 @export 的值）
 	call_deferred("_dev_autoplay_maybe")	# 开发用：有 autoplay.cfg 才自动打
+	call_deferred("_round_info_icon_place")   # 右上角开关图标：摆进屏幕（用户摆的 y=-33 在屏幕外）
 	get_tree().auto_accept_quit = false     # 关窗口要先清记录再退
 	_setup_background()
+	_lizhi_stick_hide_all()   # 立直棒：开局先把四根收起来（等 riichi 列表再淡入）
 
 	for i in SORT_ORDER.size():
 		sort_rank[SORT_ORDER[i]] = i
@@ -1603,6 +1705,9 @@ func _reset_view_for_new_round() -> void:
 		rp.visible = false
 		rp.scale = Vector2.ONE
 		rp.modulate.a = 1.0
+	_win_intro_running = false
+	if win_scene != null and is_instance_valid(win_scene):
+		win_scene.call("reset")             # 截图背景 / 进场动画 / 结算面板一起清掉
 	if win_announce != null and is_instance_valid(win_announce):
 		win_announce.visible = false
 		win_announce.scale = Vector2.ONE
@@ -1613,6 +1718,8 @@ func _reset_view_for_new_round() -> void:
 	result_confirm_sig = ""
 	_refresh_wall_stacks()      # 牌山：把上一局拿走的牌全部放回去（认领预置节点，不动位置）
 	assign_wall_numbers()       # 重新给每墩编号（编号 ↔ 墩的对应关系跟着重排）
+	lizhi_stick_ready = false
+	_lizhi_stick_hide_all()     # 立直棒：新一局四根一起收起
 
 
 # 把「开一局」返回的东西（骰子/牌山/牌山面）画到牌山上
@@ -3664,6 +3771,8 @@ func _card11_on_clicked() -> void:
 		_card11_close()
 		_toast("已取消「魔术」")
 		return
+	if c11s2_active:
+		_card11s2_close()          # 同一张卡的另一个技能先收掉（否则两个「开始」按钮重叠）
 	if not bool(srv_state.get("card11_can", false)):
 		if _skill_used_once(11, 1):
 			_toast("「魔术」本小局已经用过了")
@@ -3809,6 +3918,8 @@ func _card11s2_on_clicked() -> void:
 		_card11s2_close()
 		_toast("已取消「快手」")
 		return
+	if c11_active:
+		_card11_close()            # 同一张卡的另一个技能先收掉
 	if not bool(srv_state.get("card11s2_can", false)):
 		if _skill_used_once(11, 2):
 			_toast("「快手」本小局已经用过了")
@@ -3920,6 +4031,7 @@ func _card11s2_close() -> void:
 	c11s2_seq = -1
 	c11s2_sel = {}
 	c11s2_by_seq = {}
+	hand_pick.end()                # 快手不用手牌，但别的面板可能借着 hand_pick → 统一收掉
 	if c11s2_btn != null and is_instance_valid(c11s2_btn):
 		c11s2_btn.visible = false
 	if c11s2_ui != null and is_instance_valid(c11s2_ui):
@@ -8333,7 +8445,7 @@ func _c42s2_sync(st: Dictionary) -> void:
 	_c42s2_ask_sig = sig
 	# 播报：让【夺目】的主人也知道这次是谁和了（谁铳的 / 谁自摸）
 	var who := srv_name_of(int(d.get("winner", -1)))
-	var loser := int(d.get("loser", -1))
+	var loser := _int_of(d, "loser", -1)
 	var ev := "%s 自摸" % who
 	if String(d.get("result", "")) != "tsumo" and loser >= 0:
 		ev = "%s 铳给 %s" % [srv_name_of(loser), who]
@@ -12023,6 +12135,20 @@ func srv_legal_tile(st: Dictionary, action: String) -> String:
 # 把服务端状态画到界面上（我的手牌 / 牌河 / 其他家张数 / 轮到谁）
 # ── 实体渲染：按服务端 state.tiles 把 136 张牌摆到位 ─────────────────────────
 # 新版显示架构总入口：每张牌是一个 TilePiece 实体，这里只改它的形式/位置/旋转/显隐。
+# 选牌状态指纹：只影响牌河上的「选中彩框」，不改变任何牌的实体状态。
+func _selection_sig() -> String:
+	# ★ 新增「选牌 / 面板」状态必须登记到这里，否则 _apply_entity_states 会跳过重绘，
+	#   表现就是「面板打开了但牌河没有彩框、点不动」（2026-11-02 魔术/快手）。
+	return "%d%d%d%d%d%d%d%d%d%d%d|%d|%s|%s|%d|%d|%d|%d|%s|%s|%s|%s|%s|%s" % [
+		int(c09_active), int(c10_active), int(c11_active), int(c11s2_active),
+		int(c05_active), int(sf_active), int(zl_active), int(pofa_active),
+		int(hs_active), int(dy_active), int(swap_panel.active),
+		int(c09_seq), str(c05_target), str(c10_rivers),
+		int(c11s2_seq), int(sf_seq), int(zl_seq), int(pofa_seq),
+		str(press_panel.rivers), str(swap_panel.rivers), str(c43_panel.rivers),
+		str(c45_panel.rivers), str(c33_panel.rivers), str(c27_panel.rivers)]
+
+
 func _apply_entity_states(st2: Dictionary) -> void:
 	if tile_bank == null:
 		return
@@ -12034,10 +12160,14 @@ func _apply_entity_states(st2: Dictionary) -> void:
 		return
 	# ★ 性能：136 张实体逐张 apply_state / 改亮度是这里最贵的一步。
 	#   牌位没变（tiles 深 hash 一致）+ 选牌/立直/窗口没变 → 一张都不用重摆。
-	var _esig := "%d|%s|%d|%s|%d|%d" % [tiles.hash(), str(get_viewport_rect().size),
+	# ★ 选牌类技能（间合 / 策略 / 鬼门 / 深山 / 炸裂 / 破发 / 魔术 / 压制 / 各种面板）
+	#   点牌河只会改「选中了哪张」，牌的实体状态一点没变。这些状态必须进签名，
+	#   否则签名不变 → 这里直接 return → 牌河彩框不重画，非得再点一下手牌才刷出来
+	#   （用户报的【间合守/攻】bug，2026-11-02；所有选牌技能都受影响）。
+	var _esig := "%d|%s|%d|%s|%d|%d|%s" % [tiles.hash(), str(get_viewport_rect().size),
 		int(hand_pick.active) if hand_pick != null else 0,
 		str(hand_pick.picks.hash()) if hand_pick != null else "-",
-		int(riichi_selecting), int(hand_offset.x * 100.0)]
+		int(riichi_selecting), int(hand_offset.x * 100.0), _selection_sig()]
 	if _esig == _entity_sig:
 		return
 	_entity_sig = _esig
@@ -12574,6 +12704,7 @@ func srv_apply_state(st, events = null) -> void:
 	else:
 		srv_layout_buttons(srv_opts_of(st2))
 	_apply_entity_states(st2)
+	_lizhi_stick_sync(st2)              # 立直棒：谁立直谁门前那根 2 秒淡入
 	# ★ 必须在 _apply_entity_states 之后：牌河那张的 discard_seq / river_seat
 	#   是这一步才写进 TilePiece 的，放前面会锁到「上一张」（用户报的 off-by-one）
 	_claim_frames_sync(st2)
@@ -12829,19 +12960,30 @@ func _match_tick(delta: float) -> void:
 	_match_apply(r)
 
 
+# 结算「确认」按钮：右下角（用户口径 2026-11-02：原来放屏幕下方正中，会压住自己的分数面板）
+func _result_confirm_place(b: Control) -> void:
+	if b == null:
+		return
+	var vp := get_viewport_rect().size
+	var m := 28.0
+	b.position = Vector2(maxf(vp.x - b.size.x - m, 0.0), maxf(vp.y - b.size.y - m, 0.0))
+
+
 func _result_confirm_button_get() -> Control:
 	if win_confirm_btn != null and is_instance_valid(win_confirm_btn):
 		return win_confirm_btn
-	var a := _win_announce_get()
-	if a == null:
+	var host := _win_seats_node()
+	if host == null:
+		host = _win_announce_get()
+	if host == null:
 		return null
 	win_confirm_btn = WinConfirmButton.new()
 	win_confirm_btn.name = "Confirm"
 	win_confirm_btn.size = Vector2(300, 92)
-	win_confirm_btn.position = Vector2((get_viewport_rect().size.x - 300.0) * 0.5,
-		get_viewport_rect().size.y * 0.80)
+	_result_confirm_place(win_confirm_btn)
 	win_confirm_btn.confirmed.connect(_result_confirm_press)
-	a.add_child(win_confirm_btn)
+	win_confirm_btn.visible = false      # 场景里到最后一步才点亮
+	host.add_child(win_confirm_btn)
 	return win_confirm_btn
 
 
@@ -12873,9 +13015,8 @@ func _result_confirm_apply(raw) -> void:
 			count += 1
 	var b := _result_confirm_button_get()
 	if b != null:
-		b.visible = true
-		b.position = Vector2((get_viewport_rect().size.x - b.size.x) * 0.5,
-			get_viewport_rect().size.y * 0.80)
+		pass    # 显隐由和牌播报场景控制
+		_result_confirm_place(b)
 		b.call("set_state", result_confirmed, count, maxi(required.size(), 1))
 	var sig := "%s/%s" % [str(confirmed), str(required)]
 	if sig != result_confirm_sig:
@@ -14085,6 +14226,140 @@ func can_declare_riichi(ids: Array, melds: int = 0) -> bool:
 
 # ────────────────────────── 立直 / 和牌 流程 ──────────────────────────
 
+# ────────────────────────── 立直棒（图片 · 2 秒淡入）──────────────────────────
+# 四根立直棒 = 风盘四条边中点上摆好的 4 个 Sprite2D（用户 2026-11-02 摆的）：
+#   下 = 自己 / 右 = 下家(D) / 上 = 对家(C) / 左 = 上家(B)
+# 谁立直，谁门前那根就在 **2 秒**内从全透明淡到不透明。
+#
+# ★ 位置/缩放/旋转一律照抄那 4 个节点（取它们的 global_transform），一个像素都不改。
+# ★ 但主牌桌在 CanvasLayer 0、人物卡在 CanvasLayer 20 —— 直接把风盘下那几个节点点亮
+#   会被人物卡整块盖住（2026-11-02 实测：截图里什么都看不到）。
+#   所以在 layer=21 上放一个「镜像 Sprite2D」来显示：贴图和全局变换每次都从原节点抄，
+#   视觉位置和风盘的关系完全一致，只是画在人物卡上面。
+const LIZHI_STICK_FADE := 2.0            # 立直后淡入用时（秒）
+const LIZHI_STICK_SPREAD := false        # true = 按 1/风盘缩放把四根摊开（位置会偏，默认关）
+const LIZHI_STICK_NODES := {
+	"me": "UI/风盘/Huaban5659731464",    # 屏幕下方 = 自己
+	"D": "UI/风盘/Huaban5659731463",     # 屏幕右侧 = 下家
+	"C": "UI/风盘/Huaban5659731462",     # 屏幕上方 = 对家
+	"B": "UI/风盘/Huaban5659731461",     # 屏幕左侧 = 上家
+}
+var lizhi_stick_on := {}                 # who -> 现在该不该显示
+var lizhi_stick_tw := {}                 # who -> Tween（淡入中）
+var lizhi_stick_ready := false           # 第一次同步时先把四根全部收起来
+var lizhi_stick_layer: CanvasLayer = null
+var lizhi_stick_mirrors := {}            # who -> Sprite2D（真正显示的那个）
+
+
+func _lizhi_stick_anchor(who: String) -> Sprite2D:
+	return get_node_or_null(String(LIZHI_STICK_NODES.get(who, ""))) as Sprite2D
+
+
+func _lizhi_stick_layer_get() -> CanvasLayer:
+	if lizhi_stick_layer != null and is_instance_valid(lizhi_stick_layer):
+		return lizhi_stick_layer
+	lizhi_stick_layer = CanvasLayer.new()
+	lizhi_stick_layer.name = "LizhiStickLayer"
+	lizhi_stick_layer.layer = 21      # 人物卡在 20；别压过 30 / 31 / 32 的播报与结算
+	add_child(lizhi_stick_layer)
+	return lizhi_stick_layer
+
+
+# 显示用的镜像节点：贴图 + 全局变换都跟场景里那 4 个节点走
+func _lizhi_stick_node(who: String) -> Sprite2D:
+	var anchor := _lizhi_stick_anchor(who)
+	if anchor == null:
+		return null
+	var m = lizhi_stick_mirrors.get(who, null)
+	if m != null and is_instance_valid(m):
+		_lizhi_stick_apply(m, anchor)
+		return m
+	var mir := Sprite2D.new()
+	mir.name = "LizhiStick_" + who
+	mir.texture = anchor.texture
+	mir.centered = anchor.centered
+	mir.offset = anchor.offset
+	mir.flip_h = anchor.flip_h
+	mir.flip_v = anchor.flip_v
+	mir.visible = false
+	lizhi_stick_mirrors[who] = mir
+	_lizhi_stick_layer_get().add_child(mir)
+	_lizhi_stick_apply(mir, anchor)
+	anchor.visible = false                 # 原节点只当位置标尺，不再直接显示
+	return mir
+
+
+# 贴图 / 朝向 / 大小照抄锚点；位置按「相对风盘中心的偏移」反补偿风盘缩放。
+# 风盘 scale=0.3388 时，锚点 position(±260) 在屏幕上只有 ±88px —— 四根会叠在一起。
+func _lizhi_stick_apply(mir: Sprite2D, anchor: Sprite2D) -> void:
+	mir.texture = anchor.texture
+	mir.centered = anchor.centered
+	mir.offset = anchor.offset
+	mir.flip_h = anchor.flip_h
+	mir.flip_v = anchor.flip_v
+	var gxf := anchor.get_global_transform()
+	if LIZHI_STICK_SPREAD and fengpan != null and is_instance_valid(fengpan):
+		var fsc := maxf(fengpan.global_scale.x, 0.01)
+		var center: Vector2 = fengpan.global_position
+		var origin: Vector2 = center + (gxf.origin - center) / fsc
+		mir.global_transform = Transform2D(gxf.get_rotation(), gxf.get_scale(), 0.0, origin)
+	else:
+		mir.global_transform = gxf
+
+
+func _lizhi_stick_show(who: String) -> void:
+	var n := _lizhi_stick_node(who)
+	if n == null:
+		return
+	n.visible = true
+	n.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(n, "modulate:a", 1.0, LIZHI_STICK_FADE) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	lizhi_stick_tw[who] = tw
+
+
+func _lizhi_stick_hide(who: String) -> void:
+	var tw = lizhi_stick_tw.get(who, null)
+	if tw != null and tw.is_valid():
+		tw.kill()
+	lizhi_stick_tw.erase(who)
+	var n := _lizhi_stick_node(who)
+	if n != null:
+		n.visible = false
+		n.modulate.a = 1.0               # 复位：下次淡入再从 0 开始
+
+
+func _lizhi_stick_hide_all() -> void:
+	for w in LIZHI_STICK_NODES.keys():
+		lizhi_stick_on[w] = false
+		_lizhi_stick_hide(String(w))
+
+
+# 跟着服务端状态走：riichi 列表里有谁，谁门前那根就淡入；没有就收起。
+func _lizhi_stick_sync(st: Dictionary) -> void:
+	var want := {}
+	var rr = st.get("riichi")
+	if typeof(rr) == TYPE_ARRAY:
+		for s in (rr as Array):
+			var w := who_of_seat(int(s))
+			if w != "":
+				want[w] = true
+	for w in LIZHI_STICK_NODES.keys():
+		var on := want.has(w)
+		if lizhi_stick_ready and bool(lizhi_stick_on.get(w, false)) == on:
+			# 状态没变，但风盘可能被缩放/挪动过（窗口尺寸变化）→ 顺手重新对齐位置
+			if on:
+				_lizhi_stick_node(String(w))
+			continue
+		lizhi_stick_on[w] = on
+		if on:
+			_lizhi_stick_show(String(w))
+		else:
+			_lizhi_stick_hide(String(w))
+	lizhi_stick_ready = true
+
+
 # 每次摸牌后判定：先看是否和牌，再按立直状态处理
 func _after_draw() -> void:
 	if game_over or game_phase == PHASE_DEAL:
@@ -14401,6 +14676,24 @@ func _update_riichi_button_dim() -> void:
 
 # 和牌：停止一切行为并显示「胡牌」（番 / 符 / 得点由服务端算好传过来）
 # 宝牌明细（服务端 yaku 里的 detail：宝牌 / 赤宝牌 / 里宝牌；里宝牌只有立直和牌时才 > 0）
+# 服务端 result 里有些字段是「自摸时为 null、荣和时为数字」的（典型：loser）。
+# GDScript 的 int(null) 会抛 "Invalid call. Nonexistent 'int' constructor"，
+# 整个 show_hupai 就在这里中止 → 表现就是「荣和有结算框，自摸没有」（2026-11-02）。
+# 所有 result 字段一律走这个函数读。
+func _int_of(d, key: String, def: int = 0) -> int:
+	if typeof(d) != TYPE_DICTIONARY:
+		return def
+	var v = (d as Dictionary).get(key, def)
+	if v == null:
+		return def
+	if typeof(v) == TYPE_BOOL:
+		return 1 if bool(v) else 0
+	if typeof(v) == TYPE_STRING or typeof(v) == TYPE_STRING_NAME:
+		var s := String(v).strip_edges()
+		return int(s) if s.is_valid_int() else def
+	return int(v)
+
+
 func srv_dora_detail(yaku_list: Array) -> String:
 	var parts := []
 	for y in yaku_list:
@@ -14410,7 +14703,7 @@ func srv_dora_detail(yaku_list: Array) -> String:
 		if typeof(det) != TYPE_DICTIONARY:
 			continue
 		for key in ["宝牌", "赤宝牌", "里宝牌"]:
-			var n := int((det as Dictionary).get(key, 0))
+			var n := _int_of(det, key, 0)
 			if n > 0:
 				parts.append("%s %d" % [key, n])
 	if parts.is_empty():
@@ -14418,9 +14711,20 @@ func srv_dora_detail(yaku_list: Array) -> String:
 	return "（%s）" % "、".join(parts)
 
 
-func _win_announce_get() -> Control:
-	if win_announce != null and is_instance_valid(win_announce):
-		return win_announce
+const WIN_SCENE_PATH := "res://和牌播报.tscn"
+var win_scene: Node2D = null            # 和牌播报场景（截图背景 + 进场动画 + 结算面板）
+var _win_intro_running := false         # 进场动画正在播
+var _win_intro_ms := 0                  # 上次播报开始时刻（ms）：flag 自愈用
+
+
+# 和牌播报场景（只实例化一次，之后复用）
+func _win_scene_get() -> Node2D:
+	if win_scene != null and is_instance_valid(win_scene):
+		return win_scene
+	var ps := load(WIN_SCENE_PATH) as PackedScene
+	if ps == null:
+		push_warning("main.gd: 找不到 " + WIN_SCENE_PATH)
+		return null
 	# ★ 必须挂在高层 CanvasLayer 上：Control 的鼠标命中只看「层号 → 树序」，不看 z_index。
 	#   塞进 UI（layer 0）时，牌自带的 Hit 控制在树里更靠后 → 悬浮/点击被麻将牌抢走，
 	#   播报上的确认按钮点不到（2026-10-30 报）。
@@ -14432,15 +14736,325 @@ func _win_announce_get() -> Control:
 		layer.name = "WinAnnounceLayer"
 		layer.layer = 31
 		host.add_child(layer)
-	win_announce = WinAnnounce.new()
-	win_announce.name = "WinAnnounce"
-	win_announce.mouse_filter = Control.MOUSE_FILTER_STOP
-	win_announce.visible = false
-	layer.add_child(win_announce)
-	# CanvasLayer 下坐标就是屏幕坐标，铺满 viewport 即可。
-	win_announce.position = Vector2.ZERO
-	win_announce.size = get_viewport_rect().size
+	win_scene = ps.instantiate() as Node2D
+	win_scene.name = "WinAnnounce"
+	layer.add_child(win_scene)
+	return win_scene
+
+
+# 和牌播报里「四个小面板」那一层（确认按钮挂这层，一起淡入）
+func _win_seats_node() -> Control:
+	var sc := _win_scene_get()
+	if sc == null or not sc.has_method("seats_node"):
+		return null
+	return sc.call("seats_node") as Control
+
+
+func _win_announce_get() -> Control:
+	if win_announce != null and is_instance_valid(win_announce):
+		return win_announce
+	var sc := _win_scene_get()
+	win_announce = sc.announce if sc != null else null
 	return win_announce
+
+
+func _win_panel_visible() -> bool:
+	return win_announce != null and is_instance_valid(win_announce) \
+		and (win_announce as CanvasItem).visible
+
+
+# 和牌播报：① 截「点击和牌那一刻」的全屏图当背景 ② 按赢家方位播长条进场
+#           ③ 播完隐藏 ④ 等 1 秒弹结算面板
+# ── 结算：把和牌家的手牌贴到屏幕上方 ────────────────────────────────
+#   顺序：暗手（理牌）→ 副露（该横置的横置）→ 隔开一段 → 和牌那张
+#   hand / melds / win_tile 由服务端结算时给（技能强制和牌 → 被算作铳的那张）
+func _win_hand_show(seat: int, win: Dictionary) -> void:
+	var sc := _win_scene_get()
+	if sc == null:
+		return
+	var hand: Array = []
+	var hs = win.get("hand")
+	if typeof(hs) == TYPE_ARRAY:
+		for t in (hs as Array):
+			hand.append(String(t))
+	if not hand.is_empty():
+		hand.sort_custom(_comes_first)
+	var wts := String(win.get("win_tile", ""))
+	var melds: Array = []
+	var ms = win.get("melds")
+	if typeof(ms) == TYPE_ARRAY:
+		melds = ms
+
+	# 竖牌尺寸（按 Pai 模板的贴图比例算；横置就是把竖牌转 90°）
+	var uw := 60.0
+	var uh := 86.0
+	var tpl: Node2D = null
+	if pai != null:
+		tpl = pai.get_node_or_null("1m") as Node2D
+	if tpl != null:
+		var tspr := tpl.get_node_or_null("Sprite2D") as Sprite2D
+		if tspr != null and tspr.texture != null:
+			var ts := tspr.texture.get_size()
+			if ts.x > 1.0:
+				uh = uw * (ts.y / ts.x)
+
+	# 副露分组（rot_index / rot_all 决定哪张横置；杠是 4 张）
+	var groups: Array = []
+	for m in melds:
+		if typeof(m) != TYPE_DICTIONARY:
+			continue
+		var md: Dictionary = m
+		var mt = md.get("tiles")
+		if typeof(mt) != TYPE_ARRAY or (mt as Array).is_empty():
+			continue
+		var rot_i := int(md.get("rot_index", 0))
+		var rot_all := bool(md.get("rot_all", false))
+		var gw := 0.0
+		for k in range((mt as Array).size()):
+			gw += uh if (rot_all or k == rot_i) else uw
+		groups.append({"tiles": mt, "rot": rot_i, "rot_all": rot_all})
+
+	# 总宽 → 水平居中；底边距屏幕顶部留一点
+	var gap_hand := 2.0
+	var gap_meld := 12.0
+	var gap_win := 34.0
+	var total := 0.0
+	for k in range(hand.size()):
+		total += uw + (gap_hand if k > 0 else 0.0)
+	for g in groups:
+		var gd0: Dictionary = g
+		total += gap_meld
+		var t0: Array = gd0["tiles"]
+		var r0 := int(gd0.get("rot", 0))
+		var ra0 := bool(gd0.get("rot_all", false))
+		for k in range(t0.size()):
+			total += uh if (ra0 or k == r0) else uw
+	if wts != "":
+		total += gap_win + uw
+
+	var vp := get_viewport_rect().size
+	var base := 52.0 + uh                 # 牌的下边缘 y
+	var x := maxf((vp.x - total) * 0.5, 12.0)
+	var root := Node2D.new()
+	root.name = "HandRack"
+
+	# 1) 暗手
+	for k in range(hand.size()):
+		if k > 0:
+			x += gap_hand
+		var hv := _make_face_visual(String(hand[k]), uw)
+		if hv != null:
+			hv.position = Vector2(x + uw * 0.5, base - uh * 0.5)
+			root.add_child(hv)
+		x += uw
+
+	# 2) 副露
+	for g in groups:
+		var gd: Dictionary = g
+		x += gap_meld
+		var tt: Array = gd["tiles"]
+		var rot_i2 := int(gd.get("rot", 0))
+		var rot_all2 := bool(gd.get("rot_all", false))
+		for k in range(tt.size()):
+			var horiz: bool = rot_all2 or k == rot_i2
+			var vis := _make_face_visual(String(tt[k]), uw)
+			if vis != null:
+				if horiz:
+					# 横置：把竖牌转 90°，占位宽度 = 竖牌的高
+					vis.rotation_degrees = -90.0
+					vis.position = Vector2(x + uh * 0.5, base - uw * 0.5)
+				else:
+					vis.position = Vector2(x + uw * 0.5, base - uh * 0.5)
+				root.add_child(vis)
+			x += uh if horiz else uw
+
+	# 3) 和牌那张（和暗手/副露隔开一段）
+	if wts != "":
+		x += gap_win
+		var wv := _make_face_visual(wts, uw)
+		if wv != null:
+			wv.position = Vector2(x + uw * 0.5, base - uh * 0.5)
+			root.add_child(wv)
+
+	sc.call("set_hand", root)
+
+
+# 流局等场合：不放长条进场动画，直接把结算面板贴出来（服务端给了 scores/deltas，面板一样有分数条）
+func _win_panel_show(content: Dictionary) -> void:
+	var sc := _win_scene_get()
+	if sc == null:
+		return
+	sc.call("show_panel", content)
+	var cb := _result_confirm_button_get()
+	if cb != null:
+		cb.visible = true
+		cb.call("set_state", false, 0, 4)
+
+
+func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
+	if _win_intro_running:
+		# 防御：上一次播报如果中途抛错，flag 会永远留在 true → 之后再也不会播报
+		if Time.get_ticks_msec() - _win_intro_ms < 20000:
+			return
+	_win_intro_running = true
+	_win_intro_ms = Time.get_ticks_msec()
+	var sc := _win_scene_get()
+	if sc == null:
+		_win_intro_running = false
+		return
+	srv_layout_buttons([])                     # 截图上不要出现荣/自摸按钮
+	sc.call("reset")
+	await get_tree().process_frame             # 让按钮收起、场景隐藏生效
+	await RenderingServer.frame_post_draw      # ★ 必须等这一帧真的画完，否则截到黑帧
+	var shot: Texture2D = null      # 播报不要背景图（只用全屏蒙版），不再截图
+	# 流局（result 里没有 winner 键）不贴卡：以前会兜底成 my_seat，把「自己的主战卡」贴上去
+	var has_winner := win.has("winner") and win.get("winner") != null
+	var wseat := _int_of(win, "winner", my_seat)
+	var who := who_of_seat(wseat)
+	var pick: Array = _win_card_pick(wseat) if has_winner else [0, false]
+	if not has_winner:
+		who = who_of_seat(my_seat)
+	# 页眉手牌先摆好（隐藏状态）；play 里到「蒙版+横幅淡入」那一步才亮
+	if has_winner:
+		_win_hand_show(wseat, win)
+	await sc.call("play", who, int(pick[0]), bool(pick[1]), shot, content)
+	# 确认按钮的显隐 / 可点时机由场景控制（跟小面板一起淡入）
+	var cb := _result_confirm_button_get()
+	if cb != null:
+		cb.call("set_state", false, 0, 4)
+	_win_intro_running = false
+# 播报上贴谁的人物卡：主战已暴露 → 主战；否则协战（没暴露就连遮罩一起）；只剩主战没暴露 → 主战+遮罩
+func _win_card_pick(seat: int) -> Array:
+	var cs := {}
+	for it in (srv_state.get("char_states", []) as Array):
+		if typeof(it) == TYPE_DICTIONARY and int((it as Dictionary).get("seat", -1)) == int(seat):
+			cs = it
+			break
+	var main_i: Dictionary = cs.get("main", {}) if typeof(cs.get("main")) == TYPE_DICTIONARY else {}
+	var sup_i: Dictionary = cs.get("support", {}) if typeof(cs.get("support")) == TYPE_DICTIONARY else {}
+	var mc := int(main_i.get("card", 0))
+	var sc2 := int(sup_i.get("card", 0))
+	var main_open := bool(main_i.get("open", false))
+	var sup_open := bool(sup_i.get("open", false))
+	var main_exp := bool(main_i.get("expired", false))
+	var sup_exp := bool(sup_i.get("expired", false))
+	# 一律按「公开信息」贴卡（自己赢也一样 —— 用户口径 2026-11-02）：
+	#   发动过 = 已公开；没发动过 / 已到期 / 自己手动遮罩 → 连遮罩一起复制
+	var main_ok := mc > 0 and main_open and not main_exp
+	var sup_ok := sc2 > 0 and sup_open and not sup_exp and not _card_is_support_muted(sc2)
+	if main_ok:
+		return [mc, false]                  # 主战已暴露：直接复制
+	if sup_ok:
+		return [sc2, false]                 # 协战已暴露：正常复制
+	if sc2 > 0:
+		return [sc2, true]                  # 协战没暴露：连遮罩一起复制
+	if mc > 0:
+		return [mc, true]                   # 只剩主战且没暴露：主战 + 遮罩
+	return [0, false]
+
+
+# 结算播报：四个方位的小面板（自己=下 / 下家=右 / 对家=上 / 上家=左）
+#   win.scores = {座位: 结算后分数}，win.deltas = {座位: 本局增减}（JSON 的 key 是字符串）
+# 结算播报的番种条：每个役一条（名字 + 番数）；宝牌一张都没中就不写；役满写役满
+func _result_yaku_rows(win: Dictionary) -> Array:
+	var out: Array = []
+	var ym := _int_of(win, "yakuman", 0)
+	for y in win.get("yaku", []):
+		if typeof(y) != TYPE_DICTIONARY:
+			continue
+		var nm := String((y as Dictionary).get("name", ""))
+		var hn := int((y as Dictionary).get("han", 0))
+		if nm == "":
+			continue
+		var dt = (y as Dictionary).get("detail")
+		var dcount := 0
+		if typeof(dt) == TYPE_DICTIONARY:
+			for k in (dt as Dictionary).keys():
+				dcount = maxi(dcount, int((dt as Dictionary)[k]))
+		if nm.contains("宝牌") and dcount <= 0:
+			continue                    # 没宝牌就不写宝牌
+		if hn <= 0 and ym <= 0:
+			continue
+		var ht := ""
+		if ym > 0:
+			ht = "役满" if ym < 2 else "双倍役满"
+		else:
+			ht = "%d番" % hn
+		out.append({"name": nm, "han_text": ht})
+	return out
+
+
+# 调试入口（autoplay.cfg 里写 announce=1）：直接进和牌播报调界面
+func _debug_announce() -> void:
+	await get_tree().create_timer(0.8).timeout      # 等牌桌画出来再截图当背景
+	game_over = false
+	var sc := _win_scene_get()
+	if sc != null and sc.has_method("set_tune_mode"):
+		sc.call("set_tune_mode", true)
+	var ws := my_seat
+	var win := {
+		"result": "tsumo", "tsumo": true, "winner": ws, "loser": null,
+		"han": 6, "fu": 30, "points": 12000, "yakuman": 0,
+		"pays": {"total": 12000},
+		"yaku": [{"name": "立直", "han": 1}, {"name": "门前清自摸和", "han": 1},
+			{"name": "平和", "han": 1}, {"name": "断幺九", "han": 1},
+			{"name": "一气通贯", "han": 2}, {"name": "宝牌", "han": 2, "detail": {"宝牌": 2}}],
+		"hand": ["1m", "2m", "3m", "4p", "5p", "6p", "7s", "8s", "1s", "2s", "3s", "9m", "9m"],
+		"melds": [{"kind": "chi", "tiles": ["4m", "5m", "6m"], "rot_index": 0, "rot_all": false}],
+		"win_tile": "3p",
+		"scores": {str(ws): 47000, str((ws + 1) % 4): 31000, str((ws + 2) % 4): 31000, str((ws + 3) % 4): 31000},
+		"deltas": {str(ws): 12000, str((ws + 1) % 4): -4000, str((ws + 2) % 4): -4000, str((ws + 3) % 4): -4000},
+	}
+	var content := {
+		"title": "和　了", "method": "%s　自摸" % srv_nick_of(ws),
+		"yaku": "立直・门前清自摸和・平和・断幺九・一气通贯・宝牌2",
+		"score": "12000 點", "sub": "6 番　30 符", "is_draw": false,
+		"yaku_rows": _result_yaku_rows(win),
+		"seats": _result_seats(win),
+	}
+	_win_intro_start(win, content)
+
+
+func _result_seats(win: Dictionary) -> Array:
+	var out: Array = []
+	var sc = win.get("scores")
+	var dl = win.get("deltas")
+	var pos_names := ["bottom", "right", "top", "left"]
+	for k in range(4):
+		var sid := (my_seat + k) % 4
+		var after := -1
+		if typeof(sc) == TYPE_DICTIONARY:
+			if (sc as Dictionary).has(str(sid)):
+				after = int((sc as Dictionary)[str(sid)])
+			elif (sc as Dictionary).has(sid):
+				after = int((sc as Dictionary)[sid])
+		if after < 0:
+			after = _score_now(sid)
+		var delta := 0
+		if typeof(dl) == TYPE_DICTIONARY:
+			if (dl as Dictionary).has(str(sid)):
+				delta = int((dl as Dictionary)[str(sid)])
+			elif (dl as Dictionary).has(sid):
+				delta = int((dl as Dictionary)[sid])
+		out.append({
+			"pos": String(pos_names[k]),
+			"nick": srv_nick_of(sid),
+			"before": maxi(after - delta, 0) if after >= 0 else 0,
+			"after": maxi(after, 0),
+		})
+	return out
+
+
+# 当前分数（srv_state.scores 是 [{seat, nickname, score, connected}]）；查不到给 -1
+func _score_now(seat: int) -> int:
+	var arr = srv_state.get("scores")
+	if typeof(arr) == TYPE_ARRAY:
+		for it in (arr as Array):
+			if typeof(it) != TYPE_DICTIONARY:
+				continue
+			if int((it as Dictionary).get("seat", -1)) == int(seat):
+				return int((it as Dictionary).get("score", -1))
+	return -1
 
 
 func show_hupai(win: Dictionary = {}) -> void:
@@ -14479,16 +15093,18 @@ func show_hupai(win: Dictionary = {}) -> void:
 				names.append(String(y.get("name", "?")) if typeof(y) == TYPE_DICTIONARY else String(y))
 			# 宝牌明细由服务端算好（包括立直后的里宝牌），客户端只负责显示
 			var dora_txt := srv_dora_detail(win.get("yaku", []))
-			var han := int(win.get("han", 0))
-			var fu := int(win.get("fu", 0))
-			var pays: Dictionary = win.get("pays", {})
-			var pts := int(pays.get("total", 0))
+			var han := _int_of(win, "han", 0)
+			var fu := _int_of(win, "fu", 0)
+			var pays: Dictionary = {}
+			if typeof(win.get("pays")) == TYPE_DICTIONARY:
+				pays = win.get("pays")
+			var pts := _int_of(pays, "total", 0)
 			var head := "自摸" if (bool(win.get("tsumo", false)) \
 				or String(win.get("result", "")) == "tsumo") else "榮和"
 			method = head
 			# 用户口径 2026-11-02：顶部写昵称（荣和 = 昵称一 ← 昵称二）
-			var _wn := int(win.get("winner", my_seat))
-			var _ls := int(win.get("loser", -1))
+			var _wn := _int_of(win, "winner", my_seat)
+			var _ls := _int_of(win, "loser", -1)   # 自摸时服务端给 null
 			if bool(win.get("tsumo", false)) \
 					or String(win.get("result", "")) == "tsumo":
 				method = "%s　自摸" % srv_nick_of(_wn)
@@ -14496,8 +15112,9 @@ func show_hupai(win: Dictionary = {}) -> void:
 				method = "%s ← %s　荣和" % [srv_nick_of(_wn), srv_nick_of(_ls)]
 			yaku_text = "・".join(names) + dora_txt
 			detail = "%s　%s%s" % [head, "、".join(names), dora_txt]
-			if int(win.get("yakuman", 0)) > 0:
-				var ym := int(win.get("yakuman", 0))
+			var _ym := _int_of(win, "yakuman", 0)
+			if _ym > 0:
+				var ym := _ym
 				score_text = "%d 點" % pts
 				sub_text = "役滿" + (" ×%d" % ym if ym > 1 else "")
 				detail += "\n役满 ×%d　%d 点" % [ym, pts]
@@ -14506,29 +15123,24 @@ func show_hupai(win: Dictionary = {}) -> void:
 				sub_text = "%d 番　%d 符" % [han, fu]
 				detail += "\n%d 番 %d 符　%d 点" % [han, fu, pts]
 
-	result_confirmed = false
-	result_confirm_sig = ""
-	var announce := _win_announce_get()
-	if announce != null:
-		announce.position = Vector2.ZERO
-		announce.size = get_viewport_rect().size
-		announce.call("set_content", {
-			"title": title, "method": method, "yaku": yaku_text,
-			"score": score_text, "sub": sub_text, "is_draw": is_draw,
-		})
-		announce.visible = true
-		announce.modulate = Color(1, 1, 1, 0)
-		announce.scale = Vector2(1.08, 1.08)
-		announce.pivot_offset = get_viewport_rect().size * 0.5
-		var atw := create_tween().set_parallel(true)
-		atw.tween_property(announce, "modulate", Color(1, 1, 1, 1), 0.22) \
-			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		atw.tween_property(announce, "scale", Vector2.ONE, 0.30) \
-			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		var cb := _result_confirm_button_get()
-		if cb != null:
-			cb.visible = true
-			cb.call("set_state", false, 0, 4)
+	var _content := {
+		"title": title, "method": method, "yaku": yaku_text,
+	"score": score_text, "sub": sub_text, "is_draw": is_draw,
+	"seats": _result_seats(win),
+	"yaku_rows": _result_yaku_rows(win),
+	}
+	# 结算面板已经开着（真结算迟到 / 刷新）→ 只更新文字，不重播进场动画
+	if _win_panel_visible():
+		var ann := _win_announce_get()
+		if ann != null:
+			ann.call("set_content", _content)
+	elif not _win_intro_running:
+		result_confirmed = false
+		result_confirm_sig = ""
+		if is_draw:
+			_win_panel_show(_content)      # 流局：不放进场动画，直接把播报贴出来
+		else:
+			_win_intro_start(win, _content)
 	# 旧 ResultPanel 仍填内容作为兼容，但不再显示
 	var panel := get_node_or_null("UI/ResultPanel") as Control
 	if panel == null:
@@ -14637,6 +15249,12 @@ func _skill_panel_stale_close() -> void:
 		_hs_close()
 	if c09_active and not bool(srv_state.get("card09_can", false)):
 		_card09_close()
+	# 魔术 / 快手：服务端已经不允许了（打完了 / 被别的窗口推进）→ 必须收起来，
+	# 否则 c11_active / c11s2_active 会一直吞掉手牌和牌河的点击（2026-11-02 卡死）。
+	if c11_active and not bool(srv_state.get("card11_can", false)):
+		_card11_close()
+	if c11s2_active and not bool(srv_state.get("card11s2_can", false)):
+		_card11s2_close()
 	if pofa_active and not pofa_disc_stage and String(srv_state.get("pofa_stage", "")) == "":
 		_pofa_close()
 	# 国标 / 一定和牌：服务端已经不允许了（被别的窗口推进 / 已经打过了）就收起面板
@@ -14983,6 +15601,13 @@ func _input(event: InputEvent) -> void:
 	var _focus := get_viewport().gui_get_focus_owner() if get_viewport() != null else null
 	if _focus is LineEdit or _focus is TextEdit:
 		return
+	# 右上角「四行信息」开关（图标是 Sprite2D，自己算点击）
+	var _mb := (event as InputEventMouseButton)
+	if _mb != null and _mb.pressed and _mb.button_index == MOUSE_BUTTON_LEFT:
+		if _round_info_hit(_mb.position):
+			_round_info_toggle()
+			get_viewport().set_input_as_handled()
+			return
 	var _k := (event as InputEventKey)
 	if _k != null and _k.pressed and not _k.echo:
 		if _k.keycode == KEY_F3:
@@ -16516,6 +17141,13 @@ func _dev_autoplay_maybe() -> void:
 		return
 	var txt := f.get_as_text()
 	f.close()
+	# announce=1 → F5 直接进和牌播报调界面（跳过选卡/打牌）
+	if txt.contains("announce="):
+		for line2 in txt.split("\n"):
+			var kv2 := String(line2).strip_edges()
+			if kv2.begins_with("announce=") and int(kv2.substr(9)) != 0:
+				call_deferred("_debug_announce")
+				return
 	var hands := 2
 	for line in txt.split("\n"):
 		var kv := String(line).strip_edges()

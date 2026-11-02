@@ -1640,9 +1640,11 @@ class Game:
                         "card": int(arm.get("card", 0)),
                         "skill": int(arm.get("skill", 0))})
         for k in calls.ankan_options(hand):
-            out.append({"action": "ankan", "tile": k})
+            if self.ankan_allowed(seat, k):      # 立直后：必须不改变听牌
+                out.append({"action": "ankan", "tile": k})
         for k in calls.kakan_options(hand, melds):
-            out.append({"action": "kakan", "tile": k})
+            if self.kakan_allowed(seat, k):      # 立直后不能加杠
+                out.append({"action": "kakan", "tile": k})
         if self.can_riichi(seat):
             out.append({"action": "riichi",
                         "tiles": self.riichi_discards(seat)})
@@ -4528,8 +4530,10 @@ class Game:
         """能开的杠：暗杠优先，其次加杠。"""
         s = int(seat)
         hand = self.hand(s)
-        out: list[tuple[str, str]] = [("ankan", k) for k in calls.ankan_options(hand)]
-        out += [("kakan", k) for k in calls.kakan_options(hand, self.melds(s))]
+        out: list[tuple[str, str]] = [("ankan", k) for k in calls.ankan_options(hand)
+                                      if self.ankan_allowed(s, k)]
+        out += [("kakan", k) for k in calls.kakan_options(hand, self.melds(s))
+                if not self.is_riichi(s)]
         return out
 
     def _c37s1_claim_tiles(self, seat: int) -> list[str] | None:
@@ -6151,7 +6155,7 @@ class Game:
         """兜底（超时 / 第二位是 AI）：替第一位摸切。"""
         a = int(self.c45s2_wait)
         if a < 0:
-            return self._event("c45s2_skip", {})
+            return {}                      # 没人在等：别制造「空操作事件」让调用方空转
         d = self.drawn_tile(a)
         if d is None:
             hand = [str(t) for t in self.hand(a)]
@@ -7887,11 +7891,54 @@ class Game:
         self.phase = "claim"
         return True
 
+    # ── 立直后的杠（标准日麻，天凤 / 雀魂同款）──────────────────────────
+    # 立直 = 手牌锁死。杠是唯一还能动牌的操作，所以限制最严：
+    #   · **加杠一律禁止**（碰的刻子变成杠 → 手牌少一张，牌型必定变了）；
+    #   · 暗杠要同时满足：
+    #       ① 杠的 4 张里必须有**刚摸到的那张**（禁「送り槓」：
+    #          不能把手里原有的 4 张直接扣下去，那等于白换一次牌型）；
+    #       ② 杠完**听牌一张都不能变**：杠前听什么、杠后还听什么，
+    #          待牌种类完全一致（这条同时挡住「杠完不听」和「杠完改听」）。
+    #
+    # 例：听 3m-6m 两面，手里 111m + 摸到第 4 张 1m 起手，
+    #     暗杠 1m 之后仍然只听 3m-6m → 允许；
+    #     任何会让待牌集合变化的暗杠 → 连动作都不给（legal 里不出现）。
+    def ankan_allowed(self, seat: int, tile: str) -> bool:
+        s = int(seat)
+        if not self.is_riichi(s):
+            return True
+        drawn = self.drawn_tile(s)
+        if drawn is None:
+            return False
+        if kind_of(str(drawn)) != kind_of(str(tile)):
+            return False                      # 手里原有的 4 张不能杠（送り槓）
+        hand = self.hand(s)                   # 14 张（含刚摸那张）
+        same = [t for t in hand if kind_of(str(t)) == kind_of(str(tile))]
+        if len(same) < 4:
+            return False
+        rest = list(hand)
+        for t in same[:4]:
+            rest.remove(t)                    # 扛到杠上的 4 张
+        melds = self.melds(s)
+        before = set(agari.winning_tiles(counts_of(self.hand13(s)), melds))
+        if not before:
+            return False                      # 本来就没听牌（正常立直不会发生）
+        kan = {"kind": "ankan", "tiles": [str(tile)] * 4}
+        after = set(agari.winning_tiles(counts_of(rest), melds + [kan]))
+        return before == after
+
+    def kakan_allowed(self, seat: int, tile: str) -> bool:
+        """立直后不能加杠（标准日麻）。"""
+        return not self.is_riichi(int(seat))
+
     # ── 杠 ──
     def _do_ankan(self, seat: int, tile: str) -> dict:
         return self._kan(seat, "ankan", tile)
 
     def _do_kakan(self, seat: int, tile: str) -> dict:
+        # 立直后不能加杠：先拦住，别让它进到「抢杠」里被别人荣和
+        if not self.kakan_allowed(int(seat), str(tile)):
+            raise RuleError("立直后不能加杠")
         # 抢杠：加杠的那张牌，别人正好和 → 杠不成立，直接荣和
         #（暗杠不能抢，所以只有加杠要查）
         self.chankan_now = True
@@ -7912,6 +7959,11 @@ class Game:
 
     def _kan(self, seat: int, kind: str, tile: str) -> dict:
         """杠（暗杠：手里 4 张 / 加杠：碰过的那张第 4 张）"""
+        # 立直后的杠：规则见 ankan_allowed / kakan_allowed
+        if kind == "ankan" and not self.ankan_allowed(int(seat), str(tile)):
+            raise RuleError("立直后暗杠：必须用刚摸到的那张，且杠完听牌不能变")
+        if kind == "kakan" and not self.kakan_allowed(int(seat), str(tile)):
+            raise RuleError("立直后不能加杠")
         if self.c34_muted(seat):
             raise RuleError("【厄运】期间不能杠（暗杠 / 加杠 / 明杠都不行）")
         self.duel_retarget(int(seat))            # 决斗：非决斗家开杠也算「副露」
@@ -11592,6 +11644,13 @@ class Game:
                              dora=_dora_detail, deltas=deltas)
         self.phase = "ended"                 # ← 停止游戏：legal_actions 变空、advance 不再发牌
         self.round_phase = "end"
+        _wt = str(res.get("win_tile") or res.get("_tile") or "")
+        if not _wt:
+            _d = self.drawn_tile(int(winner))
+            _wt = str(_d) if _d else ""
+        if not _wt and loser is not None:
+            _dl = self.discards(int(loser))
+            _wt = str(_dl[-1]) if _dl else ""
         self.result = {"result": result, "winner": winner, "loser": loser,
                        "yaku": res["yaku"], "yaku_names": [y["name"] for y in res["yaku"]],
                        "han": han, "fu": fu, "points": total, "yakuman": res.get("yakuman", 0),
@@ -11602,6 +11661,11 @@ class Game:
                        "c45s1": res.get("c45s1"),
                        "c46s2": res.get("c46s2"),
                        "duel_bonus": int(res.get("duel_bonus", 0)),
+                       # 结算播报要贴「和牌家的手牌」：暗手(13/10/7) + 副露 + 和牌那张
+                       # 技能强制和牌时，win_tile 就是「被算作铳」的那一张
+                       "hand": self.hand13(int(winner)),
+                       "melds": self.melds(int(winner)),
+                       "win_tile": _wt,
                        "scores": self.scores(), "stopped": True}
         if _pay_notes:
             self._note_pay_broadcast(int(winner), 44, 1, "；".join(_pay_notes))
@@ -11980,6 +12044,7 @@ class Game:
         self.round_phase = "end"
         self.result = {"result": "ryuukyoku", "reason": reason, "tenpai": tenpai,
                        "c41s2": _c41pay_d or None,
+                       "deltas": deltas,
                        "stopped": True, "scores": self.scores()}
         names = {"exhaustive": "荒牌流局", "kyuushu": "九种九牌", "sufon_renda": "四风连打",
                  "sucha_riichi": "四家立直", "sukan_santan": "四杠散了", "sanchahou": "三家和了"}

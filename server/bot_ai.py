@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import time
+
 from tiles import TILE_KINDS, counts_of, kind_of, is_honor   # noqa: E402
 from rules import agari                                      # noqa: E402
 
@@ -133,7 +135,12 @@ def _visible(g, seat: int) -> list[int]:
 
 
 def _ukeire(counts13: list[int], melds, vis: list[int], melds_n: int) -> int:
-    """进张数：摸到哪张能让向听数下降（牌山还剩几张）。"""
+    """进张数：摸到哪张能让向听数下降（牌山还剩几张）。
+
+    加 4ms 预算：34 次 shanten DFS 在 1 核 VPS 上可能几十毫秒；超时就返回已统计的部分
+    （陪玩够用，不会因为算牌把整桌拖卡）。
+    """
+    t0 = time.perf_counter()
     base = shanten(counts13, melds_n)
     n = 0
     for i in range(34):
@@ -143,6 +150,8 @@ def _ukeire(counts13: list[int], melds, vis: list[int], melds_n: int) -> int:
         if shanten(counts13, melds_n) < base:
             n += max(0, 4 - vis[i])
         counts13[i] -= 1
+        if time.perf_counter() - t0 > 0.008:
+            break
     return n
 
 
@@ -184,28 +193,43 @@ def _danger(g, seat: int, tile: str) -> float:
 
 
 # ── 打点期待（原版 eval_shoupai 的替身）───────────────────────────────
-def _tenpai_value(g, seat: int, hand13: list[str], melds) -> float:
-    """听牌时的「打点期待」粗估：待牌张数 × 平均和了点数。"""
+def _tenpai_value(g, seat: int, hand13: list[str], melds,
+                  vis: list[int] | None = None) -> float:
+    """听牌时的「打点期待」粗估。
+
+    ★ 以前对每个待牌都调一次 `g._judge_win()`（完整判番，10ms 级），
+      听牌后一巡能吃掉上百毫秒 → 云上 1 核直接卡。陪玩 AI 用「待牌剩余张数 × 平均点」就够。
+    """
     try:
         ws = agari.winning_tiles(counts_of(hand13), melds)
     except Exception:
         ws = []
     if not ws:
         return 0.0
-    pts = 0.0
+    total = 0
     for w in ws:
+        k = kind_of(w)
         try:
-            r = g._judge_win(seat, w, False, quiet=True)
-        except Exception:
-            r = None
-        if r:
-            pts += float((r.get("pays") or {}).get("total", 1000))
-        else:
-            pts += 1000.0
-    return pts / float(len(ws))
+            i = TILE_KINDS.index(k)
+        except ValueError:
+            continue
+        left = max(0, 4 - (vis[i] if vis else 0))
+        total += left
+    return float(max(total, 1)) * 800.0
 
 
 # ── 主入口 ────────────────────────────────────────────────────────────
+def _shape_score(c: list[int]) -> int:
+    """向听 >= 2 时用的廉价牌效：对子数 + 相邻搭子数（O(34)，不做 DFS）。"""
+    n = 0
+    for i in range(34):
+        if c[i] >= 2:
+            n += 1
+        if i < 27 and i % 9 <= 7 and c[i] and c[i + 1]:
+            n += 1
+    return n
+
+
 def choose_discard(g, seat: int) -> str:
     """从 14 张（含刚摸的那张）里挑一张打。返回牌种字符串；挑不出来返回 ""。"""
     seat = int(seat)
@@ -224,6 +248,20 @@ def choose_discard(g, seat: int) -> str:
     if drawn and drawn in cands:             # 原版：刚摸的那张先排在最前
         cands.remove(drawn)
         cands.insert(0, drawn)
+    # ★ 预算有限：把「更可能要打的」排前面先算（摸切那张不动）——
+    #   孤张字牌 → 端牌 → 中张。否则预算 break 时可能还没算到真正该打的那张。
+    head = cands[:1] if (drawn and cands and cands[0] == drawn) else []
+    tail = cands[len(head):]
+
+    def _ord(t: str) -> int:
+        k = kind_of(t)
+        if is_honor(k):
+            return 1
+        if k[0] in ("1", "9"):
+            return 2
+        return 3
+    tail.sort(key=_ord)
+    cands = head + tail
 
     base_sh = shanten(counts_of(hand), melds_n)
     # 立直家数量 → 押し引き强度
@@ -245,8 +283,23 @@ def choose_discard(g, seat: int) -> str:
     else:
         safe_w = 0.0
 
-    best, best_v = "", -1e18
+    # ★ 孤张字牌：直接打掉（不参与后面的进张精算）。
+    #   ① 牌理上几乎总是对的（孤张字牌既不成面子也不成将）；
+    #   ② 让决策结果稳定：不会因为时间预算截断在不同机器上打出不同的牌。
     for t in cands:
+        if t == drawn:
+            continue
+        if is_honor(kind_of(t)) and hand.count(t) == 1:
+            rest0 = list(hand)
+            rest0.remove(t)
+            if shanten(counts_of(rest0), melds_n) <= base_sh:
+                return t
+
+    best, best_v = "", -1e18
+    t_start = time.perf_counter()
+    for t in cands:
+        if best != "" and time.perf_counter() - t_start > 0.015:
+            break                          # 12ms 预算：剩下的候选不再精算
         rest = list(hand)
         rest.remove(t)
         c13 = counts_of(rest)
@@ -263,9 +316,13 @@ def choose_discard(g, seat: int) -> str:
                     uke += max(0, 4 - vis[TILE_KINDS.index(kind_of(w))])
             except Exception:
                 uke = 0
-            v += float(uke) * max(1.0, _tenpai_value(g, seat, rest, melds) / 100.0)
-        else:
+            v += float(uke) * max(1.0, _tenpai_value(g, seat, rest, melds, vis) / 100.0)
+        elif sh == 1:
             v += float(_ukeire(list(c13), melds, vis, melds_n)) * 3.0
+        else:
+            # ★ 向听还很远时不算「进张数」——那是 14×34 次 DFS，一次决策能吃掉几十毫秒，
+            #   云服务器（1 核）上直接卡到几百毫秒。改成搭子/对子的 O(34) 粗估。
+            v += float(_shape_score(c13)) * 1.5
         # ④ 宝牌/赤牌 留着（打掉要扣分；原版 paijia 也是这个意思）
         try:
             dora_kinds = [kind_of(x) for x in (g._dora_kinds() or [])]
@@ -273,11 +330,14 @@ def choose_discard(g, seat: int) -> str:
             dora_kinds = []
         if kind_of(t) in dora_kinds or t in ("0m", "0p", "0s"):
             v -= 40.0
-        # ⑤ 字牌/端牌先走（跟原版 paijia 排序一致：先扔没用的）
-        if is_honor(kind_of(t)):
-            v += 6.0
-        elif kind_of(t)[0] in ("1", "9"):
-            v += 3.0
+        # ⑤ 字牌/端牌先走。★ 孤张（手里只有这一张）给硬加分：
+        #    否则进张数在慢机器上被预算截断，会偶发「不打孤张字牌」。
+        kk = kind_of(t)
+        cnt_kind = hand.count(t)
+        if is_honor(kk):
+            v += 25.0 if cnt_kind == 1 else 6.0
+        elif kk[0] in ("1", "9"):
+            v += 8.0 if cnt_kind == 1 else 3.0
         # ⑥ 押し引き：有人立直就按危险度扣分
         if n_riichi:
             v -= _danger(g, seat, t) * safe_w

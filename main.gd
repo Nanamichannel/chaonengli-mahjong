@@ -13507,6 +13507,31 @@ var _fengpan_img_cur := ""
 # 风盘蓝框在图里是 981×862（不是正方形）→ 牌河纵向会挤。
 # 这里把 8 张风盘图的 Y 拉成正方形（Sprite2D 居中缩放），再贴回环心，位置不变。
 const FENGPAN_SQUARE_K := 981.0 / 862.0
+const FENGPAN_TEX_MID_Y := 540.0            # 风盘图 1920x1080 的一半高（Sprite2D 原点在图心）
+
+
+# 盘面（FENGPAN_TEX_RECT）在 sprite 空间里的中心 y（现在约 -13）
+func _fengpan_art_center_y() -> float:
+	return (FENGPAN_TEX_RECT.position.y + FENGPAN_TEX_RECT.size.y * 0.5) - FENGPAN_TEX_MID_Y
+
+
+# 拉伸之后，画在盘面上的东西要按同一比例跟着走，否则相对盘面会跑偏：
+#   · 本场计数器（Huaban 叶子）  · 四家点数 Label
+#   y' = cy + (y - cy) * k     —— cy = 盘面中心，k = 拉伸倍数
+func _fengpan_follow_hud(k: float) -> void:
+	if fengpan == null or not is_instance_valid(fengpan):
+		return
+	var cy := _fengpan_art_center_y()
+	for c in fengpan.get_children():
+		var n := c as Node2D
+		if n == null:
+			continue
+		if n is Sprite2D and _fengpan_is_wind_img(String((n as Sprite2D).name)):
+			continue                       # 风盘图自己已经缩过了
+		if bool(n.get_meta("fengpan_hud_done", false)):
+			continue
+		n.position = Vector2(n.position.x, cy + (n.position.y - cy) * k)
+		n.set_meta("fengpan_hud_done", true)
 
 
 func _fengpan_make_square() -> void:
@@ -13525,7 +13550,8 @@ func _fengpan_make_square() -> void:
 		sp.set_meta("fengpan_sq", true)
 		changed = true
 	if changed:
-		_fengpan_align_to_ring()          # 缩放后仍以牌山环心为准
+		_fengpan_follow_hud(FENGPAN_SQUARE_K)   # 计数器 / 点数跟着盘面一起走
+		_fengpan_align_to_ring()                # 缩放后仍以牌山环心为准
 
 
 func _update_fengpan_image() -> void:

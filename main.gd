@@ -545,6 +545,22 @@ func _hud_tick(delta: float) -> void:
 	_hud.text = "FPS %d | 帧 %.1fms | 最近请求 %dms | 推送 %.1f/s | 应用状态 %.1f/s | 视口 %dx%d" % [
 		fps, 1000.0 / maxf(float(fps), 1.0), last_req_ms,
 		float(_push_n) / _hud_acc, float(_apply_n) / _hud_acc, int(win.x), int(win.y)]
+	# ▼ 调试行（F1 第二行）：牌山 / 按钮 / legal —— 排查「牌山没了 / 副露按钮没了」
+	var _vis_st := 0
+	for _s in wall_stacks:
+		var _nd = _s.get("vis", null)
+		if _nd != null and is_instance_valid(_nd) and (_nd as CanvasItem).visible:
+			_vis_st += 1
+	var _btn_on: Array = []
+	for _k in btn_nodes:
+		var _b = btn_nodes[_k]
+		if _b != null and is_instance_valid(_b) and (_b as CanvasItem).visible:
+			_btn_on.append(String(_k))
+	var _ops := srv_opts_of(srv_state)
+	_hud.text += "\n牌山 %d/%d 墩(可见/总)  wall_taken=%d | 按钮 %d/%d 显示%s | legal=%s | phase=%s turn=%s my=%d | my_seat=%d" % [
+		_vis_st, wall_stacks.size(), srv_taken.size(),
+		_btn_on.size(), btn_nodes.size(), str(_btn_on), str(_ops),
+		String(srv_state.get("phase", "")), int(srv_state.get("turn", -1)), my_seat, my_seat]
 	_push_n = 0
 	_apply_n = 0
 	_hud_acc = 0.0

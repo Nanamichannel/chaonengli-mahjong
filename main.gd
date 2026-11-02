@@ -11957,7 +11957,7 @@ func _apply_entity_states(st2: Dictionary) -> void:
 	# fengpan_effective_rect() 是 Main 的局部坐标，TileBank 用屏幕坐标 → 补上 Main 的全局偏移
 	if rect.size.x > 0.0:
 		rect = Rect2(rect.position + global_position, rect.size)
-	var slot := discard_slot_size(rect.size.x) if rect.size.x > 0.0 else Vector2(48.0, 36.0)
+	var slot := discard_slot_size(rect.size.x, rect.size.y) if rect.size.x > 0.0 else Vector2(48.0, 36.0)
 
 	# 按 loc 分组
 	var hand_entities := {}    # seat -> Array[Dictionary]
@@ -13506,7 +13506,7 @@ var _fengpan_img_cur := ""
 
 # 风盘蓝框在图里是 981×862（不是正方形）→ 牌河纵向会挤。
 # 这里把 8 张风盘图的 Y 拉成正方形（Sprite2D 居中缩放），再贴回环心，位置不变。
-const FENGPAN_SQUARE_K := 981.0 / 862.0
+const FENGPAN_SQUARE_K := 1.0             # 用户口径 2026-11-02：不拉伸风盘（1.0 = 保持原图）
 const FENGPAN_TEX_MID_Y := 540.0            # 风盘图 1920x1080 的一半高（Sprite2D 原点在图心）
 
 
@@ -13696,15 +13696,18 @@ func discard_slot(side: String, rect: Rect2, slot: Vector2, col: int, row: int, 
 	#   风盘蓝框是 981×862 不是正方形 → rect.h/6=143.7 < 牌短边 159.7 → 每张重叠 16px。
 	var pitch_x := slot.x * DISCARD_GAP          # 牌短边 + 2% 缝
 	var pitch_y := slot.y * DISCARD_GAP          # 牌长边 + 2% 缝（换排时才用）
+	# 一排 6 张牌的总宽（盘面下/上边比它长 → 居中摆，不再贴左/右）
+	var row_len := float(DISCARDS_PER_ROW) * pitch_x
+	var row_x0 := rect.position.x + rect.size.x * 0.5 - row_len * 0.5
 	match side:
 		"B":    # 贴风盘左缘，牌向下排，再一排往左挪
 			return Vector3(rect.position.x - (row + 0.5) * pitch_y, rect.position.y + (col + 0.5) * pitch_x, OPP_DISCARD_ROTATION["B"])
-		"C":    # 贴风盘上缘，180°
-			return Vector3(rect.position.x + rect.size.x - (col + 0.5) * pitch_x, rect.position.y - (row + 0.5) * pitch_y, OPP_DISCARD_ROTATION["C"])
+		"C":    # 贴风盘上缘，180°（居中）
+			return Vector3(row_x0 + row_len - (col + 0.5) * pitch_x, rect.position.y - (row + 0.5) * pitch_y, OPP_DISCARD_ROTATION["C"])
 		"D":    # 贴风盘右缘，牌向上排，再一排往右挪
 			return Vector3(rect.position.x + rect.size.x + (row + 0.5) * pitch_y, rect.position.y + rect.size.y - (col + 0.5) * pitch_x, OPP_DISCARD_ROTATION["D"])
-	# 我：贴风盘下缘，牌向右排
-	return Vector3(rect.position.x + used * DISCARD_GAP + w * 0.5, rect.position.y + rect.size.y + (row + 0.5) * pitch_y, 0.0)
+	# 我：贴风盘下缘，牌向右排（居中）
+	return Vector3(row_x0 + used * DISCARD_GAP + w * 0.5, rect.position.y + rect.size.y + (row + 0.5) * pitch_y, 0.0)
 
 
 # 画一个牌河。两种走法：
@@ -13725,7 +13728,7 @@ func _render_discard_pile(container: Node2D, pile: Array, rotated_flags: Array, 
 	var rect := fengpan_effective_rect()
 	if rect.size.x <= 0.0:
 		return
-	var slot := discard_slot_size(rect.size.x)
+	var slot := discard_slot_size(rect.size.x, rect.size.y)
 	var slots := _pile_slots(container)
 	if slots.is_empty():
 		_legacy_render_discard_pile(container, pile, rotated_flags, side, rect, slot)
@@ -13826,13 +13829,18 @@ func _legacy_render_discard_pile(container: Node2D, pile: Array, rotated_flags: 
 
 
 # 牌河格子的尺寸：牌宽 = 风盘宽 × DISCARD_SPAN_RATIO ÷ (5 + 长宽比)，长宽比取扁平牌面
-func discard_slot_size(board_w: float) -> Vector2:
+func discard_slot_size(board_w: float, board_h: float = 0.0) -> Vector2:
+	# 用户口径 2026-11-02：牌的大小以风盘的**短边**（竖着那两条，较短）为基准 ——
+	#   一排 6 张正好落在短边长度内（含 2% 缝），四个方向都不会重叠。
 	var aspect := 360.0 / 271.0
 	if fpai != null:
 		var ref := fpai.get_node_or_null("f1m/Sprite2D") as Sprite2D
 		if ref != null and ref.texture != null:
 			aspect = ref.texture.get_size().y / ref.texture.get_size().x
-	var w := board_w * DISCARD_SPAN_RATIO / (float(DISCARDS_PER_ROW - 1) + aspect)
+	var base := board_w
+	if board_h > 1.0:
+		base = minf(board_w, board_h)          # 短边
+	var w := base / float(DISCARDS_PER_ROW) / DISCARD_GAP
 	return Vector2(w, w * aspect)
 
 

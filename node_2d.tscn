@@ -64,6 +64,7 @@
 [ext_resource type="Texture2D" uid="uid://fra5nhipj612" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f8m.png" id="48_0fsb4"]
 [ext_resource type="Texture2D" uid="uid://cldjmuicgccym" path="res://Cailiao/UI/zimo.png" id="48_e1h34"]
 [ext_resource type="Texture2D" uid="uid://cb26efwwg0d7m" path="res://Cailiao/UI/huaban-6562459709.png" id="48_pv4a3"]
+[ext_resource type="Texture2D" uid="uid://c6lhydyu1bivh" path="res://Cailiao/UI/huaban-5659731458.png" id="49_0t0qg"]
 [ext_resource type="Texture2D" uid="uid://b6taqwqwluuo" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f9m.png" id="49_vl5tj"]
 [ext_resource type="Texture2D" uid="uid://b70qx1g0hd2yk" path="res://Cailiao/UI/tiaoguo.png" id="49_ywe1r"]
 [ext_resource type="Texture2D" uid="uid://d1wbrflt05rf2" path="res://Cailiao/mahjong_graphic/PNG 位图/扁平风格 flat style/f1s.png" id="50_16pp4"]
@@ -455,7 +456,6 @@ offset_bottom = 1127.72
 color = Color(0.14698875, 0.612376, 0.0038383312, 1)
 
 [node name="Pai" type="Node2D" parent="Main" unique_id=1697177365]
-visible = false
 position = Vector2(0.015, 0)
 scale = Vector2(0.69, 0.69)
 
@@ -819,9 +819,34 @@ scale = Vector2(0.03, 0.03)
 texture = ExtResource("48_pv4a3")
 
 [node name="Huaban6562459713" type="Sprite2D" parent="Main/UI/风盘" unique_id=1650108055]
+visible = false
 position = Vector2(-18.835564, 183.63387)
 scale = Vector2(0.03, 0.03)
 texture = ExtResource("48_pv4a3")
+
+[node name="Huaban5659731461" type="Sprite2D" parent="Main/UI/风盘" unique_id=1928031585]
+position = Vector2(-321.70944, -17.708792)
+rotation = -3.6564648
+scale = Vector2(0.303, 0.303)
+texture = ExtResource("49_0t0qg")
+
+[node name="Huaban5659731462" type="Sprite2D" parent="Main/UI/风盘" unique_id=223999338]
+position = Vector2(29.514477, -324.6607)
+rotation = -2.0629792
+scale = Vector2(0.303, 0.303)
+texture = ExtResource("49_0t0qg")
+
+[node name="Huaban5659731463" type="Sprite2D" parent="Main/UI/风盘" unique_id=136127210]
+position = Vector2(380.73825, -17.708763)
+rotation = -0.51487213
+scale = Vector2(0.303, 0.303)
+texture = ExtResource("49_0t0qg")
+
+[node name="Huaban5659731464" type="Sprite2D" parent="Main/UI/风盘" unique_id=1582770115]
+position = Vector2(23.611597, 292.1946)
+rotation = -5.2045717
+scale = Vector2(0.303, 0.303)
+texture = ExtResource("49_0t0qg")
 
 [node name="Tapai" type="Node2D" parent="Main/UI" unique_id=380621823]
 
@@ -1162,9 +1187,9 @@ texture = ExtResource("42_qwoqy")
 [node name="Number" type="Node2D" parent="Main/UI" unique_id=1124549287]
 
 [node name="Btn" type="Node2D" parent="Main/UI" unique_id=669768758]
+visible = false
 
 [node name="BtnGang" type="TextureButton" parent="Main/UI/Btn" unique_id=447433831]
-visible = false
 offset_left = 1235.9574
 offset_top = 754.9501
 offset_right = 1414.0426
@@ -1175,7 +1200,6 @@ stretch_mode = 5
 script = ExtResource("50_dibfd")
 
 [node name="BtnChi" type="TextureButton" parent="Main/UI/Btn" unique_id=2039844450]
-visible = false
 offset_left = 1232.2325
 offset_top = 571.89996
 offset_right = 1397.7677
@@ -1186,7 +1210,6 @@ stretch_mode = 5
 script = ExtResource("50_dibfd")
 
 [node name="BtnPeng" type="TextureButton" parent="Main/UI/Btn" unique_id=545283361]
-visible = false
 offset_left = 983.1928
 offset_top = 574.875
 offset_right = 1148.8074
@@ -1197,7 +1220,6 @@ stretch_mode = 5
 script = ExtResource("50_dibfd")
 
 [node name="BtnLizhi" type="TextureButton" parent="Main/UI/Btn" unique_id=1001975448]
-visible = false
 offset_left = 1231.7374
 offset_top = 570.7001
 offset_right = 1404.2626
@@ -1208,7 +1230,6 @@ stretch_mode = 5
 script = ExtResource("50_dibfd")
 
 [node name="BtnRong" type="TextureButton" parent="Main/UI/Btn" unique_id=1846873246]
-visible = false
 offset_left = 729.51337
 offset_top = 752.2999
 offset_right = 906.48663
@@ -1219,7 +1240,6 @@ stretch_mode = 5
 script = ExtResource("50_dibfd")
 
 [node name="BtnZimo" type="TextureButton" parent="Main/UI/Btn" unique_id=1231089431]
-visible = false
 offset_left = 978.8453
 offset_top = 750.24994
 offset_right = 1159.1547
@@ -1230,7 +1250,6 @@ stretch_mode = 5
 script = ExtResource("50_dibfd")
 
 [node name="BtnTiaoguo" type="TextureButton" parent="Main/UI/Btn" unique_id=1672492055]
-visible = false
 offset_left = 1267.5
 offset_top = 743.5996
 offset_right = 1385.0
@@ -3353,13 +3372,16 @@ texture = ExtResource("251_itohd")
 texture = ExtResource("252_30si1")
 
 [node name="Melds" type="Node2D" parent="Main" unique_id=972019214]
+visible = false
 
 [node name="OppMelds" type="Node2D" parent="Main" unique_id=156593295]
+visible = false
 
 [node name="Identity" type="Node2D" parent="Main" unique_id=1375371960]
 script = ExtResource("257_nv02f")
 
 [node name="Card01" type="TextureButton" parent="Main/Identity" unique_id=159975135]
+visible = false
 offset_left = 1298.0
 offset_top = 589.0
 offset_right = 2470.2217
@@ -4610,7 +4632,6 @@ mouse_filter = 2
 script = ExtResource("259_00y5r")
 
 [node name="Skill1" type="TextureButton" parent="Main/Identity/Card34" unique_id=1668789492]
-visible = false
 z_index = 90
 layout_mode = 0
 focus_mode = 0
@@ -5082,6 +5103,7 @@ layout_mode = 0
 mouse_filter = 2
 
 [node name="牌墩" type="Node2D" parent="." unique_id=166183740]
+visible = false
 position = Vector2(75.555, 62.335)
 
 [node name="B06" type="Sprite2D" parent="牌墩" unique_id=739479981]
@@ -5848,9 +5870,11 @@ texture = ExtResource("117_dkifn")
 
 [node name="CardPhase" type="CanvasLayer" parent="." unique_id=199483557]
 layer = 20
+visible = false
 script = ExtResource("263_03bj1")
 
 [node name="开始按钮" type="TextureButton" parent="CardPhase" unique_id=998874586]
+visible = false
 offset_left = 839.105
 offset_top = 824.035
 offset_right = 1733.1052

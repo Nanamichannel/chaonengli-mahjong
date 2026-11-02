@@ -557,6 +557,33 @@ func _hud_tick(delta: float) -> void:
 		if _b != null and is_instance_valid(_b) and (_b as CanvasItem).visible:
 			_btn_on.append(String(_k))
 	var _ops := srv_opts_of(srv_state)
+	var _side_n := {}
+	for _s2 in wall_stacks:
+		var _sd := String(_s2.get("side", "?"))
+		var _nd2 = _s2.get("vis", null)
+		if _nd2 != null and is_instance_valid(_nd2) and (_nd2 as CanvasItem).visible:
+			_side_n[_sd] = int(_side_n.get(_sd, 0)) + 1
+	var _bdetail: Array = []
+	for _k2 in _btn_on:
+		var _bb = btn_nodes.get(_k2, null)
+		if _bb == null or not is_instance_valid(_bb):
+			continue
+		var _tb := _bb as TextureButton
+		var _tex_ok := _tb != null and _tb.texture_normal != null
+		_bdetail.append("%s@(%.0f,%.0f) sz(%.0f,%.0f) sc(%.2f) a=%.2f tex=%s intree=%s" % [
+			String(_k2), (_bb as CanvasItem).global_position.x, (_bb as CanvasItem).global_position.y,
+			(_bb as Control).size.x, (_bb as Control).size.y, (_bb as CanvasItem).scale.x,
+			float((_bb as CanvasItem).modulate.a), "1" if _tex_ok else "0",
+			"1" if (_bb as CanvasItem).is_visible_in_tree() else "0"])
+	var _pv := "?"
+	var _bv := "?"
+	var _pn := get_node_or_null("UI/Pile")
+	var _bn := get_node_or_null("UI/Btn")
+	if _pn != null:
+		_pv = "1" if (_pn as CanvasItem).visible else "0"
+	if _bn != null:
+		_bv = "1" if (_bn as CanvasItem).visible else "0"
+	_hud.text += "\n墙=%s Pile.vis=%s Btn.vis=%s ｜ %s" % [str(_side_n), _pv, _bv, str(_bdetail)]
 	_hud.text += "\n牌山 %d/%d 墩(可见/总)  wall_taken=%d | 按钮 %d/%d 显示%s | legal=%s | phase=%s turn=%s my=%d | my_seat=%d" % [
 		_vis_st, wall_stacks.size(), srv_taken.size(),
 		_btn_on.size(), btn_nodes.size(), str(_btn_on), str(_ops),
@@ -1120,6 +1147,9 @@ func _wall_fly_anchor() -> Vector2:
 
 
 func _layout_wall_nodes() -> void:
+	var _pile := get_node_or_null("UI/Pile")
+	if _pile != null:
+		_force_visible_chain(_pile)
 	var nodes := _wall_stack_nodes()
 	var meta := _wall_ring_meta()
 	if nodes.is_empty() or nodes.size() != meta.size():
@@ -2256,6 +2286,7 @@ func srv_act(action: String, extra: Dictionary = {}) -> Dictionary:
 	if not bool(r.get("ok", false)) and String(r.get("error", "")) != "":
 		_toast(String(r.get("error")))            # 服务端拒绝（比如立直后想打手牌）要说一声
 	srv_apply_state(r.get("state"), r.get("events"))
+	_ensure_result()                     # 服务端说 ended 但没带 result → 重拉一次
 	if not game_over and not srv_busy:
 		srv_busy = true
 		get_tree().create_timer(OPP_DRAW_DELAY).timeout.connect(_srv_step_once)
@@ -2320,6 +2351,9 @@ func _setup_action_buttons() -> void:
 	var ui_root := get_node_or_null("UI")
 	if ui_root != null and ui_root.get_index() != get_child_count() - 1:
 		move_child(ui_root, get_child_count() - 1)
+	var _bn0 := get_node_or_null("UI/Btn") as Node2D
+	if _bn0 != null:
+		_bn0.z_index = 120                 # 按钮那一枝整体压在最上面（人物卡在 CanvasLayer=20，挡不住）
 	btn_nodes.clear()
 	for kind in BTN_KIND_TO_NODE:
 		var b := get_node_or_null("UI/Btn/" + String(BTN_KIND_TO_NODE[kind])) as TextureButton
@@ -11808,6 +11842,18 @@ func has_action(action: String) -> bool:
 
 
 # 按优先级把「当前可选动作」映射成要显示的按钮；opts = 服务端给的合法动作集合
+# 节点是被「看得见的父节点」决定的：以前出现过 UI/Btn、UI/Pile 自己 visible=true
+# 但父链被隐藏 → visible 属性真、屏幕上什么都没有。这里一律拉回来。
+func _force_visible_chain(n: Node) -> void:
+	var c := n
+	var guard := 0
+	while c != null and c != self and guard < 12:
+		guard += 1
+		if c is CanvasItem and not (c as CanvasItem).visible:
+			(c as CanvasItem).visible = true
+		c = c.get_parent()
+
+
 func srv_layout_buttons(opts: Array) -> void:
 	var want: Array = []
 	for k in BTN_PRIORITY:
@@ -11850,6 +11896,7 @@ func srv_layout_buttons(opts: Array) -> void:
 		elif b.has_method("ensure_shown") and float(b.modulate.a) < 0.999:
 			# 正在淡出（上一次按下的消失动画还没走完）→ 拉回来，别让按钮凭空消失
 			b.call("ensure_shown")
+		_force_visible_chain(b)
 
 
 # 加速（29S1）：吃 / 跳过都是**技能 op**（op=c29s1_chi / c29s1_skip），
@@ -12658,14 +12705,23 @@ func srv_name_of(seat: int) -> String:
 
 
 func srv_show_result(res: Dictionary) -> void:
-	if game_over:
-		return
 	var w: Dictionary = res
 	if typeof(res.get("win")) == TYPE_DICTIONARY:
 		w = res["win"]
 	if typeof(w.get("pays")) != TYPE_DICTIONARY and typeof(w.get("points")) == TYPE_DICTIONARY:
 		w = w.duplicate()
 		w["pays"] = w["points"]
+	# ★ 以前第一行是 `if game_over: return`：而摸牌后的「预告版播报」(_after_draw → show_hupai)
+	#   已经把 game_over 置成 true → 点【自摸】后真正的结算被丢掉，界面什么都不弹（荣和不受影响）。
+	#   现在：面板还开着就用真结算刷新它；没开着就正常弹。
+	var _panel_on := (win_announce != null and is_instance_valid(win_announce)
+		and (win_announce as CanvasItem).visible)
+	if _panel_on:
+		var _was := game_over
+		game_over = false
+		show_hupai(w)
+		game_over = _was
+		return
 	show_hupai(w)
 	# 不再计时自动进下一局：四家都点「确认」后由服务端放行。
 

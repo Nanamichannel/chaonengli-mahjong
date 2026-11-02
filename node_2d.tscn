@@ -1187,7 +1187,6 @@ texture = ExtResource("42_qwoqy")
 [node name="Number" type="Node2D" parent="Main/UI" unique_id=1124549287]
 
 [node name="Btn" type="Node2D" parent="Main/UI" unique_id=669768758]
-visible = false
 
 [node name="BtnGang" type="TextureButton" parent="Main/UI/Btn" unique_id=447433831]
 offset_left = 1235.9574
@@ -2465,7 +2464,6 @@ flat = true
 [node name="Anim" type="Node2D" parent="Main/UI/Hand/格14" unique_id=1592333474]
 
 [node name="ResultPanel" type="ColorRect" parent="Main/UI" unique_id=592238991]
-visible = false
 z_index = 100
 offset_left = 392.0
 offset_top = 253.0
@@ -2514,7 +2512,6 @@ mouse_filter = 2
 texture = ExtResource("60_0t0qg")
 
 [node name="fPai" type="Node2D" parent="Main" unique_id=933442090]
-visible = false
 
 [node name="f1m" type="Node2D" parent="Main/fPai" unique_id=647450646]
 
@@ -2964,11 +2961,9 @@ scale = Vector2(0.17261912, 0.17261912)
 texture = ExtResource("114_iukfe")
 
 [node name="Art" type="Node2D" parent="Main" unique_id=218045111]
-visible = false
 script = ExtResource("124_vctpf")
 
 [node name="牌背" type="Node2D" parent="Main/Art" unique_id=1795461590]
-visible = false
 
 [node name="b_01" type="Sprite2D" parent="Main/Art/牌背" unique_id=412470718]
 texture = ExtResource("41_jinwr")
@@ -2986,7 +2981,6 @@ texture = ExtResource("117_dkifn")
 texture = SubResource("AtlasTexture_u0max")
 
 [node name="杠面" type="Node2D" parent="Main/Art" unique_id=2139057162]
-visible = false
 
 [node name="00m" type="Sprite2D" parent="Main/Art/杠面" unique_id=1663330364]
 texture = ExtResource("128_kq1bu")
@@ -3372,10 +3366,8 @@ texture = ExtResource("251_itohd")
 texture = ExtResource("252_30si1")
 
 [node name="Melds" type="Node2D" parent="Main" unique_id=972019214]
-visible = false
 
 [node name="OppMelds" type="Node2D" parent="Main" unique_id=156593295]
-visible = false
 
 [node name="Identity" type="Node2D" parent="Main" unique_id=1375371960]
 script = ExtResource("257_nv02f")
@@ -5103,7 +5095,6 @@ layout_mode = 0
 mouse_filter = 2
 
 [node name="牌墩" type="Node2D" parent="." unique_id=166183740]
-visible = false
 position = Vector2(75.555, 62.335)
 
 [node name="B06" type="Sprite2D" parent="牌墩" unique_id=739479981]
@@ -5870,7 +5861,6 @@ texture = ExtResource("117_dkifn")
 
 [node name="CardPhase" type="CanvasLayer" parent="." unique_id=199483557]
 layer = 20
-visible = false
 script = ExtResource("263_03bj1")
 
 [node name="开始按钮" type="TextureButton" parent="CardPhase" unique_id=998874586]

@@ -12998,7 +12998,7 @@ func _result_confirm_button_get() -> Control:
 		return null
 	win_confirm_btn = WinConfirmButton.new()
 	win_confirm_btn.name = "Confirm"
-	win_confirm_btn.size = Vector2(300, 92)
+	win_confirm_btn.size = Vector2(196, 214)      # 和场上的確認按钮同比例（元气脸 894x974）
 	_result_confirm_place(win_confirm_btn)
 	win_confirm_btn.confirmed.connect(_result_confirm_press)
 	win_confirm_btn.visible = false      # 场景里到最后一步才点亮

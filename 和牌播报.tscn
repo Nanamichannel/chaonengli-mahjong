@@ -4,6 +4,12 @@
 [ext_resource type="Texture2D" uid="uid://c2ytligj8x1lb" path="res://Cailiao/background/1.png" id="2_gmm8h"]
 [ext_resource type="Script" uid="uid://6ke8kjb5ae6f" path="res://和牌播报.gd" id="3_hpb"]
 [ext_resource type="Texture2D" uid="uid://b6qqwsqn6buof" path="res://Cailiao/UI/结算播报底座.png" id="4_7nib3"]
+[ext_resource type="Texture2D" uid="uid://dt2tfqghkfnjp" path="res://Cailiao/UI/满贯.png" id="4_org6s"]
+[ext_resource type="Texture2D" uid="uid://bpiv78po12nxa" path="res://Cailiao/UI/跳满.png" id="5_elbrw"]
+[ext_resource type="Texture2D" uid="uid://bp1wkatgdeb61" path="res://Cailiao/UI/倍满.png" id="6_lvq52"]
+[ext_resource type="Texture2D" uid="uid://br5podru517rc" path="res://Cailiao/UI/三倍满.png" id="7_ldj10"]
+[ext_resource type="Texture2D" uid="uid://coi5a327r4tx1" path="res://Cailiao/UI/役满.png" id="8_thg74"]
+[ext_resource type="Texture2D" uid="uid://dnm0s75gwt6cn" path="res://Cailiao/UI/底座底座.png" id="9_sx7oi"]
 
 [sub_resource type="Animation" id="Animation_gmm8h"]
 length = 0.001
@@ -99,6 +105,38 @@ layout_mode = 3
 anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
+
+[node name="满贯" type="Sprite2D" parent="和牌播报面板" unique_id=345483614]
+z_index = 1
+position = Vector2(422, 544)
+scale = Vector2(0.16, 0.16)
+texture = ExtResource("4_org6s")
+
+[node name="跳满" type="Sprite2D" parent="和牌播报面板" unique_id=272656029]
+position = Vector2(422, 544)
+scale = Vector2(0.16, 0.16)
+texture = ExtResource("5_elbrw")
+
+[node name="倍满" type="Sprite2D" parent="和牌播报面板" unique_id=43430190]
+position = Vector2(422, 544)
+scale = Vector2(0.16, 0.16)
+texture = ExtResource("6_lvq52")
+
+[node name="三倍满" type="Sprite2D" parent="和牌播报面板" unique_id=2083549424]
+z_index = 1
+position = Vector2(422, 544)
+scale = Vector2(0.16, 0.16)
+texture = ExtResource("7_ldj10")
+
+[node name="役满" type="Sprite2D" parent="和牌播报面板" unique_id=993576339]
+position = Vector2(422, 544)
+scale = Vector2(0.16, 0.16)
+texture = ExtResource("8_thg74")
+
+[node name="底座底座" type="Sprite2D" parent="和牌播报面板" unique_id=1935253554]
+position = Vector2(931.9999, 498)
+scale = Vector2(1.3108333, 1.4438202)
+texture = ExtResource("9_sx7oi")
 
 [node name="播报底座" type="Sprite2D" parent="和牌播报面板" unique_id=756965925]
 position = Vector2(1338, 541)

@@ -18,6 +18,7 @@ const ANNOUNCE_SCRIPT := preload("res://win_announce.gd")
 const CARD_DIR := "res://Cailiao/skill/cards/card_%02d.png"
 const MASK_PATH := "res://Cailiao/UI/睡2.png"
 const BASE_TEX_PATH := "res://Cailiao/UI/结算播报底座.png"
+const PLATE_TEX := "res://Cailiao/UI/底座底座.png"   # 番种条底下那块大盘子
 const FONT_PATH := "res://Cailiao/fonts/xingkai.ttf"
 const TUNE_CFG := "user://announce_tune.cfg"
 const BAR_W := 487.0
@@ -38,6 +39,10 @@ const STEP_WAIT := 1.0
 @export var strip_top := 370.0
 @export var fade_time := 1.2                 # 淡入时长
 @export var fade_time_seats := 0.75         # 最后「小面板 + 确认按钮」的淡入时长
+@export var plate_offset := Vector2.ZERO    # 「底座底座」整体偏移
+@export var plate_scale := 1.0
+@export var plate_wait := 0.3               # 底座底座开扫前的休息
+@export var plate_wipe := 0.5               # 底座底座横向扫开的时间（从右往左）
 @export var fade_pow := 2.0                  # 淡入曲线：alpha = t^pow（2 = 抛物线）
 
 var bg: TextureRect = null
@@ -45,6 +50,11 @@ var head: Control = null                     # 蒙版 + 横幅（旧名字 annou
 var announce: Control = null
 var seats_panel: Control = null              # 四个分数小面板
 var strips_root: Node2D = null               # 番种底座
+var plate_root: Node2D = null                # 「底座底座」那一层（在番种条下面）
+var plate_clip: Control = null               # 做横向擦开用的裁剪容器
+var _plate_inner: TextureRect = null
+var _plate_rect := Vector2.ZERO
+var _plate_full := Vector2.ZERO
 var hand_root: Node2D = null                 # 和牌家手牌
 var card_root: Node2D = null                 # 长条上的人物卡
 
@@ -136,6 +146,11 @@ func _ready() -> void:
 	strips_root = Node2D.new()
 	strips_root.name = "YakuStrips"
 	strips_root.z_index = 22
+
+	plate_root = Node2D.new()
+	plate_root.name = "PlateRoot"
+	plate_root.z_index = 21          # 在番种条(22)下面、蒙版(20)上面
+	add_child(plate_root)
 	add_child(strips_root)
 
 	# 和牌家手牌（压在最上面）
@@ -294,6 +309,76 @@ func _vlabel(font: Font, txt: String, want_fs: float, area: Vector2) -> Label:
 	return lb
 
 
+# ── 「底座底座」：番种条之前先横向扫开的那块大盘子 ─────────────────────
+func _clear_plate() -> void:
+	if plate_root != null:
+		for c in plate_root.get_children():
+			plate_root.remove_child(c)
+			c.queue_free()
+	plate_clip = null
+	_plate_inner = null
+
+
+func _build_plate() -> void:
+	_clear_plate()
+	if plate_root == null:
+		return
+	var vp := get_viewport_rect().size
+	var tex: Texture2D = null
+	var center := vp * 0.5
+	var extra := Vector2.ONE
+	var src := get_node_or_null("底座底座")   # 用户摆好的节点（有就用它的位置/缩放）
+	if src is Sprite2D and (src as Sprite2D).texture != null:
+		tex = (src as Sprite2D).texture
+		center = (src as Sprite2D).global_position
+		extra = (src as Sprite2D).global_scale
+		(src as CanvasItem).visible = false
+	else:
+		tex = load(PLATE_TEX) as Texture2D
+	if tex == null:
+		return
+	extra *= plate_scale
+	var size := Vector2(tex.get_width(), tex.get_height()) * extra
+	_plate_full = size
+	_plate_rect = center - size * 0.5 + plate_offset
+	plate_clip = Control.new()
+	plate_clip.name = "PlateClip"
+	plate_clip.clip_contents = true
+	plate_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate_clip.position = _plate_rect
+	plate_clip.size = Vector2(0.01, size.y)
+	plate_clip.visible = false
+	plate_root.add_child(plate_clip)
+	_plate_inner = TextureRect.new()
+	_plate_inner.texture = tex
+	_plate_inner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_plate_inner.stretch_mode = TextureRect.STRETCH_SCALE
+	_plate_inner.size = size
+	_plate_inner.position = Vector2.ZERO
+	_plate_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate_clip.add_child(_plate_inner)
+
+
+# 横向扫开：从右往左（裁剪框右边缘不动，左边缘往左长；内容反向补偿）
+func _reveal_plate(gen: int) -> void:
+	if plate_clip == null:
+		return
+	plate_clip.visible = true
+	var w := _plate_full.x
+	plate_clip.size = Vector2(0.01, _plate_full.y)
+	plate_clip.position.x = _plate_rect.x + w
+	_plate_inner.position.x = -w
+	var tw := create_tween()
+	tw.tween_method(func(p: float) -> void:
+		if plate_clip == null or _plate_inner == null:
+			return
+		plate_clip.size = Vector2(maxf(w * p, 0.01), _plate_full.y)
+		plate_clip.position.x = _plate_rect.x + w * (1.0 - p)
+		_plate_inner.position.x = -w * (1.0 - p)
+	, 0.0, 1.0, maxf(plate_wipe, 0.05)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	await tw.finished
+
+
 func _clear_strips() -> void:
 	if strips_root == null:
 		return
@@ -421,6 +506,7 @@ func _reset_visual() -> void:
 		_face.visible = false
 	if _mask_spr != null:
 		_mask_spr.visible = false
+	_clear_plate()
 	_clear_strips()
 	if head != null:
 		head.visible = false
@@ -530,6 +616,16 @@ func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
 
 	# ⑤ 停 0.2s → 番种底座从右往左擦开
 	await get_tree().create_timer(0.2).timeout
+	if gen != _gen:
+		busy = false
+		return
+	# 底座底座：先休息 0.3s，再横向从右往左扫开 0.5s（扫完立刻露第一条番种）
+	_build_plate()
+	await get_tree().create_timer(maxf(plate_wait, 0.0)).timeout
+	if gen != _gen:
+		busy = false
+		return
+	await _reveal_plate(gen)
 	if gen != _gen:
 		busy = false
 		return

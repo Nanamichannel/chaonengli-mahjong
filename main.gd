@@ -300,6 +300,7 @@ var srv_note := ""                              # 上一次失败原因
 var my_seat := 0                                # 0..3
 var waiting_for_others := false                 # 现在是不是在等别人出牌（等的时候要轮询）
 var poll_accum := 0.0
+var _poll_fast_until := 0                     # 刚发过动作：这之前用快速轮询
 # ★ 上云后调慢：没推送（反代没转发 WebSocket / 掉线）时全靠这个间隔拉状态。
 #   0.35 → 0.5 秒，服务端出网流量省 ~30%，人手感觉不出差别；
 #   有长连接推送时这值根本不生效（下面会被抬到 2 秒）。
@@ -705,6 +706,10 @@ func srv_request(req: Dictionary) -> Dictionary:
 			push_warning("main.gd: 找不到 python，规则退回本地兜底")
 			srv_note = "找不到 python"
 			return {}
+	# 真动作（不是轮询）→ 开 1.5 秒快轮询，别让结算等下一次慢轮询
+	var _op := String(req.get("op", ""))
+	if _op != "" and _op != "state" and _op != "poll":
+		_poll_fast_until = Time.get_ticks_msec() + 1500
 	var _t0 := Time.get_ticks_msec()
 	var r: Dictionary = srv.request(_srv_shape(req))
 	last_req_ms = Time.get_ticks_msec() - _t0
@@ -975,6 +980,8 @@ func _ready() -> void:
 	_btn_tune_load()          # 按钮微调（user://btn_tune.cfg，没有就用 @export 的值）
 	call_deferred("_dev_autoplay_maybe")	# 开发用：有 autoplay.cfg 才自动打
 	call_deferred("_round_info_icon_place")   # 右上角开关图标：摆进屏幕（用户摆的 y=-33 在屏幕外）
+	# 播报场景在这里先实例化一次（贴图/字体预热的开销挪到开局），避免第一次和牌卡一下
+	call_deferred("_win_scene_get")
 	get_tree().auto_accept_quit = false     # 关窗口要先清记录再退
 	_setup_background()
 	_lizhi_stick_hide_all()   # 立直棒：开局先把四根收起来（等 riichi 列表再淡入）
@@ -14917,7 +14924,6 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 	srv_layout_buttons([])                     # 截图上不要出现荣/自摸按钮
 	sc.call("reset")
 	await get_tree().process_frame             # 让按钮收起、场景隐藏生效
-	await RenderingServer.frame_post_draw      # ★ 必须等这一帧真的画完，否则截到黑帧
 	var shot: Texture2D = null      # 播报不要背景图（只用全屏蒙版），不再截图
 	# 流局（result 里没有 winner 键）不贴卡：以前会兜底成 my_seat，把「自己的主战卡」贴上去
 	var has_winner := win.has("winner") and win.get("winner") != null
@@ -15686,6 +15692,8 @@ func _process(delta: float) -> void:
 	# 推送长连接活着 → 轮询退化成「保险丝」，放慢到 2 秒（公网流量/手机电量都省）
 	if srv != null and srv.has_method("push_ok") and bool(srv.call("push_ok")):
 		period = maxf(period, 2.0)
+	if Time.get_ticks_msec() < _poll_fast_until:
+		period = 0.10                     # 刚点完动作：0.1s 一次，结算一到就播
 	poll_accum += delta
 	if poll_accum < period:
 		return

@@ -602,11 +602,14 @@ func _reveal_plate(gen: int) -> void:
 	tw.tween_method(func(p: float) -> void:
 		if plate_clip == null or _plate_inner == null:
 			return
-		plate_clip.size = Vector2(maxf(w * p, 0.01), _plate_full.y)
-		plate_clip.position.x = _plate_rect.x + w * (1.0 - p)
-		_plate_inner.position.x = -w * (1.0 - p)
+		# 取整：裁剪窗口位移 dx 和贴图补偿用同一个整数，
+		# 否则两者的小数部分对不上，贴图会随着扫动左右抖 1px
+		var dx: float = round(w * (1.0 - p))
+		plate_clip.size = Vector2(maxf(w - dx, 0.01), _plate_full.y)
+		plate_clip.position.x = _plate_rect.x + dx
+		_plate_inner.position.x = -dx
 		if _who_holder != null:
-			_who_holder.position.x = -w * (1.0 - p)
+			_who_holder.position.x = -dx
 	, 0.0, 1.0, maxf(plate_wipe, 0.05)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	await tw.finished
 

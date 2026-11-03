@@ -39,6 +39,7 @@ const STEP_WAIT := 1.0
 @export var strip_scale := 0.62
 @export var strip_gap := 10.0                # 底座之间间距
 @export var strip_top := 370.0
+@export var strip_x_offset := 0.0           # 番种条整体横向偏移（调试可拖）
 @export var fade_time := 1.2                 # 淡入时长
 @export var fade_time_seats := 0.75         # 最后「小面板 + 确认按钮」的淡入时长
 @export var plate_offset := Vector2.ZERO    # 「底座底座」整体偏移
@@ -71,6 +72,12 @@ var _mask_spr: Sprite2D = null
 var _follow: Sprite2D = null
 var _card_rot := 0.0                    # 长条朝向（贴卡时算一次）
 
+# 调参字段一览（F6 一键恢复初始值就靠这张表 + _tune_default）
+const TUNE_KEYS := ["head_offset", "head_scale", "seats_offset", "seats_scale", "seats_center_y",
+	"left_panel_offset", "right_panel_offset", "hand_offset", "hand_scale",
+	"strip_top", "strip_x_offset", "strip_scale", "strip_gap", "plate_offset", "plate_scale"]
+var _tune_default := {}
+
 var tune_mode := false
 var _tune_sel := ""
 var _tune_last := Vector2.ZERO
@@ -94,7 +101,10 @@ func _ready() -> void:
 			continue
 		if _n is Control and String(_n.name).contains("播报"):
 			(_n as CanvasItem).visible = false      # 底座模板
+	for _k in TUNE_KEYS:
+		_tune_default[_k] = get(_k)          # 记下「刚进游戏」的初始值，给 F6 用
 	_load_tune()
+	_prewarm()
 
 	# 背景：点击和牌那一刻的截图
 	bg = TextureRect.new()
@@ -252,6 +262,14 @@ func _set_card(bar: Sprite2D, card_no: int, need_mask: bool) -> void:
 
 
 # ── 把 @export 里的布局值推给各个节点 ────────────────────────────────────────
+func _prewarm() -> void:
+	# 把播报要用的贴图 / 字体提前读进缓存，避免第一次播报时在长条进场那一帧同步读盘、上传显存而卡一下
+	_mask()
+	_base_texture()
+	_font_xingkai()
+	ResourceLoader.load(PLATE_TEX)
+
+
 func _apply_layout() -> void:
 	var vp := get_viewport_rect().size
 	if head != null:
@@ -274,7 +292,8 @@ func _apply_layout() -> void:
 	if strips_root != null:
 		for st in strips_root.get_children():
 			if st is Control:
-				(st as Control).position.y = strip_top
+				(st as Control).position = Vector2(
+					float((st as Control).get_meta("base_x", 0.0)) + strip_x_offset, strip_top)
 
 
 # ── 番种底座：竖排文字（行楷、黑字带淡描边）────────────────────────────────
@@ -409,7 +428,9 @@ func _build_strips(rows: Array) -> void:
 		strip.name = "Yaku%d" % i
 		strip.clip_contents = true                  # ★ 靠它做「从上往下擦开」
 		strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		strip.position = Vector2(x0 + float(n - 1 - i) * (w + strip_gap), strip_top)   # 从右往左排
+		var sx := x0 + float(n - 1 - i) * (w + strip_gap)
+		strip.position = Vector2(sx + strip_x_offset, strip_top)
+		strip.set_meta("base_x", sx)
 		strip.size = Vector2(w, h)
 		strip.modulate.a = 1.0
 		strips_root.add_child(strip)
@@ -687,9 +708,7 @@ func set_tune_mode(on: bool) -> void:
 
 
 func _tune_hit(pos: Vector2) -> String:
-	# 只认「左右两个小分数面板」（用户口径 2026-11-03）；其它区域一律不响应拖动。
-	if seats_panel == null:
-		return ""
+	# 优先级：左右两块独立面板 → 横幅 → 手牌 → 番种条 → 整组小面板 → 底座底座（画在最下面，最后判）
 	var vp := get_viewport_rect().size
 	var rect := Rect2(Vector2(vp.x * 0.5, vp.y * seats_center_y) - Vector2(490.0, 310.0) * seats_scale,
 		Vector2(980.0, 620.0) * seats_scale)
@@ -706,6 +725,19 @@ func _tune_hit(pos: Vector2) -> String:
 		return "left"
 	if rr.grow(24.0).has_point(pos):
 		return "right"
+	if head != null:
+		var bs: Vector2 = head.banner_size * head_scale
+		if Rect2(head.banner_pos - bs * 0.5, bs).grow(24.0).has_point(pos):
+			return "head"
+	if pos.y < 170.0:
+		return "hand"
+	if pos.y >= strip_top - 24.0 and strips_root != null and strips_root.get_child_count() > 0:
+		return "strips"
+	if rect.grow(40.0).has_point(pos):
+		return "seats"
+	if plate_clip != null and plate_clip.visible:
+		if Rect2(_plate_rect, _plate_full).grow(30.0).has_point(pos):
+			return "plate"
 	return ""
 
 
@@ -719,6 +751,9 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		elif k.keycode == KEY_F12:
 			_save_tune()
+			get_viewport().set_input_as_handled()
+		elif k.keycode == KEY_F6:
+			_reset_tune()
 			get_viewport().set_input_as_handled()
 		elif k.keycode == KEY_F8:
 			_load_tune()
@@ -746,12 +781,50 @@ func _input(event: InputEvent) -> void:
 		var d: Vector2 = mm.position - _tune_last
 		_tune_last = mm.position
 		match _tune_sel:
+			"head":
+				head_offset += d
+			"hand":
+				hand_offset += d
+			"strips":
+				strip_top += d.y
+				strip_x_offset += d.x
+			"seats":
+				seats_offset += d
 			"left":
 				left_panel_offset += d
 			"right":
 				right_panel_offset += d
+			"plate":
+				plate_offset += d
+				_plate_rect += d
+				if plate_clip != null:
+					plate_clip.position = _plate_rect
+					plate_clip.size = _plate_full
+					if _plate_inner != null:
+						_plate_inner.position = Vector2.ZERO
 		_apply_layout()
 		get_viewport().set_input_as_handled()
+
+
+func _reset_tune() -> void:
+	"""F6：所有调参字段回到「刚进游戏」的初始值，并删掉存档。"""
+	for _k in TUNE_KEYS:
+		if _tune_default.has(_k):
+			set(_k, _tune_default[_k])
+	var _d := DirAccess.open("user://")
+	if _d != null and _d.file_exists("announce_tune.cfg"):
+		_d.remove("announce_tune.cfg")
+	_apply_layout()
+	if plate_clip != null:
+		_build_plate()
+		if plate_clip != null:
+			plate_clip.visible = true
+			plate_clip.size = _plate_full
+			plate_clip.position = _plate_rect
+			if _plate_inner != null:
+				_plate_inner.position = Vector2.ZERO
+	print("[announce tune] F6 已恢复初始参数（存档已删）")
+	_report_tune()
 
 
 func _report_tune() -> void:
@@ -759,8 +832,8 @@ func _report_tune() -> void:
 		str(left_panel_offset), str(right_panel_offset), str(head_offset), head_scale])
 	print("[announce tune] seats_offset=%s seats_scale=%.3f center_y=%.3f" % [
 		str(seats_offset), seats_scale, seats_center_y])
-	print("[announce tune] hand_offset=%s hand_scale=%.3f | strip_top=%.1f strip_scale=%.3f strip_gap=%.1f | plate_offset=%s" % [
-		str(hand_offset), hand_scale, strip_top, strip_scale, strip_gap, str(plate_offset)])
+	print("[announce tune] hand_offset=%s hand_scale=%.3f | strip_top=%.1f strip_x=%.1f strip_scale=%.3f strip_gap=%.1f | plate_offset=%s" % [
+		str(hand_offset), hand_scale, strip_top, strip_x_offset, strip_scale, strip_gap, str(plate_offset)])
 
 
 func _save_tune() -> void:
@@ -776,6 +849,7 @@ func _save_tune() -> void:
 	cf.set_value("hand", "scale", hand_scale)
 	cf.set_value("plate", "offset", plate_offset)
 	cf.set_value("strips", "top", strip_top)
+	cf.set_value("strips", "x", strip_x_offset)
 	cf.set_value("strips", "scale", strip_scale)
 	cf.set_value("strips", "gap", strip_gap)
 	cf.save(TUNE_CFG)
@@ -797,6 +871,7 @@ func _load_tune() -> void:
 	hand_offset = cf.get_value("hand", "offset", hand_offset)
 	hand_scale = float(cf.get_value("hand", "scale", hand_scale))
 	strip_top = float(cf.get_value("strips", "top", strip_top))
+	strip_x_offset = float(cf.get_value("strips", "x", strip_x_offset))
 	plate_offset = cf.get_value("plate", "offset", plate_offset)
 	strip_scale = float(cf.get_value("strips", "scale", strip_scale))
 	strip_gap = float(cf.get_value("strips", "gap", strip_gap))

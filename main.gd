@@ -14956,9 +14956,24 @@ func _win_card_pick(seat: int) -> Array:
 # 结算播报：四个方位的小面板（自己=下 / 下家=右 / 对家=上 / 上家=左）
 #   win.scores = {座位: 结算后分数}，win.deltas = {座位: 本局增减}（JSON 的 key 是字符串）
 # 结算播报的番种条：每个役一条（名字 + 番数）；宝牌一张都没中就不写；役满写役满
+# 番种播报的先后：0 = 局况/立直相关 → 1 = 决定符的基础门清役 → 2 = 手牌构成的手役 → 3 = 宝牌
+func _yaku_rank(nm: String) -> int:
+	if nm.contains("宝牌") or nm.contains("ドラ") or nm.contains("宝牌"):
+		return 30
+	for k in ["立直", "双立直", "一发", "门前清自摸和", "岭上开花", "抢杠",
+			"海底", "河底", "天和", "地和", "人和"]:
+		if nm.contains(k):
+			return 0
+	for k in ["平和", "一杯口", "七对子", "断幺九"]:
+		if nm.contains(k):
+			return 10
+	return 20
+
+
 func _result_yaku_rows(win: Dictionary) -> Array:
 	var out: Array = []
 	var ym := _int_of(win, "yakuman", 0)
+	var ord := 0
 	for y in win.get("yaku", []):
 		if typeof(y) != TYPE_DICTIONARY:
 			continue
@@ -14971,7 +14986,8 @@ func _result_yaku_rows(win: Dictionary) -> Array:
 		if typeof(dt) == TYPE_DICTIONARY:
 			for k in (dt as Dictionary).keys():
 				dcount = maxi(dcount, int((dt as Dictionary)[k]))
-		if nm.contains("宝牌") and dcount <= 0:
+		var is_dora := nm.contains("宝牌") or nm.contains("ドラ")
+		if is_dora and dcount <= 0:
 			continue                    # 没宝牌就不写宝牌
 		if hn <= 0 and ym <= 0:
 			continue
@@ -14980,7 +14996,19 @@ func _result_yaku_rows(win: Dictionary) -> Array:
 			ht = "役满" if ym < 2 else "双倍役满"
 		else:
 			ht = "%d番" % hn
-		out.append({"name": nm, "han_text": ht})
+		if ym > 0 and (is_dora or hn < 13):
+			continue                    # 役满优先：宝牌不算役、普通役简略掉
+		out.append({
+			"name": nm, "han_text": ht,
+			"rank": 0 if ym > 0 else _yaku_rank(nm),
+			"ord": ord,
+		})
+		ord += 1
+	# 同一档内保持服务端给的顺序：先比档位，再比原始序号
+	out.sort_custom(func(a, b):
+		if int(a["rank"]) != int(b["rank"]):
+			return int(a["rank"]) < int(b["rank"])
+		return int(a["ord"]) < int(b["ord"]))
 	return out
 
 

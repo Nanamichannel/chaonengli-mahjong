@@ -14925,6 +14925,7 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 	var _fps0 := Engine.max_fps
 	if announce_max_fps > 0:
 		Engine.max_fps = maxi(int(_fps0), int(announce_max_fps))
+	content["level"] = _result_level(win)      # 满贯 / 跳满 / 倍满 / 三倍满 / 役满（对应场景里的图）
 	await sc.call("play", who, int(pick[0]), bool(pick[1]), shot, content)
 	Engine.max_fps = int(_fps0)
 	# 确认按钮的显隐 / 可点时机由场景控制（跟小面板一起淡入）
@@ -15050,6 +15051,27 @@ func _debug_announce() -> void:
 		"seats": _result_seats(win),
 	}
 	_win_intro_start(win, content)
+
+
+func _result_level(win: Dictionary) -> String:
+	# 对应 和牌播报.tscn 里 和牌播报面板 下的 AnimatedSprite2D 名字
+	if _int_of(win, "yakuman", 0) > 0:
+		return "役满"
+	var han := _int_of(win, "han", 0)
+	var fu := _int_of(win, "fu", 0)
+	if han >= 13:
+		return "役满"
+	if han >= 11:
+		return "三倍满"
+	if han >= 8:
+		return "倍满"
+	if han >= 6:
+		return "跳满"
+	if han >= 5:
+		return "满贯"
+	if han >= 3 and float(fu) * pow(2.0, float(han) + 2.0) >= 2000.0:
+		return "满贯"      # 3番70符 / 4番40符 以上也算满贯
+	return ""
 
 
 func _result_seats(win: Dictionary) -> Array:

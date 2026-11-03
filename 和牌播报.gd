@@ -97,10 +97,17 @@ func _ready() -> void:
 	# 场景里用户摆的「播报底座」只是模板：把它所在的 Control 藏起来（贴图用文件路径加载）
 	for _n in get_children():
 		if _n is CanvasItem and String(_n.name) == "背景":
-			(_n as CanvasItem).visible = false      # 用户拿来对位置的绿色/背景图，播报不用
-			continue
-		if _n is Control and String(_n.name).contains("播报"):
-			(_n as CanvasItem).visible = false      # 底座模板
+			(_n as CanvasItem).visible = false      # 绿色参照背景不用
+	var _panel := get_node_or_null("和牌播报面板")
+	if _panel != null:
+		_panel.visible = true                   # 满贯/跳满/…图 + 底座底座都住在这里，不能整块藏
+		for _c in _panel.get_children():
+			if _c is AnimatedSprite2D:
+				(_c as AnimatedSprite2D).visible = false
+				(_c as AnimatedSprite2D).stop()
+				(_c as AnimatedSprite2D).z_index = 24    # 盖在底座底座(20)/小面板(21)/番种条(22) 上面
+			elif _c is Sprite2D and (String(_c.name) == "播报底座" or String(_c.name) == "底座底座"):
+				(_c as Sprite2D).visible = false     # 底座底座稍后由 _build_plate 按它的位置大小重建
 	for _k in TUNE_KEYS:
 		_tune_default[_k] = get(_k)          # 记下「刚进游戏」的初始值，给 F6 用
 	_load_tune()
@@ -270,10 +277,52 @@ func _prewarm() -> void:
 	ResourceLoader.load(PLATE_TEX)
 
 
+# ── 满贯 / 跳满 / 倍满 / 三倍满 / 役满：直接用场景里摆好的 AnimatedSprite2D ──
+#    位置 / 大小 / 帧序列全部按场景里编辑的来，代码不碰 transform。
+func _level_node(lv: String) -> AnimatedSprite2D:
+	if lv == "":
+		return null
+	return get_node_or_null("和牌播报面板/" + lv) as AnimatedSprite2D
+
+
+func _hide_levels() -> void:
+	var p := get_node_or_null("和牌播报面板")
+	if p == null:
+		return
+	for c in p.get_children():
+		if c is AnimatedSprite2D:
+			(c as AnimatedSprite2D).visible = false
+			(c as AnimatedSprite2D).stop()
+
+
+# 标准时间 = 帧数 / 60fps（13~14 帧 ≈ 0.22s），播完再休息 0.65s
+func _play_level(gen: int, data: Dictionary) -> void:
+	var n := _level_node(String(data.get("level", "")))
+	if n == null:
+		return
+	_hide_levels()
+	var n_frames := 13.0
+	var n_fps := 60.0
+	if n.sprite_frames != null:
+		n_frames = float(n.sprite_frames.get_frame_count(n.animation))
+		n_fps = maxf(float(n.sprite_frames.get_animation_speed(n.animation)), 1.0)
+		n.sprite_frames.set_animation_loop(n.animation, false)   # 播完停在最后一帧，不循环
+	n.visible = true
+	n.frame = 0
+	n.play(n.animation)
+	await get_tree().create_timer(maxf(n_frames / n_fps, 0.02)).timeout
+	if gen != _gen:
+		return
+	if n.sprite_frames != null:
+		n.frame = maxi(int(n_frames) - 1, 0)
+	await get_tree().create_timer(0.65).timeout          # 休息 0.65s
+
+
 func _apply_layout() -> void:
 	var vp := get_viewport_rect().size
 	if head != null:
 		head.draw_mode = "head"
+		head.draw_banner = false                 # 只画蒙版，「谁铳了谁」横幅已删
 		head.banner_size = Vector2(820.0, 72.0)
 		head.banner_scale = head_scale
 		head.banner_pos = Vector2(vp.x * 0.5, 176.0) + head_offset
@@ -350,7 +399,7 @@ func _build_plate() -> void:
 	var tex: Texture2D = null
 	var center := vp * 0.5
 	var extra := Vector2.ONE
-	var src := get_node_or_null("底座底座")   # 用户摆好的节点（有就用它的位置/缩放）
+	var src := get_node_or_null("和牌播报面板/底座底座")   # 用户摆好的节点（有就用它的位置/缩放）
 	if src is Sprite2D and (src as Sprite2D).texture != null:
 		tex = (src as Sprite2D).texture
 		center = (src as Sprite2D).global_position
@@ -531,6 +580,7 @@ func _reset_visual() -> void:
 		_face.visible = false
 	if _mask_spr != null:
 		_mask_spr.visible = false
+	_hide_levels()
 	_clear_plate()
 	_clear_strips()
 	if head != null:
@@ -666,6 +716,11 @@ func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
 	if gen != _gen:
 		busy = false
 		return
+	# 满贯 / 跳满 / 倍满 / 三倍满 / 役满：紧接在四个小面板开始浮现之前
+	await _play_level(gen, data)
+	if gen != _gen:
+		busy = false
+		return
 	if seats_panel != null:
 		seats_panel.call("set_content", data)
 		seats_panel.visible = true
@@ -708,7 +763,8 @@ func set_tune_mode(on: bool) -> void:
 
 
 func _tune_hit(pos: Vector2) -> String:
-	# 优先级：左右两块独立面板 → 横幅 → 手牌 → 番种条 → 整组小面板 → 底座底座（画在最下面，最后判）
+	# 只有四个小分数面板（整组 + 左右两块独立）和番种条可拖；
+	# 底座底座 / 满贯~役满图 / 页眉手牌 / 横幅都不参与调参（位置大小按场景里编辑的来）
 	var vp := get_viewport_rect().size
 	var rect := Rect2(Vector2(vp.x * 0.5, vp.y * seats_center_y) - Vector2(490.0, 310.0) * seats_scale,
 		Vector2(980.0, 620.0) * seats_scale)
@@ -725,19 +781,10 @@ func _tune_hit(pos: Vector2) -> String:
 		return "left"
 	if rr.grow(24.0).has_point(pos):
 		return "right"
-	if head != null:
-		var bs: Vector2 = head.banner_size * head_scale
-		if Rect2(head.banner_pos - bs * 0.5, bs).grow(24.0).has_point(pos):
-			return "head"
-	if pos.y < 170.0:
-		return "hand"
-	if pos.y >= strip_top - 24.0 and strips_root != null and strips_root.get_child_count() > 0:
-		return "strips"
 	if rect.grow(40.0).has_point(pos):
 		return "seats"
-	if plate_clip != null and plate_clip.visible:
-		if Rect2(_plate_rect, _plate_full).grow(30.0).has_point(pos):
-			return "plate"
+	if pos.y >= strip_top - 24.0 and strips_root != null and strips_root.get_child_count() > 0:
+		return "strips"
 	return ""
 
 
@@ -781,10 +828,6 @@ func _input(event: InputEvent) -> void:
 		var d: Vector2 = mm.position - _tune_last
 		_tune_last = mm.position
 		match _tune_sel:
-			"head":
-				head_offset += d
-			"hand":
-				hand_offset += d
 			"strips":
 				strip_top += d.y
 				strip_x_offset += d.x
@@ -794,14 +837,6 @@ func _input(event: InputEvent) -> void:
 				left_panel_offset += d
 			"right":
 				right_panel_offset += d
-			"plate":
-				plate_offset += d
-				_plate_rect += d
-				if plate_clip != null:
-					plate_clip.position = _plate_rect
-					plate_clip.size = _plate_full
-					if _plate_inner != null:
-						_plate_inner.position = Vector2.ZERO
 		_apply_layout()
 		get_viewport().set_input_as_handled()
 

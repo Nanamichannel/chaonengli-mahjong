@@ -23,6 +23,7 @@ var sub_text := ""
 var is_draw := false
 var seats: Array = []          # 四个方位的分数小面板数据
 var draw_mode := "head"                # "head" = 蒙版+横幅 / "seats" = 四个小分数面板
+var draw_banner := true                # false = 只画全屏蒙版（「谁铳了谁」横幅已删掉）
 var banner_pos := Vector2(960.0, 200.0)   # 横幅中心（屏内坐标）
 var banner_size := Vector2(820.0, 76.0)   # 横幅底座大小
 var banner_scale := 1.0
@@ -70,6 +71,9 @@ func _draw() -> void:
 	
 	# ── 全屏蒙版（和牌后压暗桌面，就是「现在的蒙版」）──
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.016, 0.063, 0.067, 0.74))
+
+	if not draw_banner:
+		return
 	
 	# ── 「谁铳了谁」横幅：六边形底座 + 两端小花 + 文案 ──
 	var bs := banner_size * clampf(banner_scale, 0.2, 3.0)

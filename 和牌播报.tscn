@@ -3,13 +3,118 @@
 [ext_resource type="Texture2D" uid="uid://4xwnuogi72c3" path="res://Cailiao/UI/和牌播报.png" id="2_b3feo"]
 [ext_resource type="Texture2D" uid="uid://c2ytligj8x1lb" path="res://Cailiao/background/1.png" id="2_gmm8h"]
 [ext_resource type="Script" uid="uid://6ke8kjb5ae6f" path="res://和牌播报.gd" id="3_hpb"]
+[ext_resource type="Texture2D" uid="uid://dgtb10mt7auhl" path="res://Cailiao/UI/1/满贯_00000.png" id="4_4hawg"]
 [ext_resource type="Texture2D" uid="uid://b6qqwsqn6buof" path="res://Cailiao/UI/结算播报底座.png" id="4_7nib3"]
-[ext_resource type="Texture2D" uid="uid://dt2tfqghkfnjp" path="res://Cailiao/UI/满贯.png" id="4_org6s"]
-[ext_resource type="Texture2D" uid="uid://bpiv78po12nxa" path="res://Cailiao/UI/跳满.png" id="5_elbrw"]
-[ext_resource type="Texture2D" uid="uid://bp1wkatgdeb61" path="res://Cailiao/UI/倍满.png" id="6_lvq52"]
-[ext_resource type="Texture2D" uid="uid://br5podru517rc" path="res://Cailiao/UI/三倍满.png" id="7_ldj10"]
-[ext_resource type="Texture2D" uid="uid://coi5a327r4tx1" path="res://Cailiao/UI/役满.png" id="8_thg74"]
+[ext_resource type="Texture2D" uid="uid://1l8u6dy4y2ll" path="res://Cailiao/UI/1/跳满_00000.png" id="4_tphfu"]
+[ext_resource type="Texture2D" uid="uid://d1un2emidmeh7" path="res://Cailiao/UI/1/跳满_00001.png" id="5_771kk"]
+[ext_resource type="Texture2D" uid="uid://cmehukajnggxs" path="res://Cailiao/UI/1/满贯_00001.png" id="5_qwqb3"]
+[ext_resource type="Texture2D" uid="uid://dwwja87tpn4re" path="res://Cailiao/UI/1/跳满_00002.png" id="6_4r3jk"]
+[ext_resource type="Texture2D" uid="uid://bxt536gkvgdeg" path="res://Cailiao/UI/1/满贯_00002.png" id="6_pg6bo"]
+[ext_resource type="Texture2D" uid="uid://khskt2s5ni1k" path="res://Cailiao/UI/1/跳满_00003.png" id="7_i4oui"]
+[ext_resource type="Texture2D" uid="uid://bv46jkyymyq67" path="res://Cailiao/UI/1/满贯_00003.png" id="7_oa1yf"]
+[ext_resource type="Texture2D" uid="uid://n7grolbjivtr" path="res://Cailiao/UI/1/满贯_00004.png" id="8_ie2n1"]
+[ext_resource type="Texture2D" uid="uid://b5v6vo1le8gvv" path="res://Cailiao/UI/1/跳满_00004.png" id="8_vyxpd"]
+[ext_resource type="Texture2D" uid="uid://ctfovqhrhs0k1" path="res://Cailiao/UI/1/满贯_00005.png" id="9_676mh"]
 [ext_resource type="Texture2D" uid="uid://dnm0s75gwt6cn" path="res://Cailiao/UI/底座底座.png" id="9_sx7oi"]
+[ext_resource type="Texture2D" uid="uid://b3ntpfl7qg7va" path="res://Cailiao/UI/1/跳满_00005.png" id="9_y7rjh"]
+[ext_resource type="Texture2D" uid="uid://bhnuyo6kr8067" path="res://Cailiao/UI/1/跳满_00006.png" id="10_b3lig"]
+[ext_resource type="Texture2D" uid="uid://b2n21ao31fisx" path="res://Cailiao/UI/1/满贯_00006.png" id="10_idmp6"]
+[ext_resource type="Texture2D" uid="uid://b3nrjd6aemsdh" path="res://Cailiao/UI/1/满贯_00007.png" id="11_7nm87"]
+[ext_resource type="Texture2D" uid="uid://csw1apdtpinfo" path="res://Cailiao/UI/1/跳满_00007.png" id="11_lasjc"]
+[ext_resource type="Texture2D" uid="uid://doxf23jwewe8d" path="res://Cailiao/UI/1/满贯_00008.png" id="12_12bsc"]
+[ext_resource type="Texture2D" uid="uid://cq5au6nv4cptr" path="res://Cailiao/UI/1/跳满_00008.png" id="12_pdhu7"]
+[ext_resource type="Texture2D" uid="uid://du8mb7rmblsoy" path="res://Cailiao/UI/1/跳满_00009.png" id="13_fep7v"]
+[ext_resource type="Texture2D" uid="uid://bxopafwe3yyi" path="res://Cailiao/UI/1/满贯_00009.png" id="13_i7xov"]
+[ext_resource type="Texture2D" uid="uid://g7bpfk7u3fnv" path="res://Cailiao/UI/1/满贯_00010.png" id="14_8hjpb"]
+[ext_resource type="Texture2D" uid="uid://gp8u71hyuxvn" path="res://Cailiao/UI/1/跳满_00010.png" id="14_bq7nf"]
+[ext_resource type="Texture2D" uid="uid://bg1exgdrm3iir" path="res://Cailiao/UI/1/跳满_00011.png" id="15_btbci"]
+[ext_resource type="Texture2D" uid="uid://tprukgc7sfvv" path="res://Cailiao/UI/1/满贯_00011.png" id="15_j2ay0"]
+[ext_resource type="Texture2D" uid="uid://dmsydcf2kh1ir" path="res://Cailiao/UI/1/满贯_00012.png" id="16_e8cii"]
+[ext_resource type="Texture2D" uid="uid://xlf745v8atxb" path="res://Cailiao/UI/1/跳满_00012.png" id="16_k62pn"]
+[ext_resource type="Texture2D" uid="uid://cedwm888ksn6d" path="res://Cailiao/UI/1/满贯_00013.png" id="17_m00t2"]
+[ext_resource type="Texture2D" uid="uid://deioji7gl77wx" path="res://Cailiao/UI/1/跳满_00013.png" id="17_xl6sn"]
+[ext_resource type="Texture2D" uid="uid://3mdclqf6eb8d" path="res://Cailiao/UI/1/三倍满_00000.png" id="18_pg3yb"]
+[ext_resource type="Texture2D" uid="uid://bdf4ip5wv0bnb" path="res://Cailiao/UI/1/三倍满_00001.png" id="19_k1xck"]
+[ext_resource type="Texture2D" uid="uid://c30kp7posrqe8" path="res://Cailiao/UI/1/三倍满_00002.png" id="20_h6f5b"]
+[ext_resource type="Texture2D" uid="uid://rsktooqdpqfw" path="res://Cailiao/UI/1/三倍满_00003.png" id="21_s7se3"]
+[ext_resource type="Texture2D" uid="uid://cr3ldswe20u61" path="res://Cailiao/UI/1/三倍满_00004.png" id="22_swyh8"]
+[ext_resource type="Texture2D" uid="uid://c48nhp8a2kq0q" path="res://Cailiao/UI/1/三倍满_00005.png" id="23_3nc0h"]
+[ext_resource type="Texture2D" uid="uid://dm8hst3np1v2b" path="res://Cailiao/UI/1/三倍满_00006.png" id="24_bc1eg"]
+[ext_resource type="Texture2D" uid="uid://xw2p5gwahvq2" path="res://Cailiao/UI/1/三倍满_00007.png" id="25_av07u"]
+[ext_resource type="Texture2D" uid="uid://xc4y2mkwv6h2" path="res://Cailiao/UI/1/三倍满_00008.png" id="26_30ebs"]
+[ext_resource type="Texture2D" uid="uid://d1wpsxk8uuf8m" path="res://Cailiao/UI/1/三倍满_00009.png" id="27_kuvj0"]
+[ext_resource type="Texture2D" uid="uid://s1pc0dyvstfo" path="res://Cailiao/UI/1/三倍满_00010.png" id="28_ufv7j"]
+[ext_resource type="Texture2D" uid="uid://b44osu6wfw2qh" path="res://Cailiao/UI/1/三倍满_00011.png" id="29_e4oun"]
+[ext_resource type="Texture2D" uid="uid://c350xhtw44evw" path="res://Cailiao/UI/1/三倍满_00012.png" id="30_bdkxp"]
+[ext_resource type="Texture2D" uid="uid://cwysb831c2aaj" path="res://Cailiao/UI/1/三倍满_00013.png" id="31_nkdso"]
+[ext_resource type="Texture2D" uid="uid://0aeni82844pi" path="res://Cailiao/UI/1/倍满_00000.png" id="32_ptv5d"]
+[ext_resource type="Texture2D" uid="uid://clauqv0usxfib" path="res://Cailiao/UI/1/倍满_00001.png" id="33_s6n33"]
+[ext_resource type="Texture2D" uid="uid://dlhoutlmv6dst" path="res://Cailiao/UI/1/倍满_00002.png" id="34_b7x5y"]
+[ext_resource type="Texture2D" uid="uid://33vx6vimhyp6" path="res://Cailiao/UI/1/倍满_00003.png" id="35_2eswv"]
+[ext_resource type="Texture2D" uid="uid://ltoretebyxr8" path="res://Cailiao/UI/1/倍满_00004.png" id="36_4la3m"]
+[ext_resource type="Texture2D" uid="uid://7grnhftweiv2" path="res://Cailiao/UI/1/倍满_00005.png" id="37_yquw3"]
+[ext_resource type="Texture2D" uid="uid://dj8ktb663dtvp" path="res://Cailiao/UI/1/倍满_00006.png" id="38_nf1iy"]
+[ext_resource type="Texture2D" uid="uid://dutmd8ue1alks" path="res://Cailiao/UI/1/倍满_00007.png" id="39_rq1gr"]
+[ext_resource type="Texture2D" uid="uid://kv7h0hftt352" path="res://Cailiao/UI/1/倍满_00008.png" id="40_q5vhc"]
+[ext_resource type="Texture2D" uid="uid://c8caaavelws4n" path="res://Cailiao/UI/1/倍满_00009.png" id="41_x5o6u"]
+[ext_resource type="Texture2D" uid="uid://bt0m1w82easci" path="res://Cailiao/UI/1/倍满_00010.png" id="42_8vp8t"]
+[ext_resource type="Texture2D" uid="uid://kobxc8c4h87k" path="res://Cailiao/UI/1/倍满_00011.png" id="43_rdpu5"]
+[ext_resource type="Texture2D" uid="uid://dorv6py5xxi0m" path="res://Cailiao/UI/1/倍满_00012.png" id="44_m1wfe"]
+[ext_resource type="Texture2D" uid="uid://bj37y3qbyftps" path="res://Cailiao/UI/1/倍满_00013.png" id="45_jufip"]
+[ext_resource type="Texture2D" uid="uid://7dpe7nqaitjk" path="res://Cailiao/UI/1/倍满_00014.png" id="46_pjmof"]
+[ext_resource type="Texture2D" uid="uid://ck7i843lrf0hm" path="res://Cailiao/UI/1/倍满_00015.png" id="47_rp6of"]
+[ext_resource type="Texture2D" uid="uid://jnut2mtlbay5" path="res://Cailiao/UI/1/倍满_00016.png" id="48_8cgw6"]
+[ext_resource type="Texture2D" uid="uid://bnxpb86ulpgur" path="res://Cailiao/UI/1/倍满_00017.png" id="49_2aamf"]
+[ext_resource type="Texture2D" uid="uid://66tv7discybo" path="res://Cailiao/UI/1/倍满_00018.png" id="50_ytpao"]
+[ext_resource type="Texture2D" uid="uid://d2estcsxq311a" path="res://Cailiao/UI/1/倍满_00019.png" id="51_bb2iq"]
+[ext_resource type="Texture2D" uid="uid://srx8efg0buis" path="res://Cailiao/UI/1/倍满_00020.png" id="52_0eydk"]
+[ext_resource type="Texture2D" uid="uid://bhxip3hn1p886" path="res://Cailiao/UI/1/倍满_00021.png" id="53_fcl3u"]
+[ext_resource type="Texture2D" uid="uid://dpdkxpobto1jo" path="res://Cailiao/UI/1/倍满_00022.png" id="54_17e1v"]
+[ext_resource type="Texture2D" uid="uid://cmqrw3hci00pp" path="res://Cailiao/UI/1/倍满_00023.png" id="55_4kkp1"]
+[ext_resource type="Texture2D" uid="uid://bxoad2gw7aplu" path="res://Cailiao/UI/1/倍满_00024.png" id="56_fwglk"]
+[ext_resource type="Texture2D" uid="uid://cr10buvvbw8qn" path="res://Cailiao/UI/1/倍满_00025.png" id="57_rytl8"]
+[ext_resource type="Texture2D" uid="uid://ycqy2jc0uvdf" path="res://Cailiao/UI/1/倍满_00026.png" id="58_b33tx"]
+[ext_resource type="Texture2D" uid="uid://be1lkghi8jnqp" path="res://Cailiao/UI/1/倍满_00027.png" id="59_1dbco"]
+[ext_resource type="Texture2D" uid="uid://d0qdbvxlwuwks" path="res://Cailiao/UI/1/倍满_00028.png" id="60_g5ghh"]
+[ext_resource type="Texture2D" uid="uid://baa26w7i3bb24" path="res://Cailiao/UI/1/倍满_00029.png" id="61_gogj4"]
+[ext_resource type="Texture2D" uid="uid://dnv4vuftscwhq" path="res://Cailiao/UI/1/倍满_00030.png" id="62_spglo"]
+[ext_resource type="Texture2D" uid="uid://cb23pnfdsgmwu" path="res://Cailiao/UI/1/倍满_00031.png" id="63_od3m7"]
+[ext_resource type="Texture2D" uid="uid://cy8q8fx3hn1ym" path="res://Cailiao/UI/1/倍满_00032.png" id="64_xpgvo"]
+[ext_resource type="Texture2D" uid="uid://dqtf2u3gs5gsy" path="res://Cailiao/UI/1/倍满_00033.png" id="65_rlpix"]
+[ext_resource type="Texture2D" uid="uid://bi8wa4uetpvo8" path="res://Cailiao/UI/1/倍满_00034.png" id="66_oiprc"]
+[ext_resource type="Texture2D" uid="uid://bus6nn0b31lxs" path="res://Cailiao/UI/1/倍满_00035.png" id="67_2xltm"]
+[ext_resource type="Texture2D" uid="uid://dpek5er3556bs" path="res://Cailiao/UI/1/倍满_00036.png" id="68_o817o"]
+[ext_resource type="Texture2D" uid="uid://b1xjjnt27cee2" path="res://Cailiao/UI/1/倍满_00037.png" id="69_3pesb"]
+[ext_resource type="Texture2D" uid="uid://dxu3e3lrvowec" path="res://Cailiao/UI/1/倍满_00038.png" id="70_5upnr"]
+[ext_resource type="Texture2D" uid="uid://du68kbe6yyyuc" path="res://Cailiao/UI/1/倍满_00039.png" id="71_fxxs4"]
+[ext_resource type="Texture2D" uid="uid://nxugsy0y4roj" path="res://Cailiao/UI/1/倍满_00040.png" id="72_1tnkq"]
+[ext_resource type="Texture2D" uid="uid://dlb0u7pe8ynkw" path="res://Cailiao/UI/1/倍满_00041.png" id="73_ouitk"]
+[ext_resource type="Texture2D" uid="uid://dapb40mm3g1xt" path="res://Cailiao/UI/1/倍满_00042.png" id="74_37n31"]
+[ext_resource type="Texture2D" uid="uid://bm6y8guaid6my" path="res://Cailiao/UI/1/倍满_00043.png" id="75_ijcff"]
+[ext_resource type="Texture2D" uid="uid://xbfgdrtgy8y4" path="res://Cailiao/UI/1/倍满_00044.png" id="76_j8gqx"]
+[ext_resource type="Texture2D" uid="uid://be6f7v5lqsx26" path="res://Cailiao/UI/1/倍满_00045.png" id="77_vvmh8"]
+[ext_resource type="Texture2D" uid="uid://bkiblb8harl1b" path="res://Cailiao/UI/1/倍满_00046.png" id="78_n0yjx"]
+[ext_resource type="Texture2D" uid="uid://c6luf85g17bjd" path="res://Cailiao/UI/1/倍满_00047.png" id="79_664nr"]
+[ext_resource type="Texture2D" uid="uid://cr4v5u86687ig" path="res://Cailiao/UI/1/倍满_00048.png" id="80_cpq2w"]
+[ext_resource type="Texture2D" uid="uid://cvf47wifpjojx" path="res://Cailiao/UI/1/倍满_00049.png" id="81_ki6eq"]
+[ext_resource type="Texture2D" uid="uid://dact5lx3r76ys" path="res://Cailiao/UI/1/倍满_00050.png" id="82_4egmn"]
+[ext_resource type="Texture2D" uid="uid://c2hnl84ynjrl0" path="res://Cailiao/UI/1/倍满_00051.png" id="83_hw5do"]
+[ext_resource type="Texture2D" uid="uid://cdpctv1r4ej4w" path="res://Cailiao/UI/1/倍满_00052.png" id="84_ra06o"]
+[ext_resource type="Texture2D" uid="uid://i768f2gtdyva" path="res://Cailiao/UI/1/倍满_00053.png" id="85_fw0dm"]
+[ext_resource type="Texture2D" uid="uid://b2mykdfo02ngv" path="res://Cailiao/UI/1/役满_00000.png" id="86_s5bfb"]
+[ext_resource type="Texture2D" uid="uid://bnethtu2sdp36" path="res://Cailiao/UI/1/役满_00001.png" id="87_akyax"]
+[ext_resource type="Texture2D" uid="uid://c0gmguaibb468" path="res://Cailiao/UI/1/役满_00002.png" id="88_rg5wd"]
+[ext_resource type="Texture2D" uid="uid://ci4rmcux88giv" path="res://Cailiao/UI/1/役满_00003.png" id="89_ieuam"]
+[ext_resource type="Texture2D" uid="uid://cg3k7oy0ohnwb" path="res://Cailiao/UI/1/役满_00004.png" id="90_ghrra"]
+[ext_resource type="Texture2D" uid="uid://dbexg45in0c4n" path="res://Cailiao/UI/1/役满_00005.png" id="91_o2hjm"]
+[ext_resource type="Texture2D" uid="uid://mqs5lp2fe1n2" path="res://Cailiao/UI/1/役满_00006.png" id="92_h676f"]
+[ext_resource type="Texture2D" uid="uid://cjmsfioleg4o1" path="res://Cailiao/UI/1/役满_00007.png" id="93_lejil"]
+[ext_resource type="Texture2D" uid="uid://bboufc30fs8oq" path="res://Cailiao/UI/1/役满_00008.png" id="94_vvsl8"]
+[ext_resource type="Texture2D" uid="uid://b03tsuregoq3t" path="res://Cailiao/UI/1/役满_00009.png" id="95_m3jsk"]
+[ext_resource type="Texture2D" uid="uid://clgi464kk1jtc" path="res://Cailiao/UI/1/役满_00010.png" id="96_56geg"]
+[ext_resource type="Texture2D" uid="uid://b718gnkrugdrg" path="res://Cailiao/UI/1/役满_00011.png" id="97_e3imq"]
+[ext_resource type="Texture2D" uid="uid://offybodi5ig7" path="res://Cailiao/UI/1/役满_00012.png" id="98_tr6xj"]
+[ext_resource type="Texture2D" uid="uid://dstp3evbupqib" path="res://Cailiao/UI/1/役满_00013.png" id="99_u6qsi"]
 
 [sub_resource type="Animation" id="Animation_gmm8h"]
 length = 0.001
@@ -65,10 +170,372 @@ _data = {
 &"new_animation_2": SubResource("Animation_eyhvr")
 }
 
+[sub_resource type="SpriteFrames" id="SpriteFrames_0wcdv"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("4_tphfu")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_771kk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_4r3jk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_i4oui")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_vyxpd")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_y7rjh")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_b3lig")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_lasjc")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_pdhu7")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_fep7v")
+}, {
+"duration": 1.0,
+"texture": ExtResource("14_bq7nf")
+}, {
+"duration": 1.0,
+"texture": ExtResource("15_btbci")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_k62pn")
+}, {
+"duration": 1.0,
+"texture": ExtResource("17_xl6sn")
+}],
+"loop": 0,
+"name": &"跳满",
+"speed": 60.0
+}]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_tuq5b"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("18_pg3yb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("19_k1xck")
+}, {
+"duration": 1.0,
+"texture": ExtResource("20_h6f5b")
+}, {
+"duration": 1.0,
+"texture": ExtResource("21_s7se3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("22_swyh8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("23_3nc0h")
+}, {
+"duration": 1.0,
+"texture": ExtResource("24_bc1eg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("25_av07u")
+}, {
+"duration": 1.0,
+"texture": ExtResource("26_30ebs")
+}, {
+"duration": 1.0,
+"texture": ExtResource("27_kuvj0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("28_ufv7j")
+}, {
+"duration": 1.0,
+"texture": ExtResource("29_e4oun")
+}, {
+"duration": 1.0,
+"texture": ExtResource("30_bdkxp")
+}, {
+"duration": 1.0,
+"texture": ExtResource("31_nkdso")
+}],
+"loop": 0,
+"name": &"三倍满",
+"speed": 60.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("32_ptv5d")
+}, {
+"duration": 1.0,
+"texture": ExtResource("33_s6n33")
+}, {
+"duration": 1.0,
+"texture": ExtResource("34_b7x5y")
+}, {
+"duration": 1.0,
+"texture": ExtResource("35_2eswv")
+}, {
+"duration": 1.0,
+"texture": ExtResource("36_4la3m")
+}, {
+"duration": 1.0,
+"texture": ExtResource("37_yquw3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("38_nf1iy")
+}, {
+"duration": 1.0,
+"texture": ExtResource("39_rq1gr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("40_q5vhc")
+}, {
+"duration": 1.0,
+"texture": ExtResource("41_x5o6u")
+}, {
+"duration": 1.0,
+"texture": ExtResource("42_8vp8t")
+}, {
+"duration": 1.0,
+"texture": ExtResource("43_rdpu5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("44_m1wfe")
+}, {
+"duration": 1.0,
+"texture": ExtResource("45_jufip")
+}, {
+"duration": 1.0,
+"texture": ExtResource("46_pjmof")
+}, {
+"duration": 1.0,
+"texture": ExtResource("47_rp6of")
+}, {
+"duration": 1.0,
+"texture": ExtResource("48_8cgw6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("49_2aamf")
+}, {
+"duration": 1.0,
+"texture": ExtResource("50_ytpao")
+}, {
+"duration": 1.0,
+"texture": ExtResource("51_bb2iq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("52_0eydk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("53_fcl3u")
+}, {
+"duration": 1.0,
+"texture": ExtResource("54_17e1v")
+}, {
+"duration": 1.0,
+"texture": ExtResource("55_4kkp1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("56_fwglk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("57_rytl8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("58_b33tx")
+}, {
+"duration": 1.0,
+"texture": ExtResource("59_1dbco")
+}, {
+"duration": 1.0,
+"texture": ExtResource("60_g5ghh")
+}, {
+"duration": 1.0,
+"texture": ExtResource("61_gogj4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("62_spglo")
+}, {
+"duration": 1.0,
+"texture": ExtResource("63_od3m7")
+}, {
+"duration": 1.0,
+"texture": ExtResource("64_xpgvo")
+}, {
+"duration": 1.0,
+"texture": ExtResource("65_rlpix")
+}, {
+"duration": 1.0,
+"texture": ExtResource("66_oiprc")
+}, {
+"duration": 1.0,
+"texture": ExtResource("67_2xltm")
+}, {
+"duration": 1.0,
+"texture": ExtResource("68_o817o")
+}, {
+"duration": 1.0,
+"texture": ExtResource("69_3pesb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("70_5upnr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("71_fxxs4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("72_1tnkq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("73_ouitk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("74_37n31")
+}, {
+"duration": 1.0,
+"texture": ExtResource("75_ijcff")
+}, {
+"duration": 1.0,
+"texture": ExtResource("76_j8gqx")
+}, {
+"duration": 1.0,
+"texture": ExtResource("77_vvmh8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("78_n0yjx")
+}, {
+"duration": 1.0,
+"texture": ExtResource("79_664nr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("80_cpq2w")
+}, {
+"duration": 1.0,
+"texture": ExtResource("81_ki6eq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("82_4egmn")
+}, {
+"duration": 1.0,
+"texture": ExtResource("83_hw5do")
+}, {
+"duration": 1.0,
+"texture": ExtResource("84_ra06o")
+}, {
+"duration": 1.0,
+"texture": ExtResource("85_fw0dm")
+}],
+"loop": 0,
+"name": &"倍满",
+"speed": 60.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("86_s5bfb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("87_akyax")
+}, {
+"duration": 1.0,
+"texture": ExtResource("88_rg5wd")
+}, {
+"duration": 1.0,
+"texture": ExtResource("89_ieuam")
+}, {
+"duration": 1.0,
+"texture": ExtResource("90_ghrra")
+}, {
+"duration": 1.0,
+"texture": ExtResource("91_o2hjm")
+}, {
+"duration": 1.0,
+"texture": ExtResource("92_h676f")
+}, {
+"duration": 1.0,
+"texture": ExtResource("93_lejil")
+}, {
+"duration": 1.0,
+"texture": ExtResource("94_vvsl8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("95_m3jsk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("96_56geg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("97_e3imq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("98_tr6xj")
+}, {
+"duration": 1.0,
+"texture": ExtResource("99_u6qsi")
+}],
+"loop": 0,
+"name": &"役满",
+"speed": 60.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("4_4hawg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_qwqb3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_pg6bo")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_oa1yf")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_ie2n1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_676mh")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_idmp6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_7nm87")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_12bsc")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_i7xov")
+}, {
+"duration": 1.0,
+"texture": ExtResource("14_8hjpb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("15_j2ay0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_e8cii")
+}, {
+"duration": 1.0,
+"texture": ExtResource("17_m00t2")
+}],
+"loop": 0,
+"name": &"满贯",
+"speed": 60.0
+}]
+
 [node name="Node2D" type="Node2D" unique_id=2040400694]
 script = ExtResource("3_hpb")
 
 [node name="背景" type="Sprite2D" parent="." unique_id=312426519]
+z_index = -8
 position = Vector2(960.00006, 540)
 scale = Vector2(0.9963675, 0.9899175)
 texture = ExtResource("2_gmm8h")
@@ -106,34 +573,44 @@ anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
 
-[node name="满贯" type="Sprite2D" parent="和牌播报面板" unique_id=345483614]
-z_index = 1
-position = Vector2(422, 544)
-scale = Vector2(0.16, 0.16)
-texture = ExtResource("4_org6s")
+[node name="跳满" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=536132179]
+position = Vector2(1021.54, 539.7)
+scale = Vector2(1.15, 1.15)
+sprite_frames = SubResource("SpriteFrames_0wcdv")
+animation = &"跳满"
 
-[node name="跳满" type="Sprite2D" parent="和牌播报面板" unique_id=272656029]
-position = Vector2(422, 544)
-scale = Vector2(0.16, 0.16)
-texture = ExtResource("5_elbrw")
+[node name="满贯" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=169502089]
+position = Vector2(921.66, 540.105)
+scale = Vector2(0.965, 0.965)
+sprite_frames = SubResource("SpriteFrames_tuq5b")
+animation = &"满贯"
+frame = 13
+frame_progress = 1.0
 
-[node name="倍满" type="Sprite2D" parent="和牌播报面板" unique_id=43430190]
-position = Vector2(422, 544)
-scale = Vector2(0.16, 0.16)
-texture = ExtResource("6_lvq52")
+[node name="倍满" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=1734080813]
+position = Vector2(921.66, 540.105)
+scale = Vector2(0.965, 0.965)
+sprite_frames = SubResource("SpriteFrames_tuq5b")
+animation = &"役满"
 
-[node name="三倍满" type="Sprite2D" parent="和牌播报面板" unique_id=2083549424]
-z_index = 1
-position = Vector2(422, 544)
-scale = Vector2(0.16, 0.16)
-texture = ExtResource("7_ldj10")
+[node name="三倍满" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=766946116]
+position = Vector2(921.66, 540.105)
+scale = Vector2(0.965, 0.965)
+sprite_frames = SubResource("SpriteFrames_tuq5b")
+animation = &"三倍满"
+frame = 13
+frame_progress = 1.0
 
-[node name="役满" type="Sprite2D" parent="和牌播报面板" unique_id=993576339]
-position = Vector2(422, 544)
-scale = Vector2(0.16, 0.16)
-texture = ExtResource("8_thg74")
+[node name="役满" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=155736390]
+position = Vector2(921.66, 540.105)
+scale = Vector2(0.965, 0.965)
+sprite_frames = SubResource("SpriteFrames_tuq5b")
+animation = &"役满"
+frame = 13
+frame_progress = 1.0
 
 [node name="底座底座" type="Sprite2D" parent="和牌播报面板" unique_id=1935253554]
+z_index = -1
 position = Vector2(931.9999, 498)
 scale = Vector2(1.3108333, 1.4438202)
 texture = ExtResource("9_sx7oi")

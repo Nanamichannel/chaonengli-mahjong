@@ -149,7 +149,7 @@ func _ready() -> void:
 
 	plate_root = Node2D.new()
 	plate_root.name = "PlateRoot"
-	plate_root.z_index = 21          # 在番种条(22)下面、蒙版(20)上面
+	plate_root.z_index = 20          # 蒙版(20)之上、小面板(21)之下 → 不挡左右两个小面板
 	add_child(plate_root)
 	add_child(strips_root)
 
@@ -689,6 +689,9 @@ func _tune_hit(pos: Vector2) -> String:
 		var r := Rect2(head.banner_pos - bs * 0.5, bs).grow(24.0)
 		if r.has_point(pos):
 			return "head"
+	if plate_clip != null and plate_clip.visible:
+		if Rect2(_plate_rect, _plate_full).grow(30.0).has_point(pos):
+			return "plate"
 	if pos.y < 170.0:
 		return "hand"
 	if pos.y >= strip_top - 24.0 and strips_root != null and strips_root.get_child_count() > 0:
@@ -745,6 +748,14 @@ func _input(event: InputEvent) -> void:
 				seats_offset += d
 			"hand":
 				hand_offset += d
+			"plate":
+				plate_offset += d
+				_plate_rect += d
+				if plate_clip != null:
+					plate_clip.position = _plate_rect
+					plate_clip.size = _plate_full
+					if _plate_inner != null:
+						_plate_inner.position = Vector2.ZERO
 			"strips":
 				strip_top += d.y
 		_apply_layout()
@@ -754,8 +765,8 @@ func _input(event: InputEvent) -> void:
 func _report_tune() -> void:
 	print("[announce tune] head_offset=%s head_scale=%.3f | seats_offset=%s seats_scale=%.3f center_y=%.3f" % [
 		str(head_offset), head_scale, str(seats_offset), seats_scale, seats_center_y])
-	print("[announce tune] hand_offset=%s hand_scale=%.3f | strip_top=%.1f strip_scale=%.3f strip_gap=%.1f" % [
-		str(hand_offset), hand_scale, strip_top, strip_scale, strip_gap])
+	print("[announce tune] hand_offset=%s hand_scale=%.3f | strip_top=%.1f strip_scale=%.3f strip_gap=%.1f | plate_offset=%s" % [
+		str(hand_offset), hand_scale, strip_top, strip_scale, strip_gap, str(plate_offset)])
 
 
 func _save_tune() -> void:
@@ -767,6 +778,7 @@ func _save_tune() -> void:
 	cf.set_value("seats", "center_y", seats_center_y)
 	cf.set_value("hand", "offset", hand_offset)
 	cf.set_value("hand", "scale", hand_scale)
+	cf.set_value("plate", "offset", plate_offset)
 	cf.set_value("strips", "top", strip_top)
 	cf.set_value("strips", "scale", strip_scale)
 	cf.set_value("strips", "gap", strip_gap)
@@ -787,5 +799,6 @@ func _load_tune() -> void:
 	hand_offset = cf.get_value("hand", "offset", hand_offset)
 	hand_scale = float(cf.get_value("hand", "scale", hand_scale))
 	strip_top = float(cf.get_value("strips", "top", strip_top))
+	plate_offset = cf.get_value("plate", "offset", plate_offset)
 	strip_scale = float(cf.get_value("strips", "scale", strip_scale))
 	strip_gap = float(cf.get_value("strips", "gap", strip_gap))

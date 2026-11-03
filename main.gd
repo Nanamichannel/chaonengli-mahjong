@@ -15508,6 +15508,12 @@ func _tm_tick(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# 播报期间牌桌是静态的：只留租约/结算确认，其余 tick/sync/轮询全跳过（不然每帧一堆活抢帧）
+	if _win_intro_running or _win_panel_visible():
+		_lease_tick(delta)
+		if game_over:
+			_result_confirm_tick(delta)
+		return
 	_lease_tick(delta)
 	if game_over:
 		_result_confirm_tick(delta)

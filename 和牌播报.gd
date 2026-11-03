@@ -54,6 +54,7 @@ var announce: Control = null
 var seats_panel: Control = null              # 四个分数小面板
 var strips_root: Node2D = null               # 番种底座
 var plate_root: Node2D = null                # 「底座底座」那一层（在番种条下面）
+var who_root: Node2D = null                   # 底座右侧竖排「铳和 / 自摸」
 var plate_clip: Control = null               # 做横向擦开用的裁剪容器
 var _plate_inner: TextureRect = null
 var _plate_rect := Vector2.ZERO
@@ -170,6 +171,11 @@ func _ready() -> void:
 	plate_root.name = "PlateRoot"
 	plate_root.z_index = 20          # 蒙版(20)之上、小面板(21)之下 → 不挡左右两个小面板
 	add_child(plate_root)
+	# 底座底座右侧的「铳和 / 自摸」竖排字
+	who_root = Node2D.new()
+	who_root.name = "WhoOnPlate"
+	who_root.z_index = 23
+	add_child(who_root)
 	add_child(strips_root)
 
 	# 和牌家手牌（压在最上面）
@@ -316,6 +322,76 @@ func _play_level(gen: int, data: Dictionary) -> void:
 	if n.sprite_frames != null:
 		n.frame = maxi(int(n_frames) - 1, 0)
 	await get_tree().create_timer(0.65).timeout          # 休息 0.65s
+
+
+# ── 底座底座右侧：竖排「铳家 ↓ 和牌家」（自摸就写 和牌家 / 自摸）──
+#    行书黑字 + 白描边；大小限制在底座底座内，且不和番种条重合。
+func _clear_who() -> void:
+	if who_root == null:
+		return
+	for c in who_root.get_children():
+		who_root.remove_child(c)
+		c.queue_free()
+
+
+func _vtext(font: Font, txt: String, fs: float, cx: float, top_y: float, colw: float) -> void:
+	if txt == "" or who_root == null:
+		return
+	var lb := Label.new()
+	lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lb.text = _vertical_text(txt)
+	lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lb.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	var n := maxi(lb.text.count("\n") + 1, 1)
+	lb.size = Vector2(colw, float(n) * fs * 1.16)
+	lb.position = Vector2(cx - colw * 0.5, top_y)
+	if font != null:
+		lb.add_theme_font_override("font", font)
+	lb.add_theme_font_size_override("font_size", int(fs))
+	lb.add_theme_color_override("font_color", Color(0.02, 0.05, 0.05, 1.0))
+	lb.add_theme_color_override("font_outline_color", Color(0.965, 1.0, 0.988, 0.95))
+	lb.add_theme_constant_override("outline_size", maxi(int(fs * 0.10), 3))
+	lb.add_theme_constant_override("line_spacing", -int(fs * 0.18))
+	who_root.add_child(lb)
+
+
+func _build_who(data: Dictionary) -> void:
+	_clear_who()
+	if who_root == null or _plate_full.x <= 0.0:
+		return
+	var win_id := String(data.get("winner_id", ""))
+	if win_id == '':
+		return
+	var lose_id := String(data.get("loser_id", ""))
+	var font := _font_xingkai()
+	var pt := float(_plate_rect.y)
+	var pw := float(_plate_full.x)
+	var ph := float(_plate_full.y)
+	var pr := float(_plate_rect.x) + pw
+	# 番种条右边界（不能和它重合）
+	var sr := -1.0
+	if strips_root != null:
+		for c in strips_root.get_children():
+			if c is Control:
+				sr = maxf(sr, (c as Control).position.x + (c as Control).size.x)
+	var pad := pw * 0.10
+	var left_lim := (sr + pad) if sr > 0.0 else (pr - pw * 0.30)
+	var room := maxf(pr - pad - left_lim, 40.0)
+	var col1 := win_id                 # 右列
+	var col2 := "自摸"           # 左列（自摸）
+	if lose_id != "":
+		col1 = lose_id                   # 右列 = 放铳家
+		col2 = "↓" + win_id           # 左列 = ↓ + 和牌家
+	var maxn := maxi(col1.length(), col2.length() + 1)   # 第二列比第一列低一个字
+	var fs := minf(ph * 0.80 / (float(maxn) * 1.16), room * 0.5 / 1.15)
+	fs = clampf(fs, 16.0, 56.0)
+	var colw := fs * 1.15
+	var x1 := pr - pad - colw * 0.5
+	var x2 := x1 - colw
+	var top1 := pt + ph * 0.22
+	var top2 := top1 + fs * 1.16
+	_vtext(font, col1, fs, x1, top1, colw)
+	_vtext(font, col2, fs, x2, top2, colw)
 
 
 func _apply_layout() -> void:
@@ -469,7 +545,9 @@ func _build_strips(rows: Array) -> void:
 	var h := float(tex.get_height()) * strip_scale
 	var n := rows.size()
 	var total := float(n) * w + float(maxi(n - 1, 0)) * strip_gap
-	var x0 := maxf((vp.x - total) * 0.5, 8.0)
+	# 以「底座底座」的中心居中（不是屏幕中心）
+	var cx: float = (_plate_rect.x + _plate_full.x * 0.5) if _plate_full.x > 0.0 else vp.x * 0.5
+	var x0 := maxf(cx - total * 0.5, 8.0)
 	var font := _font_xingkai()
 	for i in range(n):
 		var row: Dictionary = rows[i]
@@ -581,6 +659,7 @@ func _reset_visual() -> void:
 	if _mask_spr != null:
 		_mask_spr.visible = false
 	_hide_levels()
+	_clear_who()
 	_clear_plate()
 	_clear_strips()
 	if head != null:
@@ -704,6 +783,7 @@ func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
 	if gen != _gen:
 		busy = false
 		return
+	_build_who(data)
 	var rows = data.get("yaku_rows", [])
 	_build_strips(rows if typeof(rows) == TYPE_ARRAY else [])
 	await _reveal_strips(gen)
@@ -762,27 +842,41 @@ func set_tune_mode(on: bool) -> void:
 		_report_tune()
 
 
+# 四块小面板的矩形（必须和 win_announce.gd 的 _seat_rects 完全一致）
+func _seat_rects(vp: Vector2) -> Array:
+	var sw := clampf(980.0 * seats_scale * 0.34, 220.0, 340.0)
+	var sh := clampf(620.0 * seats_scale * 0.145, 60.0, 82.0)
+	var gap := sw * 0.30
+	# 右下角还压着「確認」按钮（300x92，margin 28），整行宽度压到 1240 以内，别被它盖住
+	if 4.0 * sw + 3.0 * gap > 1240.0:
+		sw = 1240.0 / 4.9
+		gap = sw * 0.30
+	var total := 4.0 * sw + 3.0 * gap
+	var x0 := vp.x * 0.5 - total * 0.5 + seats_offset.x
+	var y0 := vp.y - sh - 36.0 + seats_offset.y
+	var out: Array = []
+	for i in range(4):
+		var r := Rect2(x0 + float(i) * (sw + gap), y0, sw, sh)
+		if i == 0:
+			r.position += left_panel_offset
+		elif i == 3:
+			r.position += right_panel_offset
+		out.append(r)
+	return out
+
+
 func _tune_hit(pos: Vector2) -> String:
-	# 只有四个小分数面板（整组 + 左右两块独立）和番种条可拖；
-	# 底座底座 / 满贯~役满图 / 页眉手牌 / 横幅都不参与调参（位置大小按场景里编辑的来）
+	# 底部一行四块：第 0 块 = 上家（左），第 3 块 = 下家（右），中间整组；再加番种条。
+	# 底座底座 / 满贯~役满图 / 页眉手牌 / 横幅都不参与调参。
 	var vp := get_viewport_rect().size
-	var rect := Rect2(Vector2(vp.x * 0.5, vp.y * seats_center_y) - Vector2(490.0, 310.0) * seats_scale,
-		Vector2(980.0, 620.0) * seats_scale)
-	rect.position += seats_offset
-	var sw := clampf(rect.size.x * 0.34, 220.0, 340.0)
-	var sh := clampf(rect.size.y * 0.145, 60.0, 82.0)
-	var gap := 16.0
-	var c := rect.get_center()
-	var rl := Rect2(rect.position.x - gap - sw, c.y - sh * 0.5, sw, sh)
-	var rr := Rect2(rect.end.x + gap, c.y - sh * 0.5, sw, sh)
-	rl.position += left_panel_offset
-	rr.position += right_panel_offset
-	if rl.grow(24.0).has_point(pos):
+	var rects := _seat_rects(vp)
+	if (rects[0] as Rect2).grow(24.0).has_point(pos):
 		return "left"
-	if rr.grow(24.0).has_point(pos):
+	if (rects[3] as Rect2).grow(24.0).has_point(pos):
 		return "right"
-	if rect.grow(40.0).has_point(pos):
-		return "seats"
+	for r in rects:
+		if (r as Rect2).grow(14.0).has_point(pos):
+			return "seats"
 	if pos.y >= strip_top - 24.0 and strips_root != null and strips_root.get_child_count() > 0:
 		return "strips"
 	return ""

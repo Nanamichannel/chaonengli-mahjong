@@ -136,35 +136,44 @@ func _flower(c: Vector2, r: float) -> void:
 #   seats = [{pos:"bottom"/"right"/"top"/"left", nick:"昵称",
 #             before:35000, after:43000}, ...]
 #   第一行昵称；第二行「原分 → 结算后分」，涨 = 箭头+新分绿色，跌 = 红色。
-func _draw_seat_scores(f: Font, rect: Rect2, w: float, h: float) -> void:
+# 四块小面板的矩形：屏幕最底下一行，从左往右 上家 / 我 / 対家 / 下家
+func _seat_rects(w: float, h: float) -> Array:
+	var sw := clampf(980.0 * seats_scale * 0.34, 220.0, 340.0)
+	var sh := clampf(620.0 * seats_scale * 0.145, 60.0, 82.0)
+	var gap := sw * 0.30
+	# 右下角还压着「確認」按钮（300x92，margin 28），整行宽度压到 1240 以内，别被它盖住
+	if 4.0 * sw + 3.0 * gap > 1240.0:
+		sw = 1240.0 / 4.9
+		gap = sw * 0.30
+	var total := 4.0 * sw + 3.0 * gap
+	var x0 := w * 0.5 - total * 0.5 + seats_offset.x
+	var y0 := h - sh - 36.0 + seats_offset.y
+	var out: Array = []
+	for i in range(4):
+		var r := Rect2(x0 + float(i) * (sw + gap), y0, sw, sh)
+		if i == 0:
+			r.position += left_panel_offset
+		elif i == 3:
+			r.position += right_panel_offset
+		out.append(r)
+	return out
+
+
+func _draw_seat_scores(f: Font, _rect: Rect2, w: float, h: float) -> void:
 	if seats.is_empty():
 		return
-	var sw := clampf(rect.size.x * 0.34, 220.0, 340.0)
-	var sh := clampf(rect.size.y * 0.145, 60.0, 82.0)
-	var gap := 16.0
-	var c := rect.get_center()
-	for it in seats:
+	var rects := _seat_rects(w, h)
+	for i in range(seats.size()):
+		if i >= rects.size():
+			continue
+		var it = seats[i]
 		if typeof(it) != TYPE_DICTIONARY:
 			continue
 		var d: Dictionary = it
-		var pos := String(d.get("pos", ""))
-		var r := Rect2()
-		match pos:
-			"top":
-				r = Rect2(c.x - sw * 0.5, rect.position.y - gap - sh, sw, sh)
-			"bottom":
-				r = Rect2(c.x - sw * 0.5, rect.end.y + gap, sw, sh)
-			"left":
-				r = Rect2(rect.position.x - gap - sw, c.y - sh * 0.5, sw, sh)
-			"right":
-				r = Rect2(rect.end.x + gap, c.y - sh * 0.5, sw, sh)
-			_:
-				continue
-		# 别被屏幕边缘切掉
-		if pos == "left":
-			r.position += left_panel_offset
-		elif pos == "right":
-			r.position += right_panel_offset
+		var r: Rect2 = rects[i]
+		var sw := r.size.x
+		var sh := r.size.y
+		# 不许出屏幕边缘
 		r.position.x = clampf(r.position.x, 10.0, maxf(10.0, w - sw - 10.0))
 		r.position.y = clampf(r.position.y, 10.0, maxf(10.0, h - sh - 10.0))
 		var b := int(d.get("before", 0))
@@ -173,9 +182,9 @@ func _draw_seat_scores(f: Font, rect: Rect2, w: float, h: float) -> void:
 		var nick := String(d.get("nick", ""))
 		_text_black(f, r.get_center().x, r.position.y + sh * 0.14, nick,
 			sh * 0.30, r.size.x * 0.86)
-		# 第二行：原分（白）→ 箭头（涨绿/跌红）→ 新分（同色）
+		# 第二行：原分（白）→ 箭头（涨绿/跌红）+ 新分（同色）
 		var s1 := str(b)
-		var s2 := "→"
+		var s2 := "\u2192"
 		var s3 := str(a)
 		var fs := int(maxf(10.0, sh * 0.34))
 		while fs > 10 and _sw(f, s1, fs) + _sw(f, s2, fs) + _sw(f, s3, fs) + 16.0 > r.size.x * 0.86:

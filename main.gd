@@ -14925,6 +14925,11 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 	var _fps0 := Engine.max_fps
 	if announce_max_fps > 0:
 		Engine.max_fps = maxi(int(_fps0), int(announce_max_fps))
+	var _lose := -1
+	if win.get("loser") != null:
+		_lose = _int_of(win, "loser", -1)
+	content["winner_id"] = srv_nick_of(wseat)
+	content["loser_id"] = srv_nick_of(_lose) if _lose >= 0 else ""
 	content["level"] = _result_level(win)      # 满贯 / 跳满 / 倍满 / 三倍满 / 役满（对应场景里的图）
 	await sc.call("play", who, int(pick[0]), bool(pick[1]), shot, content)
 	Engine.max_fps = int(_fps0)
@@ -15075,12 +15080,13 @@ func _result_level(win: Dictionary) -> String:
 
 
 func _result_seats(win: Dictionary) -> Array:
+	# 屏幕最底下一行，从左往右：上家 / 我 / 対家 / 下家
 	var out: Array = []
 	var sc = win.get("scores")
 	var dl = win.get("deltas")
-	var pos_names := ["bottom", "right", "top", "left"]
+	var order := [3, 0, 2, 1]        # 相对自己的座位偏移：+3=上家 · 0=我 · +2=対家 · +1=下家
 	for k in range(4):
-		var sid := (my_seat + k) % 4
+		var sid := (my_seat + int(order[k])) % 4
 		var after := -1
 		if typeof(sc) == TYPE_DICTIONARY:
 			if (sc as Dictionary).has(str(sid)):
@@ -15096,7 +15102,7 @@ func _result_seats(win: Dictionary) -> Array:
 			elif (dl as Dictionary).has(sid):
 				delta = int((dl as Dictionary)[sid])
 		out.append({
-			"pos": String(pos_names[k]),
+			"slot": k,
 			"nick": srv_nick_of(sid),
 			"before": maxi(after - delta, 0) if after >= 0 else 0,
 			"after": maxi(after, 0),
@@ -15104,7 +15110,6 @@ func _result_seats(win: Dictionary) -> Array:
 	return out
 
 
-# 当前分数（srv_state.scores 是 [{seat, nickname, score, connected}]）；查不到给 -1
 func _score_now(seat: int) -> int:
 	var arr = srv_state.get("scores")
 	if typeof(arr) == TYPE_ARRAY:

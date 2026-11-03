@@ -320,7 +320,7 @@ func _build_strips(rows: Array) -> void:
 		strip.name = "Yaku%d" % i
 		strip.clip_contents = true                  # ★ 靠它做「从上往下擦开」
 		strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		strip.position = Vector2(x0 + float(i) * (w + strip_gap), strip_top)
+		strip.position = Vector2(x0 + float(n - 1 - i) * (w + strip_gap), strip_top)   # 从右往左排
 		strip.size = Vector2(w, h)
 		strip.modulate.a = 1.0
 		strips_root.add_child(strip)
@@ -353,7 +353,7 @@ func _build_strips(rows: Array) -> void:
 # 从右往左逐个擦开：每个 0.3s，露完等 1s 再下一个
 func _reveal_strips(gen: int) -> void:
 	var kids := strips_root.get_children()
-	for idx in range(kids.size() - 1, -1, -1):
+	for idx in range(kids.size()):                 # 子节点 0 = 最右 → 从右往左露
 		if gen != _gen:
 			return
 		var st := kids[idx] as Control
@@ -367,11 +367,10 @@ func _reveal_strips(gen: int) -> void:
 		await tw.finished
 		if gen != _gen:
 			return
-		if idx > 0:
+		if idx < kids.size() - 1:
 			await get_tree().create_timer(1.0).timeout
 
 
-# 抛物线淡入：alpha = t^pow
 # 抛物线淡入：Tween 的 QUAD/EASE_IN 就是 t²，交给引擎跑，不用每帧过脚本
 func _fade_group(nodes: Array, dur: float, target: float = 1.0) -> void:
 	var live: Array = []

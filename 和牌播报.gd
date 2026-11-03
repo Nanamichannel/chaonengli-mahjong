@@ -313,7 +313,6 @@ func _play_level(gen: int, data: Dictionary) -> void:
 	if n == null:
 		return
 	_hide_levels()
-	_clear_ind()
 	var n_frames := 13.0
 	var n_fps := 60.0
 	if n.sprite_frames != null:
@@ -746,6 +745,7 @@ func _reset_visual() -> void:
 		_mask_spr.visible = false
 	_hide_levels()
 	_clear_who()
+	_clear_ind()
 	_clear_plate()
 	_clear_strips()
 	if head != null:

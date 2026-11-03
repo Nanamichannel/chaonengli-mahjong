@@ -15027,6 +15027,30 @@ func _result_yaku_rows(win: Dictionary) -> Array:
 			ht = "%d番" % hn
 		if ym > 0 and (is_dora or hn < 13):
 			continue                    # 役满优先：宝牌不算役、普通役简略掉
+		# 宝牌拆开播：表宝牌 / 赤宝牌 / 里宝牌（+ 技能加成）各占一条，别再糊成一条「宝牌 N 番」
+		if is_dora and ym <= 0 and typeof(dt) == TYPE_DICTIONARY:
+			var _any := false
+			for _k in ["宝牌", "赤宝牌", "里宝牌"]:
+				var _n2 := int((dt as Dictionary).get(_k, 0))
+				if _n2 <= 0:
+					continue
+				_any = true
+				out.append({"name": _k, "han_text": "%d番" % _n2,
+					"rank": _yaku_rank(_k), "ord": ord})
+				ord += 1
+			for _k in (dt as Dictionary).keys():
+				var _ks := String(_k)
+				if _ks in ["宝牌", "赤宝牌", "里宝牌", "han"]:
+					continue
+				var _n3 := int((dt as Dictionary)[_k])
+				if _n3 <= 0:
+					continue
+				_any = true
+				out.append({"name": _ks, "han_text": "%d番" % _n3,
+					"rank": _yaku_rank(_ks), "ord": ord})
+				ord += 1
+			if _any:
+				continue
 		out.append({
 			"name": nm, "han_text": ht,
 			"rank": 0 if ym > 0 else _yaku_rank(nm),
@@ -15055,7 +15079,7 @@ func _debug_announce() -> void:
 		"pays": {"total": 12000},
 		"yaku": [{"name": "立直", "han": 1}, {"name": "门前清自摸和", "han": 1},
 			{"name": "平和", "han": 1}, {"name": "断幺九", "han": 1},
-			{"name": "一气通贯", "han": 2}, {"name": "宝牌", "han": 2, "detail": {"宝牌": 2}}],
+			{"name": "一气通贯", "han": 2}, {"name": "宝牌", "han": 4, "detail": {"宝牌": 2, "赤宝牌": 1, "里宝牌": 1}}],
 		"hand": ["1m", "2m", "3m", "4p", "5p", "6p", "7s", "8s", "1s", "2s", "3s", "9m", "9m"],
 		"melds": [{"kind": "chi", "tiles": ["4m", "5m", "6m"], "rot_index": 0, "rot_all": false}],
 		"win_tile": "3p",

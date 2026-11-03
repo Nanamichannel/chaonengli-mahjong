@@ -14958,6 +14958,12 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 		_ui = srv_state.get("ura", [])
 	content["dora_ind"] = _di if typeof(_di) == TYPE_ARRAY else []
 	content["ura_ind"] = _ui if typeof(_ui) == TYPE_ARRAY else []
+	# 先把「確認」按钮建出来并点亮（play() 结尾的 _enable_confirm 只点亮已存在的子节点，
+	# 第一次播报时按钮还没建，就会看不到 → 这里提前建）
+	var cb0 := _result_confirm_button_get()
+	if cb0 != null:
+		cb0.visible = true
+		cb0.call("set_state", false, 0, 4)
 	await sc.call("play", who, int(pick[0]), bool(pick[1]), shot, content)
 	Engine.max_fps = int(_fps0)
 	if announce_max_fps <= 0:
@@ -14965,6 +14971,7 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 	# 确认按钮的显隐 / 可点时机由场景控制（跟小面板一起淡入）
 	var cb := _result_confirm_button_get()
 	if cb != null:
+		cb.visible = true
 		cb.call("set_state", false, 0, 4)
 	_win_intro_running = false
 # 播报上贴谁的人物卡：主战已暴露 → 主战；否则协战（没暴露就连遮罩一起）；只剩主战没暴露 → 主战+遮罩

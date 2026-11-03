@@ -28,6 +28,8 @@ var banner_size := Vector2(820.0, 76.0)   # 横幅底座大小
 var banner_scale := 1.0
 var seats_offset := Vector2.ZERO          # 四个小面板整体偏移
 var seats_scale := 1.0
+var left_panel_offset := Vector2.ZERO    # 左边那个小面板单独偏移（调试可拖）
+var right_panel_offset := Vector2.ZERO   # 右边那个小面板单独偏移（调试可拖）
 var _font: Font = null
 var center_y := 0.53            # 结算面板中心在屏高上的比例（越小越靠上；由和牌播报.gd 传进来）
 
@@ -155,6 +157,10 @@ func _draw_seat_scores(f: Font, rect: Rect2, w: float, h: float) -> void:
 			_:
 				continue
 		# 别被屏幕边缘切掉
+		if pos == "left":
+			r.position += left_panel_offset
+		elif pos == "right":
+			r.position += right_panel_offset
 		r.position.x = clampf(r.position.x, 10.0, maxf(10.0, w - sw - 10.0))
 		r.position.y = clampf(r.position.y, 10.0, maxf(10.0, h - sh - 10.0))
 		var b := int(d.get("before", 0))

@@ -32,6 +32,8 @@ const STEP_WAIT := 1.0
 @export var seats_offset := Vector2.ZERO     # 四个分数小面板整体
 @export var seats_scale := 0.85
 @export var seats_center_y := 0.55
+@export var left_panel_offset := Vector2.ZERO    # 左边小面板（调试里可拖）
+@export var right_panel_offset := Vector2.ZERO   # 右边小面板（调试里可拖）
 @export var hand_offset := Vector2.ZERO      # 页眉手牌区
 @export var hand_scale := 1.0
 @export var strip_scale := 0.62
@@ -262,6 +264,8 @@ func _apply_layout() -> void:
 		seats_panel.draw_mode = "seats"
 		seats_panel.center_y = seats_center_y
 		seats_panel.seats_offset = seats_offset
+		seats_panel.left_panel_offset = left_panel_offset
+		seats_panel.right_panel_offset = right_panel_offset
 		seats_panel.seats_scale = seats_scale
 		seats_panel.queue_redraw()
 	if hand_root != null:
@@ -683,25 +687,25 @@ func set_tune_mode(on: bool) -> void:
 
 
 func _tune_hit(pos: Vector2) -> String:
+	# 只认「左右两个小分数面板」（用户口径 2026-11-03）；其它区域一律不响应拖动。
+	if seats_panel == null:
+		return ""
 	var vp := get_viewport_rect().size
-	if head != null:
-		var bs: Vector2 = head.banner_size * head_scale
-		var r := Rect2(head.banner_pos - bs * 0.5, bs).grow(24.0)
-		if r.has_point(pos):
-			return "head"
-	if plate_clip != null and plate_clip.visible:
-		if Rect2(_plate_rect, _plate_full).grow(30.0).has_point(pos):
-			return "plate"
-	if pos.y < 170.0:
-		return "hand"
-	if pos.y >= strip_top - 24.0 and strips_root != null and strips_root.get_child_count() > 0:
-		return "strips"
-	if seats_panel != null:
-		var rect := Rect2(Vector2(vp.x * 0.5, vp.y * seats_center_y) - Vector2(490.0, 310.0) * seats_scale,
-			Vector2(980.0, 620.0) * seats_scale)
-		rect.position += seats_offset
-		if rect.grow(40.0).has_point(pos):
-			return "seats"
+	var rect := Rect2(Vector2(vp.x * 0.5, vp.y * seats_center_y) - Vector2(490.0, 310.0) * seats_scale,
+		Vector2(980.0, 620.0) * seats_scale)
+	rect.position += seats_offset
+	var sw := clampf(rect.size.x * 0.34, 220.0, 340.0)
+	var sh := clampf(rect.size.y * 0.145, 60.0, 82.0)
+	var gap := 16.0
+	var c := rect.get_center()
+	var rl := Rect2(rect.position.x - gap - sw, c.y - sh * 0.5, sw, sh)
+	var rr := Rect2(rect.end.x + gap, c.y - sh * 0.5, sw, sh)
+	rl.position += left_panel_offset
+	rr.position += right_panel_offset
+	if rl.grow(24.0).has_point(pos):
+		return "left"
+	if rr.grow(24.0).has_point(pos):
+		return "right"
 	return ""
 
 
@@ -742,29 +746,19 @@ func _input(event: InputEvent) -> void:
 		var d: Vector2 = mm.position - _tune_last
 		_tune_last = mm.position
 		match _tune_sel:
-			"head":
-				head_offset += d
-			"seats":
-				seats_offset += d
-			"hand":
-				hand_offset += d
-			"plate":
-				plate_offset += d
-				_plate_rect += d
-				if plate_clip != null:
-					plate_clip.position = _plate_rect
-					plate_clip.size = _plate_full
-					if _plate_inner != null:
-						_plate_inner.position = Vector2.ZERO
-			"strips":
-				strip_top += d.y
+			"left":
+				left_panel_offset += d
+			"right":
+				right_panel_offset += d
 		_apply_layout()
 		get_viewport().set_input_as_handled()
 
 
 func _report_tune() -> void:
-	print("[announce tune] head_offset=%s head_scale=%.3f | seats_offset=%s seats_scale=%.3f center_y=%.3f" % [
-		str(head_offset), head_scale, str(seats_offset), seats_scale, seats_center_y])
+	print("[announce tune] left=%s right=%s | head_offset=%s head_scale=%.3f" % [
+		str(left_panel_offset), str(right_panel_offset), str(head_offset), head_scale])
+	print("[announce tune] seats_offset=%s seats_scale=%.3f center_y=%.3f" % [
+		str(seats_offset), seats_scale, seats_center_y])
 	print("[announce tune] hand_offset=%s hand_scale=%.3f | strip_top=%.1f strip_scale=%.3f strip_gap=%.1f | plate_offset=%s" % [
 		str(hand_offset), hand_scale, strip_top, strip_scale, strip_gap, str(plate_offset)])
 
@@ -776,6 +770,8 @@ func _save_tune() -> void:
 	cf.set_value("seats", "offset", seats_offset)
 	cf.set_value("seats", "scale", seats_scale)
 	cf.set_value("seats", "center_y", seats_center_y)
+	cf.set_value("seats", "left", left_panel_offset)
+	cf.set_value("seats", "right", right_panel_offset)
 	cf.set_value("hand", "offset", hand_offset)
 	cf.set_value("hand", "scale", hand_scale)
 	cf.set_value("plate", "offset", plate_offset)
@@ -796,6 +792,8 @@ func _load_tune() -> void:
 	seats_offset = cf.get_value("seats", "offset", seats_offset)
 	seats_scale = float(cf.get_value("seats", "scale", seats_scale))
 	seats_center_y = float(cf.get_value("seats", "center_y", seats_center_y))
+	left_panel_offset = cf.get_value("seats", "left", left_panel_offset)
+	right_panel_offset = cf.get_value("seats", "right", right_panel_offset)
 	hand_offset = cf.get_value("hand", "offset", hand_offset)
 	hand_scale = float(cf.get_value("hand", "scale", hand_scale))
 	strip_top = float(cf.get_value("strips", "top", strip_top))

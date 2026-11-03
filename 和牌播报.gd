@@ -55,6 +55,7 @@ var seats_panel: Control = null              # 四个分数小面板
 var strips_root: Node2D = null               # 番种底座
 var plate_root: Node2D = null                # 「底座底座」那一层（在番种条下面）
 var who_root: Node2D = null                   # 底座右侧竖排「铳和 / 自摸」
+var _who_holder: Control = null               # 装两列字的容器（挂在 plate_clip 里，跟着一起扫）
 var plate_clip: Control = null               # 做横向擦开用的裁剪容器
 var _plate_inner: TextureRect = null
 var _plate_rect := Vector2.ZERO
@@ -327,15 +328,15 @@ func _play_level(gen: int, data: Dictionary) -> void:
 # ── 底座底座右侧：竖排「铳家 ↓ 和牌家」（自摸就写 和牌家 / 自摸）──
 #    行书黑字 + 白描边；大小限制在底座底座内，且不和番种条重合。
 func _clear_who() -> void:
-	if who_root == null:
+	if _who_holder == null:
 		return
-	for c in who_root.get_children():
-		who_root.remove_child(c)
+	for c in _who_holder.get_children():
+		_who_holder.remove_child(c)
 		c.queue_free()
 
 
 func _vtext(font: Font, txt: String, fs: float, cx: float, top_y: float, colw: float) -> Label:
-	if txt == "" or who_root == null:
+	if txt == "" or _who_holder == null:
 		return null
 	var lb := Label.new()
 	lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -345,7 +346,7 @@ func _vtext(font: Font, txt: String, fs: float, cx: float, top_y: float, colw: f
 	var n := maxi(lb.text.count("\n") + 1, 1)
 	var lh := (float(font.get_height(int(fs))) - float(int(fs * 0.18))) if font != null else fs * 1.16
 	lb.size = Vector2(colw, float(n) * lh)
-	lb.position = Vector2(cx - colw * 0.5, top_y)
+	lb.position = Vector2(cx - colw * 0.5, top_y) - _plate_rect
 	if font != null:
 		lb.add_theme_font_override("font", font)
 	lb.add_theme_font_size_override("font_size", int(fs))
@@ -353,13 +354,13 @@ func _vtext(font: Font, txt: String, fs: float, cx: float, top_y: float, colw: f
 	lb.add_theme_color_override("font_outline_color", Color(0.965, 1.0, 0.988, 0.95))
 	lb.add_theme_constant_override("outline_size", maxi(int(fs * 0.10), 3))
 	lb.add_theme_constant_override("line_spacing", -int(fs * 0.18))
-	who_root.add_child(lb)
+	_who_holder.add_child(lb)
 	return lb
 
 
 func _build_who(data: Dictionary) -> void:
 	_clear_who()
-	if who_root == null or _plate_full.x <= 0.0:
+	if _who_holder == null or _plate_full.x <= 0.0:
 		return
 	var win_id := String(data.get("winner_id", ""))
 	if win_id == '':
@@ -477,6 +478,7 @@ func _clear_plate() -> void:
 		for c in plate_root.get_children():
 			plate_root.remove_child(c)
 			c.queue_free()
+	_who_holder = null
 	plate_clip = null
 	_plate_inner = null
 
@@ -519,6 +521,13 @@ func _build_plate() -> void:
 	_plate_inner.position = Vector2.ZERO
 	_plate_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	plate_clip.add_child(_plate_inner)
+	# 两列字也挂进裁剪框：底座横扫的时候字跟着一起露出来（不会直接闪现）
+	_who_holder = Control.new()
+	_who_holder.name = "WhoHolder"
+	_who_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_who_holder.position = Vector2.ZERO
+	_who_holder.size = size
+	plate_clip.add_child(_who_holder)
 
 
 # 横向扫开：从右往左（裁剪框右边缘不动，左边缘往左长；内容反向补偿）
@@ -530,6 +539,8 @@ func _reveal_plate(gen: int) -> void:
 	plate_clip.size = Vector2(0.01, _plate_full.y)
 	plate_clip.position.x = _plate_rect.x + w
 	_plate_inner.position.x = -w
+	if _who_holder != null:
+		_who_holder.position.x = -w
 	var tw := create_tween()
 	tw.tween_method(func(p: float) -> void:
 		if plate_clip == null or _plate_inner == null:
@@ -537,6 +548,8 @@ func _reveal_plate(gen: int) -> void:
 		plate_clip.size = Vector2(maxf(w * p, 0.01), _plate_full.y)
 		plate_clip.position.x = _plate_rect.x + w * (1.0 - p)
 		_plate_inner.position.x = -w * (1.0 - p)
+		if _who_holder != null:
+			_who_holder.position.x = -w * (1.0 - p)
 	, 0.0, 1.0, maxf(plate_wipe, 0.05)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	await tw.finished
 
@@ -788,6 +801,7 @@ func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
 		return
 	# 底座底座：先休息 0.3s，再横向从右往左扫开 0.5s（扫完立刻露第一条番种）
 	_build_plate()
+	_build_who(data)          # 先进裁剪框，扫开时跟着一起露出来
 	await get_tree().create_timer(maxf(plate_wait, 0.0)).timeout
 	if gen != _gen:
 		busy = false
@@ -796,7 +810,6 @@ func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
 	if gen != _gen:
 		busy = false
 		return
-	_build_who(data)
 	var rows = data.get("yaku_rows", [])
 	_build_strips(rows if typeof(rows) == TYPE_ARRAY else [])
 	await _reveal_strips(gen)

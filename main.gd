@@ -12816,8 +12816,16 @@ func srv_apply_melds(st: Dictionary) -> void:
 			opp_meld_counts[who] = int(opp_meld_counts.get(who, 0)) + 1
 
 
+# 占位昵称（离线本地 4 个账号就叫 我/下家/对家/上家）不算 ID，统一换成 P1~P4
+const NICK_PLACEHOLDERS := ["我", "下家", "对家", "上家", "me", "B", "C", "D"]
+
+
+func _nick_is_placeholder(n: String) -> bool:
+	return NICK_PLACEHOLDERS.has(n)
+
+
 func srv_nick_of(seat: int) -> String:
-	"""座位 → 本局昵称（服务端 state.scores 里带的），拿不到就退回「我/下家…」。"""
+	"""座位 → 本局昵称（服务端 state.scores 里带的）；拿不到 / 是占位名就回 ID「P1~P4」。"""
 	var s := int(seat)
 	if s < 0 or s > 3:
 		return ""
@@ -12829,10 +12837,10 @@ func srv_nick_of(seat: int) -> String:
 			if int((it as Dictionary).get("seat", -1)) != s:
 				continue
 			var n := String((it as Dictionary).get("nickname", "")).strip_edges()
-			if n != "":
+			if n != "" and not _nick_is_placeholder(n):
 				return n
 			break
-	return srv_name_of(s)
+	return "P%d" % (s + 1)
 
 
 func srv_name_of(seat: int) -> String:

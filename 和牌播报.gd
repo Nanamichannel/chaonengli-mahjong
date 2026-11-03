@@ -374,8 +374,9 @@ func _build_who(data: Dictionary) -> void:
 		for c in strips_root.get_children():
 			if c is Control:
 				sr = maxf(sr, (c as Control).position.x + (c as Control).size.x)
-	var pad := pw * 0.10
-	var left_lim := (sr + pad) if sr > 0.0 else (pr - pw * 0.30)
+	var pad := pw * 0.18                    # 右边留白（别贴着底座边框）
+	var gap2 := pw * 0.03                   # 和番种条之间的最小间隙
+	var left_lim := (sr + gap2) if sr > 0.0 else (pr - pw * 0.45)
 	var room := maxf(pr - pad - left_lim, 40.0)
 	var col1 := win_id                 # 右列
 	var col2 := "自摸"           # 左列（自摸）
@@ -546,8 +547,7 @@ func _build_strips(rows: Array) -> void:
 	var n := rows.size()
 	var total := float(n) * w + float(maxi(n - 1, 0)) * strip_gap
 	# 以「底座底座」的中心居中（不是屏幕中心）
-	var cx: float = (_plate_rect.x + _plate_full.x * 0.5) if _plate_full.x > 0.0 else vp.x * 0.5
-	var x0 := maxf(cx - total * 0.5, 8.0)
+	var x0 := maxf((vp.x - total) * 0.5, 8.0)      # 相对屏幕居中
 	var font := _font_xingkai()
 	for i in range(n):
 		var row: Dictionary = rows[i]

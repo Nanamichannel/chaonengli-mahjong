@@ -14943,6 +14943,15 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 	content["winner_id"] = srv_nick_of(wseat)
 	content["loser_id"] = srv_nick_of(_lose) if _lose >= 0 else ""
 	content["level"] = _result_level(win)      # 满贯 / 跳满 / 倍满 / 三倍满 / 役满（对应场景里的图）
+	# 表宝牌 / 里宝牌指示牌（result 里有就用，没有就退回自己的 state）
+	var _di = win.get("dora_indicators")
+	var _ui = win.get("ura_indicators")
+	if typeof(_di) != TYPE_ARRAY:
+		_di = srv_state.get("dora", [])
+	if typeof(_ui) != TYPE_ARRAY:
+		_ui = srv_state.get("ura", [])
+	content["dora_ind"] = _di if typeof(_di) == TYPE_ARRAY else []
+	content["ura_ind"] = _ui if typeof(_ui) == TYPE_ARRAY else []
 	await sc.call("play", who, int(pick[0]), bool(pick[1]), shot, content)
 	Engine.max_fps = int(_fps0)
 	if announce_max_fps <= 0:
@@ -15083,6 +15092,8 @@ func _debug_announce() -> void:
 		"hand": ["1m", "2m", "3m", "4p", "5p", "6p", "7s", "8s", "1s", "2s", "3s", "9m", "9m"],
 		"melds": [{"kind": "chi", "tiles": ["4m", "5m", "6m"], "rot_index": 0, "rot_all": false}],
 		"win_tile": "3p",
+	"dora_indicators": ["bai", "1s"],
+	"ura_indicators": ["4m"],
 		"scores": {str(ws): 47000, str((ws + 1) % 4): 31000, str((ws + 2) % 4): 31000, str((ws + 3) % 4): 31000},
 		"deltas": {str(ws): 12000, str((ws + 1) % 4): -4000, str((ws + 2) % 4): -4000, str((ws + 3) % 4): -4000},
 	}

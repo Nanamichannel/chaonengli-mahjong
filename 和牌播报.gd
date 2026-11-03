@@ -55,6 +55,7 @@ var seats_panel: Control = null              # 四个分数小面板
 var strips_root: Node2D = null               # 番种底座
 var plate_root: Node2D = null                # 「底座底座」那一层（在番种条下面）
 var who_root: Node2D = null                   # 底座右侧竖排「铳和 / 自摸」
+var ind_root: Node2D = null                   # 右上角「表宝牌 / 里宝牌指示牌」两行
 var _who_holder: Control = null               # 装两列字的容器（挂在 plate_clip 里，跟着一起扫）
 var plate_clip: Control = null               # 做横向擦开用的裁剪容器
 var _plate_inner: TextureRect = null
@@ -177,6 +178,10 @@ func _ready() -> void:
 	who_root.name = "WhoOnPlate"
 	who_root.z_index = 23
 	add_child(who_root)
+	ind_root = Node2D.new()
+	ind_root.name = "DoraIndicators"
+	ind_root.z_index = 25
+	add_child(ind_root)
 	add_child(strips_root)
 
 	# 和牌家手牌（压在最上面）
@@ -308,6 +313,7 @@ func _play_level(gen: int, data: Dictionary) -> void:
 	if n == null:
 		return
 	_hide_levels()
+	_clear_ind()
 	var n_frames := 13.0
 	var n_fps := 60.0
 	if n.sprite_frames != null:
@@ -407,6 +413,57 @@ func _build_who(data: Dictionary) -> void:
 	a.position.y += dy
 	if b != null:
 		b.position.y += dy
+
+
+# ── 右上角两行：表宝牌指示牌 / 里宝牌指示牌（直接用牌面竖图）──
+func _clear_ind() -> void:
+	if ind_root == null:
+		return
+	for c in ind_root.get_children():
+		ind_root.remove_child(c)
+		c.queue_free()
+
+
+func _tile_tex(kind: String) -> Texture2D:
+	var k := String(kind)
+	if k.begins_with("0"):
+			k = "5" + k.substr(1)          # 赤五的竖图就用普通 5
+	if k == "":
+		return null
+	return load(TileBank.VERT_DIR + TileBank.face_file(k) + ".png") as Texture2D
+
+
+func _build_ind(data: Dictionary) -> void:
+	_clear_ind()
+	if ind_root == null:
+		return
+	var rows := [data.get("dora_ind", []), data.get("ura_ind", [])]
+	var vp := get_viewport_rect().size
+	var th := 64.0
+	var tw := th * 0.72
+	var gx := 8.0
+	var gy := 12.0
+	var right := vp.x - 26.0
+	var y := 190.0                      # 避开右上角那四行信息（上家/対家/下家/局）
+	for it in rows:
+		if typeof(it) != TYPE_ARRAY or (it as Array).is_empty():
+			continue
+		var arr: Array = it
+		var n := arr.size()
+		var x0 := right - float(n) * tw - float(n - 1) * gx
+		for i in range(n):
+			var tex := _tile_tex(String(arr[i]))
+			if tex == null:
+				continue
+			var tr := TextureRect.new()
+			tr.texture = tex
+			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr.stretch_mode = TextureRect.STRETCH_SCALE
+			tr.size = Vector2(tw, th)
+			tr.position = Vector2(x0 + float(i) * (tw + gx), y)
+			tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			ind_root.add_child(tr)
+		y += th + gy
 
 
 func _apply_layout() -> void:
@@ -785,14 +842,14 @@ func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
 	if head != null:
 		head.call("set_content", data)
 		head.visible = true
+	_build_ind(data)                       # 右上角两行指示牌
+	var _fade: Array = [head]
 	if hand_root != null and hand_root.get_child_count() > 0:
 		hand_root.visible = true
-		await _fade_group([head, hand_root], fade_time)
-	else:
-		await _fade_group([head], fade_time)
-	if gen != _gen:
-		busy = false
-		return
+		_fade.append(hand_root)
+	if ind_root != null and ind_root.get_child_count() > 0:
+		_fade.append(ind_root)
+	await _fade_group(_fade, fade_time)
 
 	# ⑤ 停 0.2s → 番种底座从右往左擦开
 	await get_tree().create_timer(0.2).timeout

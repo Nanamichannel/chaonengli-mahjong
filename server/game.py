@@ -11659,7 +11659,10 @@ class Game:
                        "hand": self.hand13(int(winner)),
                        "melds": self.melds(int(winner)),
                        "win_tile": _wt,
-                       "scores": self.scores(), "stopped": True}
+                       "scores": self.scores(), "stopped": True,
+                       # 播报要贴「表宝牌 / 里宝牌指示牌」（里宝牌只有立直才有意义）
+                       "dora_indicators": self.revealed_dora("dora"),
+				"ura_indicators": ([] if self.c46s2_on(int(winner)) else self.revealed_dora("ura"))}
         if _pay_notes:
             self._note_pay_broadcast(int(winner), 44, 1, "；".join(_pay_notes))
         self._print_result()

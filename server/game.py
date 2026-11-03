@@ -9376,25 +9376,34 @@ class Game:
 
     # 加热（23S1）
     def heat_can(self, seat: int) -> bool:
+        """加热只在配牌阶段（配牌技能窗口）能发动，一局一次。"""
         s = int(seat)
         if not self.owns_cn(s, 23) or self.heat_kind:
             return False
-        if self.phase != "discard" or self.turn is None or int(self.turn) != s:
-            return False
-        return self.drawn_tile(s) is not None
+        return self.phase == "deal_skill" and s in self.deal_wait
 
     def heat_activate(self, seat: int, kind: str) -> dict:
         s = int(seat)
         if not self.owns_cn(s, 23):
-            raise RuleError("手里不是这一轮的卡")
+            raise RuleError("这里不满足这一局的卡")
+        if self.phase != "deal_skill" or s not in self.deal_wait:
+            raise RuleError("加热只能在配牌阶段发动")
         k = str(kind)
+        if k not in TILE_KINDS:
+            raise RuleError("认不出这张牌")
+        if is_honor(k):
+            raise RuleError("加热只能选序数牌（字牌不能加热）")
         if k in WARM_KINDS:
             raise RuleError("加热只能选冷系牌")
         if self.heat_kind:
             raise RuleError("这一局已经加热过了")
         self.heat_kind = k
         self.mark_skill_used(s, 23, 1)
+        if s in self.deal_wait:
+            self.deal_wait.discard(s)
+            self.deal_used.add(s)
         self.save_flags()
+        self._maybe_close_deal()
         return {"seat": s, "kind": k}
 
     def _cold_count(self, seat: int) -> int:

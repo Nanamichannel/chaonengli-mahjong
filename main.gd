@@ -4058,11 +4058,14 @@ func _card11s2_close() -> void:
 # ─── 传承 / 研究 / 看破 / 枷锁 / 连接（Card16~18）──────────────────
 # ─── 深山 / 浓雾 / 前路 / 感知 / 馈赠 / 先负 / 友引 / 加热 ──────────
 func _cold_kinds() -> Array:
-	var warm := ["0m", "0p", "0s", "zhong", "5s", "7s", "9s"]
+	# 暖系（赤牌）= 牌面带红：所有万子 + 赤五 + 红中 + 1p/3p/5p/6p/7p/5s/7s/9s
+	var warm := ["0m", "0p", "0s", "zhong", "1p", "3p", "5p", "6p", "7p", "5s", "7s", "9s"]
 	for n in range(1, 10):
 		warm.append("%dm" % n)
 	var out: Array = []
 	for k in TileBank.TILE_KINDS:
+		if TileBank.HONOR_Z.has(k):
+			continue                      # 字牌不能加热
 		if not warm.has(k):
 			out.append(k)
 	return out
@@ -4227,7 +4230,7 @@ func _sf_xianfu() -> void:
 
 func _sf_heat() -> void:
 	if not bool(srv_state.get("heat_can", false)):
-		_toast("加热：摸牌后发动，一局一次")
+		_toast("加热：配牌阶段发动，一局一次")
 		return
 	_cg_heat_grid()
 

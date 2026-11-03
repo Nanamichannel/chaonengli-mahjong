@@ -160,20 +160,26 @@ def main() -> int:
     rid5 = new_round(db5, 2301, [[23, 1, 2, 3, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5]])
     tg.set_hand(db5, rid5, 0, H, drawn="4s")
     g12 = Game(db5, rid5)
-    g12.phase, g12.turn = "discard", 0
-    g12.save_flags()
-    g12 = Game(db5, rid5)
-    check("加热可以发动", g12.heat_can(0))
+    g12.phase = "deal_skill"
+    g12.deal_wait = {0}
+    check("加热可以发动（配牌阶段）", g12.heat_can(0))
     try:
         g12.heat_activate(0, "5m")
         check("暖系不能加热", False)
     except RuleError as e:
         check("暖系不能加热", "冷系" in str(e))
+    try:
+        g12.heat_activate(0, "dong")
+        check("字牌不能加热", False)
+    except RuleError as e:
+        check("字牌不能加热", "序数牌" in str(e))
     r2 = g12.heat_activate(0, "2p")
     check("加热 2p", r2.get("kind"), "2p")
     g13 = Game(db5, rid5)
-    check("记进 flags", g13.heat_kind, "2p")
-    check("冷系数得对", g13._cold_count(0) >= 0, True)
+    check("热过 flags", g13.heat_kind, "2p")
+    g13.phase = "discard"
+    check("摸牌阶段不能再加热", g13.heat_can(0), False)
+    check("冷系统计排除加热的牌种", g13._cold_count(0) >= 0, True)
 
     print("\n◆ 先负：换牌 → 立直 → 那家出铳")
     db6 = tg.fresh_db("n22")

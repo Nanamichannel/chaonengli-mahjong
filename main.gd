@@ -14271,6 +14271,18 @@ var lizhi_stick_tw := {}                 # who -> Tween（淡入中）
 var lizhi_stick_ready := false           # 第一次同步时先把四根全部收起来
 var lizhi_stick_layer: CanvasLayer = null
 var lizhi_stick_mirrors := {}            # who -> Sprite2D（真正显示的那个）
+var _card_phase_node: CanvasLayer = null   # 选牌界面（CardPhase）缓存，别每帧 get_node
+
+
+# 选牌界面（CardPhase，layer=20）盖住了牌桌：立直棒在 layer=21，会趴在牌上 → 整层藏掉
+func _lizhi_stick_tick() -> void:
+	if lizhi_stick_layer == null or not is_instance_valid(lizhi_stick_layer):
+		return
+	if _card_phase_node == null or not is_instance_valid(_card_phase_node):
+		_card_phase_node = get_parent().get_node_or_null("CardPhase") as CanvasLayer
+	if _card_phase_node == null:
+		return
+	lizhi_stick_layer.visible = not _card_phase_node.visible
 
 
 func _lizhi_stick_anchor(who: String) -> Sprite2D:
@@ -15609,6 +15621,7 @@ func _tm_tick(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	_lizhi_stick_tick()      # 选牌界面盖着时把立直棒整层藏起来
 	# 播报期间牌桌是静态的：只留租约/结算确认，其余 tick/sync/轮询全跳过（不然每帧一堆活抢帧）
 	if _win_intro_running or _win_panel_visible():
 		_lease_tick(delta)

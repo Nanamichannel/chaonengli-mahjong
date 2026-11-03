@@ -145,23 +145,15 @@ def main() -> int:
     g6.save_flags()
     g6 = Game(db4b, rid4)
     check("摸到的是一张和不了的牌", g6.drawn_tile(0), "dong")
-    check("一发窗口成立", g6.c24_win_can(0))
+    check("一发不再提供「直接和」窗口（改成提前换位）", g6.c24_win_can(0), False)
     acts = [a.get("action") for a in g6.legal_actions(0)]
-    check("legal 里有自摸", "tsumo" in acts)
+    check("不再强塞自摸按钮", "tsumo" in acts, False)
     check("一发巡还在（没被误清）", 0 in g6.ippatsu)
 
-    ev = g6.act(0, "tsumo")
-    print("   结算事件:", {k: ev.get(k) for k in ("event", "c24") if k in ev})
-    check("事件是 tsumo", ev.get("event"), "tsumo")
-    check("用的是牌山里那张 8s", ev.get("c24"), "8s")
-    names = [str(y.get("name", "")) for y in (ev.get("yaku") or [])]
-    print("   役种:", names)
-    check("算了一发", any("一发" in n for n in names))
-    check("算了立直", any("立直" in n for n in names))
-    check("算了门前清自摸和", any("自摸" in n for n in names))
+    # 2026-11-03 规则：一发不再「改写摸到的牌 + 绕过判定」。
+    # 发动时已经把和的牌换到「一发巡要摸的那张」位置，摸到走正常自摸判定。
     g7 = Game(db4b, rid4)
-    check("结算后一发关闭", g7.c24_armed, -1)
-    check("这局结束了", g7.phase, "ended")
+    check("本局没有因为一发被强行结算", bool(g7.result), False)
 
     # ══ ⑤ 牌山里没有胡张 → 立直了，但没有一发 ═══════════════════════════
     print("\n⑤ 牌山/王牌里没有 8s → 一发不开启（只是普通立直）")

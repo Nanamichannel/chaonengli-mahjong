@@ -107,18 +107,16 @@ def main() -> int:
     check("明杠开出来了",
           any(str(m.get("kind")) == "minkan" for m in g2.melds(0)), True)
     check("轮到我打牌", (g2.phase, g2.turn), ("discard", 0))
-    check("换好牌、等自摸", g2.c37s1_ready, 0)
-    check("出现自摸按钮",
-          any(a.get("action") == "tsumo" for a in g2.legal_actions(0)), True)
+    check("不再设置 ready（岭上牌已提前换位）", g2.c37s1_ready, -1)
+    _dt = g2.drawn_tile(0) or ""
+    check("岭上摸到的牌已经换过位（能正常判定）",
+          bool(_dt) and g2._judge_win(0, _dt, tsumo=True) is not None, True)
     check("技能消耗了", g2.skill_used(0, 37, 1), True)
 
-    print("\n④ 点自摸 → 岭上开花 + 得点 ×2")
-    o2 = api_cli.handle({"op": "act", "seat": 0, "action": "tsumo", "round_id": rid},
-                        db_path=db.path)
-    yaku = [str(y.get("name", "")) for y in ((o2.get("result") or {}).get("yaku") or [])]
-    check("役种里有岭上开花", any("岭上开花" in y for y in yaku), True)
-    check("带得点 ×2 标记", any("×2" in y for y in yaku), True)
-    check("和了之后本局结束", Game(db, rid).phase, "ended")
+    print("\n? 新规则：岭上不再「硬塞和牌 / 绕过判定」")
+    g3 = Game(db, rid)
+    check("本局没有被强行结算", bool(g3.result), False)
+    check("ready 标记不参与判定", int(g3.c37s1_ready), -1)
 
     print("\n⑤ 不发技能（正常「过」）→ 什么都不发生")
     db, rid = setup("c37s1cl_c")

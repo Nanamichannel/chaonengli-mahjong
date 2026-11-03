@@ -6402,6 +6402,41 @@ class Game:
         return {"kind": str(kind), "count": len(log), "log": log,
                 "tiles": [x["got"] for x in log]}
 
+    def c37s1_pre_swap(self, seat: int, kind: str = "", tile: str = "") -> bool:
+        """2026-11-03 规则：确认听牌在牌山里 → 把「岭上牌」和它换位（wall_wall）。
+
+        在「开杠之后、摸岭上之前」调用。要注意：听牌要按**杠完之后的 13 张**算
+        （手里那 4 张已经被杠走了），不然现在还是「暗刻 + 单张」，算出来不是听牌。
+        """
+        s = int(seat)
+        kind = str(kind or "")
+        tile = str(tile or "")
+        waits: set[str] = set()
+        if kind and tile:
+            hand = list(self.hand(s))
+            for _ in range(4):
+                if tile in hand:
+                    hand.remove(tile)
+            melds = list(self.melds(s))
+            melds.append({"kind": kind, "tiles": [tile, tile, tile, tile],
+                          "rot_index": 0, "called_tile": "", "from_seat": -1})
+            if len(hand) % 3 == 1:
+                waits = set(agari.winning_tiles(counts_of(hand), melds))
+        if not waits:
+            waits = self.c37s1_waits(s)
+        hit = self.wall_find(waits) if waits else None
+        if hit is None:
+            return False
+        nos = wallmodel.rinshan_tile_nos(self.wall_first_stack())
+        if self.rinshan_used >= len(nos):
+            return False
+        seq_r = wallmodel.seq_of_tile(nos[self.rinshan_used])
+        if int(seq_r) == int(hit[0]):
+            return True
+        self.do_swap("wall_wall", s, "岭上", seq_a=int(hit[0]), seq_b=int(seq_r))
+        return True
+
+
     def c37s1_arm(self, seat: int) -> dict:
         """点技能 = 自动开杠 + 摸岭上 + 换成牌山里的和牌张，然后等玩家点『自摸』。
 
@@ -6428,6 +6463,8 @@ class Game:
             out.update(res)
             return out
         kind, tile = self.c37s1_kans(s)[0]
+        # 2026-11-03：先换位再开杠，岭上摸到的就是和的牌（正常判定）
+        self.c37s1_pre_swap(s, kind, tile)
         ev = self._kan(s, kind, tile)              # 开杠 + 翻宝牌 + 摸岭上（phase=discard）
         if self.phase == "ended" or self.round_phase == "end":
             return {"ok": False, "kan": ev, "ready": False,
@@ -6438,44 +6475,21 @@ class Game:
         return out
 
     def _c37s1_after_kan(self, s: int) -> dict:
-        """杠已经开出来、岭上牌也摸到手 → 判自摸 / 从牌山换一张和牌张。
+        """开杠并摸完岭上之后：只做记录，不再「硬塞和的牌 / 绕过判定」。
 
-        暗杠 / 加杠（c37s1_arm）和 鸣牌窗口里的明杠（_apply_claim）共用这一段。
+        2026-11-03 规则：岭上牌在摸之前已经用 c37s1_pre_swap 换好，
+        这里只告诉客户端摸到的那张能不能和（纯预告，不改变任何东西）。
         """
         s = int(s)
         if self.phase == "ended" or self.round_phase == "end":
             return {"ok": False, "ready": False,
-                    "why": "开杠之后本局结束了（四杠散了 / 王牌摸完）"}
+                    "why": "杠之后本局结束了（四杠散了 / 途中流局）"}
         drawn = self.drawn_tile(s) or ""
-        if drawn and self._judge_win(s, drawn, tsumo=True) is not None:
-            self.c37s1_ready = s                   # 岭上牌自己就能和
-            self.note_use(s, 37, 1, gate=False)    # op 层已经问过看破
-            self.save_flags()
-            return {"ok": True, "ready": True, "swapped": "", "tile": drawn}
-        waits = self.c37s1_waits(s)
-        hit = self.wall_find(waits) if waits else None
-        if hit is None:
-            # 用户口径 2026-10-28：杠**照开**、杠完正常摸打；技能照样消耗
-            self.note_use(s, 37, 1, gate=False)
-            self.save_flags()
-            return {"ok": True, "ready": False, "swapped": "",
-                    "why": "牌山里没有你的和牌张：杠已经开了，正常打牌（技能已消耗）"}
-        hs = self.db._one(
-            "SELECT wall_seq FROM round_hands WHERE round_id=? AND seat=? AND is_drawn=1",
-            (self.round_id, s))
-        if hs is None:
-            self.note_use(s, 37, 1, gate=False)
-            self.save_flags()
-            return {"ok": True, "ready": False, "swapped": "",
-                    "why": "找不到刚摸到的岭上牌（杠已经开了，技能已消耗）"}
-        # 岭上那张 ⇄ 牌山里的和牌张（立直家也可能在杠，force 跳过立直锁）
-        self.do_swap("hand_wall", s, "岭上开花",
-                     hand_seq=int(hs), wall_seq=int(hit[0]), force=True)
-        self.c37s1_ready = s
-        self.note_use(s, 37, 1, gate=False)
+        self.note_use(s, 37, 1, gate=False)    # op 里已经问过使用
         self.save_flags()
-        return {"ok": True, "ready": True,
-                "swapped": str(hit[1]), "tile": str(hit[1])}
+        return {"ok": True, "ready": False, "swapped": "", "tile": drawn,
+                "win": bool(drawn) and self._judge_win(s, drawn, tsumo=True) is not None}
+
 
     def c35s1_owns(self, seat: int) -> bool:
         return skills.owns_card(self.db, self, int(seat), 35, strict=True)
@@ -7528,8 +7542,14 @@ class Game:
             self.c34s2_why = ("剩下的牌山（含王牌）里没有你听的牌：%s"
                               % "、".join(sorted(waits)))
             return False
+        # 2026-11-03 规则：确认牌山里有听牌后，直接把「海底牌」和它换位
+        #   之后正常摸到海底就是和的牌（正常判定），不再在摸牌时硬塞/绕过判定
+        seq_hit, tile_hit = int(hit[0]), str(hit[1])
+        up = self._upcoming_wall_seqs(max(int(self.live_left()), 0))
+        if up and int(up[-1]) != seq_hit:
+            self.do_swap("wall_wall", s, "海底", seq_a=seq_hit, seq_b=int(up[-1]))
         self.c34s2_on = s
-        self.c34s2_seq, self.c34s2_tile = int(hit[0]), str(hit[1])
+        self.c34s2_seq, self.c34s2_tile = -1, ""
         self.c34s2_fired = True
         self.c34_charges[s] = self.c34_charges_of(s) + 1      # 可发动次数 +1
         self.c34s1_arm(s)                                     # 自动发动（重置 3 巡）
@@ -7547,51 +7567,16 @@ class Game:
         return row is not None
 
     def _c34s2_last_tsumo(self, seat: int, info: dict) -> dict | None:
-        """摸到最后一张（海底）：把和牌张换进手里，**等玩家点『自摸』**。
+        """2026-11-03 规则改动：摸海底时不再硬塞和的牌 / 不再绕过判定。
 
-        ★ 2026-10-28 用户口径：**别自动自摸**，给按钮。
-          所以这里只做「换牌 + 把刚摸那张标成和牌张」，结算走正常自摸入口
-          （`legal_actions` 会出现 `tsumo`，`_do_tsumo` 再判一次）。
-        · 绕过的是「能不能和」的预测：换完就是能和的手牌，振听/听牌形不影响自摸
-        · **拦截链依然有效**：此刻厄运已经在「摸第 3 张」那一瞬结束，
-          满贯（28S1）/ 浓雾（19S2）/ 恶灵 / 海神 / 看破代价 依然会让按钮不出现
-        · 失败一律写 `c34s2_why`，客户端 `_c34_why_sync` 会 toast 出来
+        技能发动时已经把「海底牌」和听牌换过位了，摸到就是正常自摸判定，
+        这里只把「等待中」的标记清掉。
         """
-        s = int(seat)
-        # ★ 2026-10-28：`_draw_next_info` 给的键是 **seq**（不是 wall_seq）——
-        #   原来只读 wall_seq，永远 -1 → 直接 return None，海底永远不自摸。
-        hand_seq = info.get("wall_seq", info.get("seq", -1))
-        hand_seq = -1 if hand_seq is None else int(hand_seq)
-        tile, seq = str(self.c34s2_tile), int(self.c34s2_seq)
         self.c34s2_on = -1
-        self.c34s2_why_seat = s
-        self.c34s2_why = ""
-        self.save_flags()
-        if hand_seq < 0:
-            self.c34s2_why = "海底：没拿到刚摸那张的牌山编号"
-            return None
-        # 锁定的铳张可能在这 3 巡里被别人摸走 / 被技能换掉 → 到这一刻重新确认
-        if not tile or not self._wall_seq_alive(seq):
-            waits = set(tile and {tile} or set()) | self._c34s2_waits(s)
-            hit = self.wall_find(waits)
-            if hit is None:
-                self.c34s2_why = ("海底：牌山里已经没有你的和牌张了（%s）"
-                                  % "、".join(sorted(waits)))
-                return None
-            seq, tile = int(hit[0]), str(hit[1])
-        # 换牌统一走 do_swap；立直家也要能吃海底 → force=True 跳过立直锁
-        self.do_swap("hand_wall", s, "海底", hand_seq=hand_seq, wall_seq=seq, force=True)
         self.c34s2_seq, self.c34s2_tile = -1, ""
-        if self._judge_win(s, tile, tsumo=True) is None:
-            # 换进来的牌判不出役（正常走不到）→ 原地退回，不让玩家白点
-            self.c34s2_why = "海底：换进来的「%s」判不出役" % tile
-            self.save_flags()
-            return None
-        self.temp_furiten.discard(s)
-        self.last_was_rinshan = False
-        self.phase = "discard"                 # 换完就是普通切牌阶段（可以点『自摸』）
         self.save_flags()
-        return self._event("c34_last", {"seat": s, "tile": tile, "ready": True})
+        return None
+
 
     def c30_give_target(self) -> int:
         """向听：现在该谁交牌（没有则 -1）。api_cli 用它给没人的座位代交。"""
@@ -8127,6 +8112,8 @@ class Game:
         # 只有「这一手的明杠真的归我」才放回去（荣和 / 别人先鸣 → 作废、技能不消耗）
         _c37_auto = int(self.c37s1_auto)
         self.c37s1_auto = -1
+        if int(_c37_auto) >= 0:
+            self.c37s1_pre_swap(int(_c37_auto))     # 2026-11-03：摸岭上前先换位
         if p is None:
             self._next_player()
             return self._event("claim_none", {})
@@ -8845,6 +8832,16 @@ class Game:
         if t not in self.riichi_discards(s):
             raise RuleError("一发：这张打出去就不听牌了")
         ev = self._do_riichi(s, t)            # 横置打出 + 进立直（含破发窗口等）
+        # 2026-11-03 规则：确认牌山里有和的牌 → 和「我一发巡要摸的那张」换位；
+        #   之后正常摸到就是和的牌（正常判定），不再在摸牌时改写牌面。
+        _hit0 = self._c24_wall_wins(s)
+        if _hit0:
+            _h = self.wall_find(_hit0)
+            _up = self._upcoming_wall_seqs(max(int(self.live_left()), 0))
+            if _h is not None and _up:
+                _tgt = int(_up[3]) if len(_up) >= 4 else int(_up[-1])
+                if _tgt != int(_h[0]):
+                    self.do_swap("wall_wall", s, "一发", seq_a=int(_h[0]), seq_b=_tgt)
         hit = self._c24_wall_wins(s)
         self.c24_armed = s if hit else -1
         # op 级已经问过看破了 → 这里 gate=False（否则会挂第二笔，死锁）
@@ -8856,17 +8853,13 @@ class Game:
         return out
 
     def c24_win_can(self, seat: int) -> bool:
-        """轮到自己摸牌、立直 + 一发巡、而且牌山/王牌里确实还有我的胡张。"""
-        s = int(seat)
-        if int(self.c24_armed) != s:
-            return False
-        if not self.is_riichi(s) or s not in self.ippatsu:
-            return False
-        if self.phase != "discard" or self.turn is None or int(self.turn) != s:
-            return False
-        if self.drawn_tile(s) is None:
-            return False
-        return bool(self._c24_wall_wins(s))
+        """2026-11-03 规则改动：一发不再「改写摸到的牌 + 绕过判定」。
+
+        发动时已经把和的牌换到「一发巡要摸的那张」位置了，摸到就走正常自摸判定，
+        所以这里永远返回 False（客户端不会再弹「直接和」的按钮）。
+        """
+        return False
+
 
     def _c24_best_win(self, seat: int) -> tuple[str, dict] | None:
         """一发结算：在「牌山/王牌里有的胡张 + 刚摸的这张」里挑打点最高的结算。

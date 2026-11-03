@@ -21,6 +21,16 @@ import test_game as tg                               # noqa: E402
 from tiles import counts_of, parse_hand                  # noqa: E402
 from rules import agari                              # noqa: E402
 
+def _tile_at(g, rid, seq):
+    r = g.db._row("SELECT tile FROM round_wall WHERE round_id=? AND seq=?", (rid, int(seq)))
+    return str(r["tile"]) if r else ""
+
+
+def _last_live_seq(g):
+    up = g._upcoming_wall_seqs(max(int(g.live_left()), 0))
+    return int(up[-1]) if up else -1
+
+
 PASS = FAIL = 0
 # 13 张 + 刚摸的 3s（听 白，见下）
 H0 = "123m456m789m234p5z3s"
@@ -108,7 +118,9 @@ def main() -> int:
     db4, rid4 = setup("c34s2d", live=12)
     # 把牌山里的白全部改掉 → 听牌但牌山没有
     with db4.tx():
-        db4.conn.execute("UPDATE round_wall SET tile='2m' WHERE round_id=? AND tile='bai'", (rid4,))
+        db4.conn.execute(
+            "UPDATE round_wall SET tile='2m' WHERE round_id=? AND tile IN ('bai','3s')",
+            (rid4,))
     g4 = Game(db4, rid4)
     check("听牌但牌山里没有 → 不触发", g4.c34s2_try(0), False)
 
@@ -136,7 +148,7 @@ def main() -> int:
     g6.c34s2_try(0)
     g7 = Game(db3, rid3)
     check("c34s2_fired", g7.c34s2_fired, True)
-    check("记录铳张牌面", g7.c34s2_tile, "bai")
+    check("不再记录铳张牌面（改成提前换位）", g7.c34s2_tile, "")
     check("厄运自动发动", int(g7.c34_by), 0)
     check("重置成 3 巡", int(g7.c34_left), 3)
     check("其他三家静默", [g7.c34_muted(1), g7.c34_muted(2), g7.c34_muted(3)],
@@ -159,22 +171,12 @@ def main() -> int:
     g9 = Game(db9, rid9)
     for _ in range(3):
         g9._c34_tick(0)
-    hand_seq = g9.db._one(
-        "SELECT wall_seq FROM round_hands WHERE round_id=? AND seat=0 AND is_drawn=1", (rid9,))
-    ev = g9._c34s2_last_tsumo(0, {"wall_seq": int(hand_seq)})
-    check("出了海底事件", str((ev or {}).get("event", "")), "c34_last")
+    ev = g9._c34s2_last_tsumo(0, {"wall_seq": -1})   # 现在只清标记，不再硬塞
+    check("摸海底不再产生事件", ev, None)
     g10 = Game(db9, rid9)
-    check("只换牌、不自动结算", bool(g10.result), False)
-    check("手里换进了白", "bai" in g10.hand(0), True)
-    check("s2 状态清掉", int(g10.c34s2_on), -1)
-    check("legal 里有自摸按钮",
-          "tsumo" in [a.get("action") for a in g10.legal_actions(0)], True)
-    g10.act(0, "tsumo")
-    g10b = Game(db9, rid9)
-    check("点了自摸才结算", bool(g10b.result), True)
-    if g10b.result:
-        check("是自摸", g10b.result.get("result"), "tsumo")
-
+    check("不再直接结算", bool(g10.result), False)
+    check("s2 标记已清", int(g10.c34s2_on), -1)
+    check("海底槽位已经是和的牌（换位成功）", _tile_at(g10, rid9, _last_live_seq(g9)), "bai")
     print("\n⑥a 真实摸牌的 info 键是 seq（不是 wall_seq）也必须能自摸")
     db26, rid26 = setup("c34s2o", live=12)
     force_wall_tile(db26, rid26, 0, "bai")
@@ -186,10 +188,8 @@ def main() -> int:
     hs26 = g26.db._one("SELECT wall_seq FROM round_hands WHERE round_id=? AND seat=0 "
                        "AND is_drawn=1", (rid26,))
     ev26 = g26._c34s2_last_tsumo(0, {"tile": "x", "seq": int(hs26)})
-    check("info 给 seq 也能海底换牌", str((ev26 or {}).get("event", "")), "c34_last")
-    check("换完还没结算", bool(Game(db26, rid26).result), False)
-    g26.act(0, "tsumo")
-    check("点自摸后结算落地", bool(Game(db26, rid26).result), True)
+    check("不再产生海底事件", ev26, None)
+    check("海底槽位已经是和的牌", _tile_at(g26, rid26, _last_live_seq(g26)), "bai")
 
     print("\n⑥b 摸进来才听牌（hand13 不听）也要能触发")
     db20, rid20 = setup("c34s2j", live=12)
@@ -260,8 +260,7 @@ def main() -> int:
            if _res else None)
     check("这手确实不到满贯", bool(g11._c28s1_blocks(_pv)), True)
     ev2 = g11._c34s2_last_tsumo(0, {"wall_seq": int(hs)})
-    check("换牌照做（拦住的是按钮，不是换牌）",
-          str((ev2 or {}).get("event", "")), "c34_last")
+    check("摸海底不再产生事件", ev2, None)
     check("满贯 → 自摸按钮不出现",
           "tsumo" in [a.get("action") for a in Game(db11, rid11).legal_actions(0)], False)
     check("没有结算", bool(Game(db11, rid11).result), False)

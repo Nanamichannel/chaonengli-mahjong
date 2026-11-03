@@ -374,7 +374,7 @@ func _build_who(data: Dictionary) -> void:
 		for c in strips_root.get_children():
 			if c is Control:
 				sr = maxf(sr, (c as Control).position.x + (c as Control).size.x)
-	var pad := pw * 0.18                    # 右边留白（别贴着底座边框）
+	var pad := pw * 0.10                    # 右边留白
 	var gap2 := pw * 0.03                   # 和番种条之间的最小间隙
 	var left_lim := (sr + gap2) if sr > 0.0 else (pr - pw * 0.45)
 	var room := maxf(pr - pad - left_lim, 40.0)
@@ -389,7 +389,9 @@ func _build_who(data: Dictionary) -> void:
 	var colw := fs * 1.15
 	var x1 := pr - pad - colw * 0.5
 	var x2 := x1 - colw
-	var top1 := pt + ph * 0.22
+	# 两列当作一整块，在底座里上下居中（第一列仍比第二列高一个字）
+	var block_h := fs * 1.16 * float(maxn)
+	var top1 := pt + ph * 0.565 - block_h * 0.5
 	var top2 := top1 + fs * 1.16
 	_vtext(font, col1, fs, x1, top1, colw)
 	_vtext(font, col2, fs, x2, top2, colw)

@@ -43,3 +43,4 @@ server/net_config.json
 
 # 本地调试开关：announce=1 时 F5 直接进和牌播报调界面
 autoplay.cfg
+server/mahjong.db

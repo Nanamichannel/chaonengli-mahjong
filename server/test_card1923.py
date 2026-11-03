@@ -73,7 +73,7 @@ def main() -> int:
     for c in (19, 20, 21, 22, 23):
         check(f"登记 {c}", skills.has(c, 1) and skills.has(c, 2))
     check("暖系含 zhong", "zhong" in WARM_KINDS, True)
-    check("冷系含 3p", "3p" in COLD_KINDS, True)
+    check("冷系含 3p", "2p" in COLD_KINDS, True)
     check("5s 是暖系", "5s" in WARM_KINDS, True)
 
     print("\n◆ 深山：第 12 张之后开，开着就报牌")
@@ -169,10 +169,10 @@ def main() -> int:
         check("暖系不能加热", False)
     except RuleError as e:
         check("暖系不能加热", "冷系" in str(e))
-    r2 = g12.heat_activate(0, "3p")
-    check("加热 3p", r2.get("kind"), "3p")
+    r2 = g12.heat_activate(0, "2p")
+    check("加热 2p", r2.get("kind"), "2p")
     g13 = Game(db5, rid5)
-    check("记进 flags", g13.heat_kind, "3p")
+    check("记进 flags", g13.heat_kind, "2p")
     check("冷系数得对", g13._cold_count(0) >= 0, True)
 
     print("\n◆ 先负：换牌 → 立直 → 那家出铳")

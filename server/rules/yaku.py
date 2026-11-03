@@ -136,6 +136,10 @@ def judge(ctx: dict) -> dict:
     # 赤宝牌必须看「真实的牌 id」——34 格张数表里 0s 和 5s 是同一格，分不出来
     real_tiles = list(ctx.get("tiles") or ()) or all_tiles
     aka_n = count_aka(real_tiles)
+    # Card23 S1「加热」：被加热的那一种牌，手里/副露里每张都算赤宝牌
+    _hk = str(ctx.get("heated_kind") or "")
+    if _hk:
+        aka_n += sum(1 for t in real_tiles if str(t) == _hk)
     ura_n = count_dora(all_tiles, list(ctx.get("ura_indicators") or [])) if ctx.get("riichi") else 0
 
     # ── 役满：先看 ──

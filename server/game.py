@@ -111,6 +111,7 @@ def _draw_result_name(reason: str) -> str:
 
 # 暖系 = 牌面画里有红色：所有万子、红中、赤宝、5s/7s/9s；其余为冷系
 WARM_KINDS = ({f"{n}m" for n in range(1, 10)} | {"0m", "0p", "0s", "zhong",
+                                                 "1p", "3p", "5p", "6p", "7p",
                                                  "5s", "7s", "9s"})
 COLD_KINDS = [k for k in TILE_KINDS if k not in WARM_KINDS]
 
@@ -9400,7 +9401,9 @@ class Game:
         tiles = [str(t) for t in self.hand(int(seat))]
         for m in self.melds(int(seat)):
             tiles += [str(x) for x in (m.get("tiles") or [])]
-        return sum(1 for t in tiles if t in COLD_KINDS)
+        # 已经「加热」的那种牌不再是冷系（不然加了热冷系张数不变，多段倍率永远上不去）
+        hk = str(self.heat_kind or "")
+        return sum(1 for t in tiles if t in COLD_KINDS and t != hk)
 
     # ─── 传承（16S1）／多面（16S2）／研究（17S1）／看破（17S2）／枷锁（18S1）／连接（18S2）
     def owns_c(self, seat: int, card: int) -> bool:

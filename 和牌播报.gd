@@ -334,16 +334,17 @@ func _clear_who() -> void:
 		c.queue_free()
 
 
-func _vtext(font: Font, txt: String, fs: float, cx: float, top_y: float, colw: float) -> void:
+func _vtext(font: Font, txt: String, fs: float, cx: float, top_y: float, colw: float) -> Label:
 	if txt == "" or who_root == null:
-		return
+		return null
 	var lb := Label.new()
 	lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lb.text = _vertical_text(txt)
 	lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lb.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	var n := maxi(lb.text.count("\n") + 1, 1)
-	lb.size = Vector2(colw, float(n) * fs * 1.16)
+	var lh := (float(font.get_height(int(fs))) - float(int(fs * 0.18))) if font != null else fs * 1.16
+	lb.size = Vector2(colw, float(n) * lh)
 	lb.position = Vector2(cx - colw * 0.5, top_y)
 	if font != null:
 		lb.add_theme_font_override("font", font)
@@ -353,6 +354,7 @@ func _vtext(font: Font, txt: String, fs: float, cx: float, top_y: float, colw: f
 	lb.add_theme_constant_override("outline_size", maxi(int(fs * 0.10), 3))
 	lb.add_theme_constant_override("line_spacing", -int(fs * 0.18))
 	who_root.add_child(lb)
+	return lb
 
 
 func _build_who(data: Dictionary) -> void:
@@ -390,11 +392,20 @@ func _build_who(data: Dictionary) -> void:
 	var x1 := pr - pad - colw * 0.5
 	var x2 := x1 - colw
 	# 两列当作一整块，在底座里上下居中（第一列仍比第二列高一个字）
-	var block_h := fs * 1.16 * float(maxn)
-	var top1 := pt + ph * 0.565 - block_h * 0.5
-	var top2 := top1 + fs * 1.16
-	_vtext(font, col1, fs, x1, top1, colw)
-	_vtext(font, col2, fs, x2, top2, colw)
+	# 先把两列摆好（第二列低一个字），再按它们的真实高度整体垂直居中 —— 名字多长都居中
+	var a := _vtext(font, col1, fs, x1, 0.0, colw)
+	var b := _vtext(font, col2, fs, x2, 0.0, colw)
+	if a == null:
+		return
+	var step := a.size.y / float(maxi(col1.length(), 1))      # 真实行高
+	var block_h := a.size.y
+	if b != null:
+		b.position.y = step
+		block_h = maxf(block_h, step + b.size.y)
+	var dy := (pt + ph * 0.565) - block_h * 0.5
+	a.position.y += dy
+	if b != null:
+		b.position.y += dy
 
 
 func _apply_layout() -> void:

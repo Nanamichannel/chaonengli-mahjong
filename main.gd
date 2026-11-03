@@ -288,9 +288,8 @@ const SRV_FROM_SEAT := {"B": 3, "C": 2, "D": 1}      # 上家/对家/下家 → 
 @export_range(0.0, 4.0, 0.05) var tile_fly_speed := 1.0
 
 @export_category("和牌播报")
-# 播报期间的帧率上限：240Hz 屏上 90fps 会出现「3/3/2 帧」的不均匀节奏，长条看着一卡一卡。
-# 提到 120 = 每 2 个刷新周期一帧，最整齐。填 0 = 不改动（保持项目设置的 90）。
-@export var announce_max_fps := 120
+# 播报期间的帧率上限：0 = 自动跟随显示器刷新率（固定数字容易和 240Hz/200Hz 屏错拍，动画看着一顿一顿）
+@export var announce_max_fps := 0
 var srv                                          # ServerBridge
 var srv_up := false                              # 上一次请求服务端是否正常回答
 var srv_note := ""                              # 上一次失败原因
@@ -14931,8 +14930,13 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 	if has_winner:
 		_win_hand_show(wseat, win)
 	var _fps0 := Engine.max_fps
+	var _vs0 := DisplayServer.window_get_vsync_mode()
 	if announce_max_fps > 0:
 		Engine.max_fps = maxi(int(_fps0), int(announce_max_fps))
+	else:
+		# 0 = 跟着屏幕走：开垂直同步 + 解除帧率上限，帧节奏和刷新对齐，慢速平移才不抖
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+		Engine.max_fps = 0
 	var _lose := -1
 	if win.get("loser") != null:
 		_lose = _int_of(win, "loser", -1)
@@ -14941,6 +14945,8 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 	content["level"] = _result_level(win)      # 满贯 / 跳满 / 倍满 / 三倍满 / 役满（对应场景里的图）
 	await sc.call("play", who, int(pick[0]), bool(pick[1]), shot, content)
 	Engine.max_fps = int(_fps0)
+	if announce_max_fps <= 0:
+		DisplayServer.window_set_vsync_mode(_vs0)
 	# 确认按钮的显隐 / 可点时机由场景控制（跟小面板一起淡入）
 	var cb := _result_confirm_button_get()
 	if cb != null:

@@ -721,16 +721,28 @@ func _round_info_corner_hit(pos: Vector2) -> bool:
 #   ③ 加速：问我要不要用 → 不用
 #   ④ 破发：别家立直问我要不要破 → 不破
 #   ⑤ 未来：摸牌前问要不要排牌山 → 跳过
+var _pass_armed := false             # 右键点过「跳过」，但当时 busy → 等它一清就补一次
+
+
+# 右键 = 跳过「技能询问 / 副露询问」（用户口径 2026-11-04）
 func _right_click_skip() -> bool:
-	if game_over or srv_busy:
+	if game_over:
 		return false
-	if String(srv_state.get("phase", "")) == "claim" and not srv_opts_of(srv_state).is_empty():
-		if not kp_active and not _skill_panel_open():
-			_on_pass_pressed()
-			return true
+	# 看破 / 拦截询问优先：右键 = 放行
 	if kp_active:
 		_kp_skip()
 		return true
+	# 鸣牌窗口（吃 / 碰 / 明杠 / 荣）：右键 = 跳过
+	if String(srv_state.get("phase", "")) == "claim" and not srv_opts_of(srv_state).is_empty():
+		if not _skill_panel_open():
+			if srv_busy:
+				# ★ 手上这一发请求还没回来（`_srv_step_once` 之间那 0.1 秒也算 busy）→
+				#   别把这一下右键吞掉：记下来，busy 一清由 `_pass_armed_tick()` 补点。
+				#   （用户口径 2026-11-06：「有时候上家打出吃的牌我要点两次右键才能跳过」）
+				_pass_armed = true
+			else:
+				_on_pass_pressed()
+			return true
 	if not srv_c29s1_ask().is_empty():
 		_on_pass_pressed()
 		return true
@@ -741,6 +753,20 @@ func _right_click_skip() -> bool:
 		_future_ask_skip()
 		return true
 	return false
+
+
+# busy 清掉之后，把「刚才被 busy 吞掉的那一下右键」补上
+func _pass_armed_tick() -> void:
+	if not _pass_armed:
+		return
+	if srv_busy:
+		return                       # 还在忙：接着等（不清标志，不丢点击）
+	_pass_armed = false
+	if game_over:
+		return
+	# 鸣牌窗口还在才补：已经被人鸣走 / 已经轮到我打牌 → 这一下就不该补了
+	if String(srv_state.get("phase", "")) == "claim" and not srv_opts_of(srv_state).is_empty():
+		_on_pass_pressed()
 
 
 func _round_info_toggle() -> void:
@@ -16657,6 +16683,7 @@ func _process(delta: float) -> void:
 		_busy_warned = true
 		push_error("[BUSY] srv_busy 超过 5 秒没清：%s" % _busy_site)
 		_toast("内部状态卡在：%s（请把这条报给开发者）" % _busy_site)
+	_pass_armed_tick()      # 被 busy 吞掉的那一下右键，这里补上
 	_lizhi_stick_tick()      # 选牌界面盖着时把立直棒整层藏起来
 	# 播报期间牌桌是静态的：只留租约/结算确认，其余 tick/sync/轮询全跳过（不然每帧一堆活抢帧）
 	if _win_intro_running or _win_panel_visible():

@@ -7444,7 +7444,7 @@ func _apply_skill_frames(st: Dictionary) -> void:
 
 
 # ── Card06 Skill1「南风」──────────────────────────────────────────────
-#   配牌时发动：先指定两种牌（34 种里选 2），再选两张手牌，
+#   南场配牌时发动：先指定两种牌（34 种里选 2），再选两张手牌，
 #   按 下家→对家→上家 的顺序，把他家手里「指定的牌」强制换过来（换满两张就结束）。
 var sw_stage := ""                 # "" / "kinds" / "hand"
 var sw_kinds: Array[String] = []
@@ -7461,7 +7461,7 @@ const SW_TILE_H := 134.0
 
 func _sw_activate() -> void:
 	if String(srv_state.get("phase", "")) != "deal_skill":
-		_toast("「南风」要在配牌阶段发动")
+		_toast("「南风」要在南场的配牌阶段发动")
 		return
 	var mine: Array = srv_state.get("deal_skill", {}).get("mine", [])
 	var ok := false
@@ -7469,7 +7469,7 @@ func _sw_activate() -> void:
 		if typeof(o) == TYPE_DICTIONARY and int((o as Dictionary).get("card", 0)) == 6:
 			ok = true
 	if not ok:
-		_toast("「南风」不在这次的配牌窗口里（可能已经用过 / 被剔除）")
+		_toast("「南风」只在南场可用")
 		return
 	if not is_inside_tree():
 		return
@@ -13363,6 +13363,7 @@ func _apply_entity_states(st2: Dictionary) -> void:
 					if p2 != null:
 						p2.apply_state("rot", Vector2(rot_x, meld_bottom - rot_h * (0.5 + KAKAN_STACK_OFFSET)),
 						0.0, Vector2.ONE * ms)
+						p2.z_index = KAKAN_STACK_Z       # 压在原来那张横置牌上面（不是缝，是谁盖谁）
 			my_right -= group_w
 	# 其他家副露锚点 = 屏幕四个角（与旧版 add_opp_meld / add_opp_ankan 一致）
 	# 注意：不要加 _opp_offset（那是给手牌用的，C 的 -60 会把副露/暗杠推出屏幕）
@@ -13438,6 +13439,7 @@ func _apply_entity_states(st2: Dictionary) -> void:
 				if pk != null:
 					pk.apply_state("rot", rot_base + out_dir * (rot_h2 * (0.5 + KAKAN_STACK_OFFSET)),
 						rot_deg, oscale)
+					pk.z_index = KAKAN_STACK_Z
 			anc = anc + to_far * group_w2
 		opp_anchor[who] = anc
 
@@ -17127,8 +17129,10 @@ const KAKAN_TILE_AT_LEFT := true
 const KAKAN_OPP_AT_FAR := {"B": false, "C": true, "D": true}
 
 #   加杠的第 4 张「叠」进下面那张多少：中心间距 = 横置牌厚度 × (0.5 + 这个值)
-#   1.0 = 严丝合缝（两张牌各自的边框会连成一条缝）→ 0.50 = 叠进去一半
-const KAKAN_STACK_OFFSET := 0.50
+#   1.0 = 严丝合缝（两张牌各自的边框会连成一条缝）→ 0.85 = 叠进去 15%
+const KAKAN_STACK_OFFSET := 0.85
+#   加杠第 4 张的 z：其它副露牌都是 0，抬到 1 就一定盖在横置牌上面
+const KAKAN_STACK_Z := 1
 
 
 # ── 副露牌大小接口 ──

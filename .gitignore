@@ -47,3 +47,7 @@ server/mahjong.db
 
 # 参考素材（每张卡的示范截图，80MB / 5000+ 文件，不进仓库）
 Cailiao/UI/示范/
+
+# 联机口令（导出时打进 exe，绝不进仓库）
+net_token.cfg
+net_token.txt

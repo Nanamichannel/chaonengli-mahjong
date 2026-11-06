@@ -79,7 +79,13 @@ func _load_cfg() -> void:
 			return                               # 没有配置文件（且无内置地址 / 在编辑器里）= 单机模式
 		url = DEFAULT_URL
 		room = "default"
-		token = DEFAULT_TOKEN
+		var _tc := _read_token_cfg()
+		if _tc.size() > 0:
+			token = String(_tc[0])
+			if _tc.size() > 1 and room_ok(String(_tc[1])):
+				room = String(_tc[1])
+		else:
+			token = DEFAULT_TOKEN
 		# ★ 这条以前直接 return，把「大厅选的房间号」整段跳过了 →
 		#   大厅在 1145、进牌桌却连回 default（两家的卡序/遮罩完全不一样，
 		#   桌面人物卡跟大厅选的对不上）。现在两条路都走同一个房间解析。
@@ -104,6 +110,10 @@ func _load_cfg() -> void:
 		room = "default"
 	token = String(dd.get("token", ""))
 	if token == "":
+		var _tc2 := _read_token_cfg()
+		if _tc2.size() > 0:
+			token = String(_tc2[0])
+	if token == "":
 		token = DEFAULT_TOKEN          # 玩家自己没填 → 用内置口令，开箱即用
 	timeout_ms = int(dd.get("timeout_ms", timeout_ms))
 	if timeout_ms < 1000:
@@ -117,6 +127,33 @@ func _load_cfg() -> void:
 	else:
 		last_error = "net.cfg 里的 url 认不出来：%s" % url
 		push_warning("[net] " + last_error)
+
+# 口令 / 默认房间：仓库里不放口令（公开仓库），导出时把口令打进 exe → 只发一个 exe 就能连
+#   查找顺序：res://net_token.cfg（打进 pck） → exe 同目录 net_token.cfg（临时改不用重导）
+#   文件格式：第 1 行 = 房间口令；第 2 行（可省）= 默认房间号；# 开头是注释
+static func _read_token_cfg() -> PackedStringArray:
+	var cand: Array[String] = [
+		"res://net_token.cfg",                       # 打包进 exe 的那份（唯一可靠的读法）
+		OS.get_executable_path().get_base_dir().path_join("net_token.cfg"),
+		ProjectSettings.globalize_path("res://net_token.cfg"),
+	]
+	for p in cand:
+		if p == "" or not FileAccess.file_exists(p):
+			continue
+		var f := FileAccess.open(p, FileAccess.READ)
+		if f == null:
+			continue
+		var txt := f.get_as_text()
+		f.close()
+		var out := PackedStringArray()
+		for line in txt.split("\n"):
+			var t := String(line).strip_edges()
+			if t != "" and not t.begins_with("#"):
+				out.append(t)
+		if out.size() > 0:
+			return out
+	return PackedStringArray()
+
 
 # http://host:port/prefix → _tls/_host/_port/_base_path
 func _parse_url() -> bool:

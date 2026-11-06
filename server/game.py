@@ -3441,9 +3441,8 @@ class Game:
                 # 在配牌动画里（窗口出现之前）就点过技能的人，不再让他重复决定
                 if (int(card), int(skill)) == (3, 1) and seat in self.confident:
                     continue
-                # 南风：只有南场才有这个技能
-                if (int(card), int(skill)) == (6, 1) and str(self.round_wind) != "nan":
-                    continue
+                # 南风：以前限定「只有南场」，现在任何场风的配牌阶段都能发动
+                #   （用户口径 2026-11-06：东场点了没反应，以为坏了）
                 # 降神：掷过骰子就不用再列了（之后靠点图标开关）
                 if (int(card), int(skill)) == (7, 1) and seat in self.oracle:
                     continue

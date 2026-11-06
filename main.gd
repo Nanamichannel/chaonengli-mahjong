@@ -7444,7 +7444,7 @@ func _apply_skill_frames(st: Dictionary) -> void:
 
 
 # ── Card06 Skill1「南风」──────────────────────────────────────────────
-#   南场配牌时发动：先指定两种牌（34 种里选 2），再选两张手牌，
+#   配牌时发动：先指定两种牌（34 种里选 2），再选两张手牌，
 #   按 下家→对家→上家 的顺序，把他家手里「指定的牌」强制换过来（换满两张就结束）。
 var sw_stage := ""                 # "" / "kinds" / "hand"
 var sw_kinds: Array[String] = []
@@ -7461,7 +7461,7 @@ const SW_TILE_H := 134.0
 
 func _sw_activate() -> void:
 	if String(srv_state.get("phase", "")) != "deal_skill":
-		_toast("「南风」要在南场的配牌阶段发动")
+		_toast("「南风」要在配牌阶段发动")
 		return
 	var mine: Array = srv_state.get("deal_skill", {}).get("mine", [])
 	var ok := false
@@ -7469,7 +7469,7 @@ func _sw_activate() -> void:
 		if typeof(o) == TYPE_DICTIONARY and int((o as Dictionary).get("card", 0)) == 6:
 			ok = true
 	if not ok:
-		_toast("「南风」只在南场可用")
+		_toast("「南风」不在这次的配牌窗口里（可能已经用过 / 被剔除）")
 		return
 	if not is_inside_tree():
 		return
@@ -17127,8 +17127,8 @@ const KAKAN_TILE_AT_LEFT := true
 const KAKAN_OPP_AT_FAR := {"B": false, "C": true, "D": true}
 
 #   加杠的第 4 张「叠」进下面那张多少：中心间距 = 横置牌厚度 × (0.5 + 这个值)
-#   1.0 = 严丝合缝（两张牌各自的边框会连成一条缝）→ 0.85 = 叠进去 15%
-const KAKAN_STACK_OFFSET := 0.85
+#   1.0 = 严丝合缝（两张牌各自的边框会连成一条缝）→ 0.50 = 叠进去一半
+const KAKAN_STACK_OFFSET := 0.50
 
 
 # ── 副露牌大小接口 ──

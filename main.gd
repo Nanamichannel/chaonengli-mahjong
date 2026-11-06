@@ -2479,6 +2479,9 @@ func create_wall() -> void:
 var srv_meld_sig := ""               # 副露指纹（组数/种类/张数/牌面；变了才按服务端重画副露）
 const MELD_SIG_RESET := "#reset"     # 「强制重画」的哨兵（空副露的指纹是空串，不能拿空串当哨兵）
 var srv_busy := false                # 正在一步步推进（防止重复触发）
+var _busy_site := ""                 # 是谁把它置上的（诊断用：卡住时看这里）
+var _busy_ms := 0                     # 置上的时刻（毫秒）
+var _busy_warned := false             # 这次已经报过日志了（别每帧刷）
 const UI_TICK_SEC := 0.05            # 「贴位置」这类排版活的最低频率（20Hz）
 var _ui_tick_acc := 0.0
 # ── 性能采样（诊断用）：user://perf_on.txt 存在 → 启动后 120 秒内每 5 秒写一行 user://perf.log
@@ -2539,7 +2542,7 @@ func draw_tile() -> void:
 		return
 	if _pre_draw_gate():
 		return                                   # 摸牌前的技能询问（按卡序：主战先）
-	srv_busy = true
+	_busy_set("draw_tile")
 	# P3：一律不带 pre_ok —— 服务端自己决定「先挂哪一笔询问 / 直接摸」。
 	# （没有待问技能时，op=step 会顺手把牌摸掉，不会多一次往返。）
 	_srv_step_once(false)
@@ -2815,39 +2818,39 @@ func _pre_draw_watchdog(delta: float) -> void:
 
 func _srv_step_once(pre_ok := false) -> void:
 	if game_over:
-		srv_busy = false
+		_busy_clear()
 		return
 	# pre_ok=true 才允许服务端「替我摸牌」。没问过摸牌前技能就传 false，
 	# 服务端会停在那里（wait_pre），不会先摸牌再让我发动技能。
 	var r := srv_request({"op": "step", "seat": my_seat, "pre_ok": pre_ok})
 	if r.is_empty():
-		srv_busy = false
+		_busy_clear()
 		return
 	if bool(r.get("waiting_kangpo", false)):
 		_toast("有人正在决定是否看破…")
-		srv_busy = false
+		_busy_clear()
 		return
 	var evs = r.get("events", [])
 	# 先放锁：srv_apply_state 里万一抛脚本错误（曾经真的发生过），
 	# 后面那句 srv_busy = false 就跑不到 → 每帧都 return → 界面永久卡死。
-	srv_busy = false
+	_busy_clear()
 	srv_apply_state(r.get("state"), evs)
 	if game_over:
-		srv_busy = false
+		_busy_clear()
 		return
 	# 服务端说「先别摸，还有摸牌前技能要问」→ 交给 draw_tile 的闸门（问完会带 pre_ok 回来）
 	if typeof(evs) == TYPE_ARRAY:
 		for e in (evs as Array):
 			if typeof(e) == TYPE_DICTIONARY \
 					and String((e as Dictionary).get("event", "")) == "wait_pre":
-				srv_busy = false
+				_busy_clear()
 				draw_tile()
 				return
 	if typeof(evs) == TYPE_ARRAY and not (evs as Array).is_empty():
-		srv_busy = true
+		_busy_set("_srv_step_once")
 		get_tree().create_timer(OPP_DRAW_DELAY).timeout.connect(_srv_step_once)
 	else:
-		srv_busy = false
+		_busy_clear()
 		srv_yield_to_me()
 
 
@@ -2857,7 +2860,7 @@ func _srv_kick() -> void:
 		return
 	if not is_inside_tree():
 		return
-	srv_busy = true
+	_busy_set("_srv_kick")
 	get_tree().create_timer(OPP_DRAW_DELAY).timeout.connect(_srv_step_once)
 
 
@@ -2879,7 +2882,7 @@ func srv_act(action: String, extra: Dictionary = {}) -> Dictionary:
 	srv_apply_state(r.get("state"), r.get("events"))
 	_ensure_result()                     # 服务端说 ended 但没带 result → 重拉一次
 	if not game_over and not srv_busy:
-		srv_busy = true
+		_busy_set("srv_act")
 		get_tree().create_timer(OPP_DRAW_DELAY).timeout.connect(_srv_step_once)
 	return r
 
@@ -3498,14 +3501,14 @@ func _oracle_confirm() -> void:
 	var tile := oracle_pick
 	_oracle_close()
 	oracle_skip_next = true            # 这次已经选过了：别再弹（draw_tile 会消耗掉）
-	srv_busy = true                    # 挡住 srv_apply_state 里的自动摸牌，下面自己摸
+	_busy_set("_oracle_confirm")          # 挡住 srv_apply_state 里的自动摸牌，下面自己摸
 	var r := srv_request({"op": "oracle_pick", "seat": my_seat, "tile": tile})
 	if r.is_empty():
 		_toast(_srv_err("「降神」指定失败：服务端没有回应"))
 	elif bool(r.get("need_kangpo", false)):
 		# 看破：对方还没决定 → 这次交换先不结算，也别摸牌（放行后服务端会照原样执行）
 		_toast("「降神」已确认：等对方决定是否看破…")
-		srv_busy = false
+		_busy_clear()
 		return
 	else:
 		srv_apply_state(r.get("state"), r.get("events"))
@@ -3521,7 +3524,7 @@ func _oracle_confirm() -> void:
 						_rel_seat_name(int((s as Dictionary).get("seat", -1))),
 						String((s as Dictionary).get("with", ""))])
 			_toast("「降神」：%s" % "、".join(who))
-	srv_busy = false
+	_busy_clear()
 	draw_tile()
 
 
@@ -6994,6 +6997,27 @@ func _skill_mute_apply() -> void:
 			c.call("set_skill_muted", i, muted_skills.has(_skill_key(cn, i + 1)))
 
 
+# 被动技能：没有「发动」这个动作，点图标只给一句说明（用户口径 2026-11-06）
+const PASSIVE_TIP := {
+	"13-2": "渣和：被动生效 —— 无役也能和；无役时按 30 符 1 番算（不计手牌宝牌、无视【满贯】）",
+	"16-2": "多面：以三面/四面牌型和牌时，得点按 2 倍/3 倍结算",
+	"23-2": "暖气：和牌时冷系牌 ≤3 张 → 双倍得点；一张冷系都没有 → 三倍",
+	"25-2": "宝牌的集合：别人摸到宝牌必须跟你换非宝牌；每开一次杠 +4 番",
+	"28-2": "蜕变：打点进档就再升一档（满贯→跳满、跳满→倍满…）",
+	"29-2": "精算：副露和牌时，役种和符数按门清重算（四暗刻除外）",
+	"32-2": "无知：对对和当四暗刻、索子清一色（或只带发）当绿一色，可叠成双倍役满",
+	"35-2": "鸣牌：别人和牌时，只要有人副露过 → 得点减半",
+	"38-2": "逆袭：点数低于原点时，和牌得点双倍结算",
+	"44-1": "弃子：被飞时不支付 16000 以上的失点",
+	"46-2": "赤里：立直后和牌，和到的那张视为新里宝牌；和到 5 万/5 饼/5 索再 +1 番",
+	"8-2": "拨枪：指定决斗对象后，他拿一个决斗标记（别人和牌时按标记加番）",
+	"18-2": "连接：与一名玩家连接，他的得点与你平分（互铳无效）",
+	"12-2": "X神：让一位其他玩家跳过摸切阶段 2 次（摸牌后、打牌前点图标）",
+	"24-2": "未来：观看并调整接下来 3 枚牌山（发动后才亮牌排序）",
+	"15-1": "钓鱼：强制一家打出一张牌，并被你吃/碰/杠/和",
+	"17-1": "研究：摇骰子决定看上家还是下家的手牌（单数上家 / 双数下家）",
+}
+
 func _on_identity_skill(seat: int, card_no: int, index: int,
 		is_copy := false) -> void:
 	if game_over or seat != my_seat:
@@ -7318,6 +7342,11 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 	if int(card_no) == 30 and int(index) == 1:
 		_w30s2_tip()                       # Card30 S2「W立」：被动，只提示
 		return
+	# 被动技能：给一句说明，而不是"没有专属界面"（那看起来像 bug）
+	var _pk := "%d-%d" % [int(card_no), int(index) + 1]
+	if PASSIVE_TIP.has(_pk):
+		_toast(String(PASSIVE_TIP[_pk]))
+		return
 	_toast("这个技能还没有专属的发动界面（%d-%d），先不用点它" % [card_no, index + 1])
 
 
@@ -7485,6 +7514,10 @@ func _sw_sync(st: Dictionary) -> void:
 			hand_pick.begin(sw_hand_picks, 2, {"on_change": _refresh_sw_hand_btn})
 			_make_sw_hand_ui()
 			_update_sw_view()
+			# ★ 幂等对齐：UI 被意外释放 / 手牌锁丢了 → 重建，别让玩家点不动
+			if sw_hand_ui == null or not is_instance_valid(sw_hand_ui):
+				_make_sw_hand_ui()
+				hand_pick.begin(sw_hand_picks, 2, {"on_change": _refresh_sw_hand_btn})
 			_refresh_sw_hand_btn()
 			_toast("南风：再选两张手牌，按 下家→对家→上家 的顺序换牌")
 
@@ -7686,8 +7719,10 @@ func _sw_confirm_hand() -> void:
 		if typeof(s) == TYPE_DICTIONARY:
 			infos.append("%s→%s" % [String((s as Dictionary).get("gave", "")),
 				String((s as Dictionary).get("got", ""))])
-	srv_apply_state(r.get("state"), r.get("events"))
+	# ★ 先关面板、解锁手牌，再应用状态：中间万一抛脚本错误，
+	#   至少不会把玩家锁在"点不动"的面板上（用户口径 2026-11-06）
 	_sw_close()
+	srv_apply_state(r.get("state"), r.get("events"))
 	if infos.is_empty():
 		_toast("南风：三家都没有指定的牌，技能结束")
 	else:
@@ -8637,20 +8672,13 @@ func _c32_sync(st: Dictionary) -> void:
 	if typeof(raw_p) == TYPE_ARRAY:
 		picked = raw_p
 	if role == "give":
-		# 暂离：他还有配牌技能没发动 → 先把面板收起来，让他玩自己的
-		var mine: Array = []
-		var ds = st.get("deal_skill")
-		if typeof(ds) == TYPE_DICTIONARY:
-			var mm = (ds as Dictionary).get("mine")
-			if typeof(mm) == TYPE_ARRAY:
-				mine = mm
-		if not mine.is_empty():
-			if c32_panel.active:
-				c32_panel.close()
-			c32_key = ""
-			return
+		# ★ 用户口径 2026-11-06：交牌面板**常驻**。
+		#   以前这里有「我还有配牌技能没决定 → 先把面板收起来」的分支，
+		#   结果服务端一直在等我交牌、我这边却在看自己的技能 → 全桌互等卡死。
+		#   现在两个面板并存：自己的技能走配牌队列（服务端排队），交牌照样能点。
 		var key := "give-%d-%d" % [int(d.get("stage", 0)), int(d.get("from", -1))]
-		if c32_key == key and String(c32_panel.mode) == "give":
+		if c32_key == key and c32_panel.active \
+				and String(c32_panel.mode) == "give":
 			return
 		c32_key = key
 		c32_panel.give_begin(int(d.get("from", -1)),
@@ -8662,7 +8690,8 @@ func _c32_sync(st: Dictionary) -> void:
 	for t in picked:
 		parts.append(String(t))
 	var key2 := "swap-%d-%s" % [int(d.get("stage", 0)), "、".join(parts)]
-	if c32_key == key2 and String(c32_panel.mode) == "swap":
+	# 面板被意外关掉也要能重新弹出来（幂等对齐，不是"变了才动"）
+	if c32_key == key2 and c32_panel.active and String(c32_panel.mode) == "swap":
 		return
 	c32_key = key2
 	c32_panel.swap_begin(int(d.get("target", -1)), picked)
@@ -16546,8 +16575,27 @@ func _tm_tick(delta: float) -> void:
 		_tm_fire(mode, cur)
 
 
+# ── srv_busy 的结构化开关：谁置上的、什么时候置上的都记下来 ──
+#   出问题时报日志（不自动复位）：见 _process 里的 [BUSY] 检查。
+func _busy_set(site: String) -> void:
+	srv_busy = true
+	_busy_site = site
+	_busy_ms = Time.get_ticks_msec()
+	_busy_warned = false
+
+func _busy_clear() -> void:
+	srv_busy = false
+	_busy_site = ""
+	_busy_warned = false
+
 func _process(delta: float) -> void:
 	var _pf0 := Time.get_ticks_usec()
+	# ★ 诊断：srv_busy 超过 5 秒还没清 → 打印是谁置上的。
+	#   只报日志，**不自动复位**（自动复位是兜底，会把真 bug 藏起来）。
+	if srv_busy and not _busy_warned and Time.get_ticks_msec() - _busy_ms > 5000:
+		_busy_warned = true
+		push_error("[BUSY] srv_busy 超过 5 秒没清：%s" % _busy_site)
+		_toast("内部状态卡在：%s（请把这条报给开发者）" % _busy_site)
 	_lizhi_stick_tick()      # 选牌界面盖着时把立直棒整层藏起来
 	# 播报期间牌桌是静态的：只留租约/结算确认，其余 tick/sync/轮询全跳过（不然每帧一堆活抢帧）
 	if _win_intro_running or _win_panel_visible():
@@ -16670,7 +16718,7 @@ func _process(delta: float) -> void:
 	var i_owe_nothing := phase_now == "claim" and srv_opts_of(srv_state).is_empty()
 	if phase_now == "deal_skill" or i_owe_nothing:
 		if not srv_busy:
-			srv_busy = true
+			_busy_set("_process")
 			_srv_step_once()
 		return
 	# 轮询用非阻塞：发出去立刻返回，下一帧再收（否则每 0.35s 按住一整个 RTT）
@@ -18352,7 +18400,7 @@ func _dev_auto_tick() -> void:
 			_on_pass_pressed()
 		return
 	if turn != my_seat:
-		srv_busy = true
+		_busy_set("_dev_auto_tick")
 		_srv_step_once()
 		return
 	match ph:
@@ -18379,7 +18427,7 @@ func _dev_auto_tick() -> void:
 			else:
 				_on_pass_pressed()
 		_:
-			srv_busy = true
+			_busy_set("_dev_auto_tick")
 			_srv_step_once()
 
 

@@ -412,7 +412,9 @@ class Game:
         self.deal_wait: set[int] = set()
         self.deal_used: set[int] = set()
         self.deal_deadline: float = 0.0     # 配牌技能阶段的截止时间（超时自动跳过）
-        self.deal_queue: list[dict] = []       # 发动顺序（按这个顺序结算）
+        self.deal_queue: list[dict] = []
+        # 排队等结算的配牌技能（先来的先结算，后来的在这里等）
+        self.deal_pending: list[dict] = []       # 发动顺序（按这个顺序结算）
         # 技能播报（全场）：客户端看到 id 变了就弹字幕
         self.broadcast: dict | None = None
         self.broadcast_id = 0
@@ -657,6 +659,8 @@ class Game:
         self.deal_used = {int(x) for x in (f.get("deal_used") or [])
                           if int(x) in range(4)}
         self.deal_queue = list(f.get("deal_queue") or [])
+        self.deal_pending = [dict(x) for x in (f.get("deal_pending") or [])
+                              if isinstance(x, dict)]
         df = f.get("deal_flow")
         self.deal_flow = df if isinstance(df, dict) and df else None
         self.c31s2_used = {int(k): set(int(x) for x in v)
@@ -1007,6 +1011,7 @@ class Game:
             "deal_used": sorted(self.deal_used),
             "deal_deadline": float(self.deal_deadline),
             "deal_queue": self.deal_queue,
+            "deal_pending": [dict(x) for x in self.deal_pending],
             "deal_flow": self.deal_flow,
             "c31s2_used": {str(k): sorted(int(x) for x in v)
                            for k, v in self.c31s2_used.items()},
@@ -1340,9 +1345,12 @@ class Game:
                                for t in range(4) if int(t) != int(seat)},
                     "shown": sorted(int(x) for x in self.c40_show.get(int(seat), set()))},
             # 协战卡手动遮罩：{座位: 卡号}（只放**现在真的生效**的：卡换掉就自动没）
-            "support_mute": {str(s2): int(skills.support_muted(self.db, self, s2))
-                             for s2 in range(4)
-                             if int(skills.support_muted(self.db, self, s2)) > 0},
+            # ★ 只发**自己**这一家：以前把全桌的遮罩表都发下来，
+            #   别人的客户端会据此把他的卡当成"玩家手动遮罩"→ 变成可点（身份泄露）
+            "support_mute": ({str(seat): int(skills.support_muted(self.db, self, int(seat)))}
+                             if (seat is not None
+                                 and int(skills.support_muted(self.db, self, int(seat))) > 0)
+                             else {}),
             # 拦截树：现在等我回答的询问（可能有**多条**，各带 id）
             "asks": self.act_ask_view(int(seat)),
             # 免疫（43S2）：还剩几次 / 该我回答的那一问 / 我免疫的技能
@@ -2787,6 +2795,25 @@ class Game:
         self.act_spawn(int(seat), int(card), int(skill), op="", payload={},
                        kind="skill", post=True)
 
+    def note_public(self, seat: int, card: int) -> None:
+        """这张卡**已经公开**（播报过了）→ 只翻明，不置灰。
+
+        结算类技能（渣和/无知/逆袭/夺目/暖气/赤里…）没有「发动」这个动作，
+        不能记 used_skills（图标会永久灰），但卡号已经随播报公开了 → 卡应当翻明。
+        """
+        s = int(seat)
+        c = int(card)
+        if not (0 <= s < 4) or c <= 0:
+            return
+        skills.set_char_use(self.db, s, c,
+                            skills._round_no(self.round_wind, self.round["number"]))
+        if s not in self._revealed_cache:
+            self._revealed_cache.add(s)
+            with self.db.tx():
+                self.db.conn.execute(
+                    "INSERT OR REPLACE INTO meta(key, value) VALUES('revealed_seats', ?)",
+                    (json.dumps(sorted(self._revealed_cache)),))
+
     def note_use(self, seat: int, card: int, skill: int, once: bool = True,
                  gate: bool = True) -> None:
         """一个技能**真的发动了**：统一在这里记所有账。
@@ -3435,6 +3462,16 @@ class Game:
             return {"ok": True, "busy": True, "pending": sorted(self.deal_wait),
                     "flow": self.deal_flow_view(seat)}      # 风神还在换牌
         if seat not in self.deal_wait:
+            # 排在队列里的：允许撤销（不然点了就锁死，只能等）
+            if action == "skip" and any(int(x.get("seat", -1)) == int(seat)
+                                        for x in self.deal_pending):
+                self.deal_pending = [x for x in self.deal_pending
+                                     if int(x.get("seat", -1)) != int(seat)]
+                self.deal_used.add(seat)
+                self.save_flags()
+                self._maybe_close_deal()
+                return {"ok": True, "skipped": True, "unqueued": True,
+                        "pending": sorted(self.deal_wait)}
             return {"ok": True, "done": True, "pending": sorted(self.deal_wait)}
         if action == "skip":
             self.deal_wait.discard(seat)
@@ -3453,6 +3490,23 @@ class Game:
         if self.skill_used(int(seat), int(card), int(skill)):
             return {"ok": True, "armed": False, "already": True,
                     "reason": "本小局已经发动过了", "pending": sorted(self.deal_wait)}
+        # ★ 已经有人在做多步流程（南风/风神/新手运…）→ 不报错，排队
+        #   （用户口径 2026-11-06：先来的先结算，后来的等他结算完再出列）
+        if self.deal_flow is not None:
+            self.deal_pending.append({"seat": int(seat), "card": int(card),
+                                      "skill": int(skill)})
+            self.deal_wait.discard(seat)      # 他已经"决定了"，别再等他
+            self.save_flags()
+            return {"ok": True, "queued": True, "pending": sorted(self.deal_wait),
+                    "queue": [dict(x) for x in self.deal_pending],
+                    "flow": self.deal_flow_view(seat)}
+        r = self._dispatch_deal_skill(seat, int(card), int(skill))
+        if r is not None:
+            return r
+        return self._finish_deal_arm(seat, int(card), int(skill))
+
+    def _dispatch_deal_skill(self, seat: int, card: int, skill: int):
+        """配牌技能的实际分派（不记账）。返回 None = 走通用 arm_skill 那条。"""
         if (int(card), int(skill)) == (28, 1):
             return self._arm_c28s1(seat, int(card), int(skill))
         if (int(card), int(skill)) == (26, 1):
@@ -3471,6 +3525,10 @@ class Game:
             return self._start_yanjiu(seat, int(card), int(skill))
         if (int(card), int(skill)) == (14, 1):
             return self._start_ignite(seat, int(card), int(skill))
+        return None
+
+    def _finish_deal_arm(self, seat: int, card: int, skill: int) -> dict:
+        """通用一次性配牌技能（云外镜 / 满贯 / 天梯 …）的记账 + 收尾。"""
         r = self.arm_skill(seat, int(card), int(skill))
         if not r.get("armed", False):
             r["pending"] = sorted(self.deal_wait)     # 没发动成功就还等他
@@ -3480,8 +3538,36 @@ class Game:
         self.deal_wait.discard(seat)
         self.deal_used.add(seat)
         self.save_flags()
+        self._pump_deal_pending()
         self._maybe_close_deal()
         return {**r, "pending": sorted(self.deal_wait)}
+
+    def _pump_deal_pending(self) -> None:
+        """上一个配牌流程结算完了 → 把排队里的下一个放出来（纯队列，没有超时）。"""
+        if self.phase != "deal_skill":
+            self.deal_pending = []
+            return
+        guard = 0
+        while self.deal_pending and self.deal_flow is None and guard < 8:
+            guard += 1
+            it = self.deal_pending.pop(0)
+            s = int(it.get("seat", -1))
+            c = int(it.get("card", 0))
+            k = int(it.get("skill", 0))
+            self.save_flags()
+            if not (0 <= s < 4):
+                continue
+            try:
+                r = self._dispatch_deal_skill(s, c, k)
+                if r is None:
+                    r = self._finish_deal_arm(s, c, k)
+            except Exception:                     # noqa: BLE001
+                # 这时机已经发不了了（被剔除 / 已经用过 / 场上条件变了）→ 跳过这一个
+                self.save_flags()
+                continue
+            if r is not None and not r.get("armed", False) and not r.get("already"):
+                continue                          # 没发动成功：看下一个
+        self.save_flags()
 
     # ── 策略（Card05 Skill1）────────────────────────────────────
     def owns_card05(self, seat: int) -> bool:
@@ -4437,6 +4523,7 @@ class Game:
                 key = "%d-%d-%d" % (int(f.get("card", 0)), int(f.get("skill", 0)), s)
                 self.used_skills.discard(key)
             self.save_flags()
+            self._pump_deal_pending()      # 取消了这个流程 → 队列里的下一个继续
             self._maybe_close_deal()
             return {"cancelled": True, "kind": kind, "used": bool(used)}
 
@@ -7270,6 +7357,7 @@ class Game:
             self.deal_wait.discard(s)
             self.deal_used.add(s)
         self.save_flags()
+        self._pump_deal_pending()          # 队列里的下一个配牌技能出列
         self._maybe_close_deal()
 
     # ─── Card30 S1【向听】：选两家 → 他们各给 2~3 张 → 我挑一张换 ─────
@@ -8127,7 +8215,12 @@ class Game:
                 "got": [], "next": self.deal_flow_view(int(seat))}
 
     def _maybe_close_deal(self) -> None:
-        if self.phase == "deal_skill" and not self.deal_wait:
+        if self.phase != "deal_skill":
+            return
+        # 队列里还有排队的配牌技能 → 放一个出来（纯队列，不靠超时兜底）
+        if self.deal_flow is None and self.deal_pending:
+            self._pump_deal_pending()
+        if self.deal_flow is None and not self.deal_wait and not self.deal_pending:
             self.phase = "discard"                    # 所有人都发动完/跳过 → 庄家切牌
             self.turn = self.dealer
             self.deal_deadline = 0.0
@@ -8965,6 +9058,9 @@ class Game:
             raise RuleError("手里不是这一轮的卡")
         if self.qianlu:
             raise RuleError("前路已经预言过了")
+        # ★ 时机校验：以前这里没有，别人回合也能发（还会先挂看破把全桌锁住）
+        if not self.qianlu_can(s):
+            raise RuleError("前路只能在自己的打牌回合、3 巡之后发动")
         if self.my_discard_count(s) < 3:
             raise RuleError("3 巡之后才能预言")
         pred = [str(t) for t in (tiles or [])][:3]
@@ -11717,6 +11813,7 @@ class Game:
                                    "wind": wind})
         if len(self.broadcast_log) > 24:
             self.broadcast_log = self.broadcast_log[-24:]
+        self.note_public(s, c)          # 卡号已经广播了 → 卡也翻明（不置灰）
         self.save_flags()
 
     def _settle_c30s2(self, res: dict, env: dict) -> None:

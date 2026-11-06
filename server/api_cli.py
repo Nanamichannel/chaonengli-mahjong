@@ -1331,6 +1331,7 @@ _GATE_PRECHECK = {
     "c45s1_apply": "c45s1_can",
     "c45s2_apply": "c45s2_can",
     "c46s1_apply": "c46s1_can",
+    "qianlu": "qianlu_can",
 }
 
 

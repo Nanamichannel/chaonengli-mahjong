@@ -524,6 +524,11 @@ func _apply_char_cards() -> bool:
 # 这个位子是不是「被玩家手动遮罩的协战卡」
 func _manual_muted_slot(slot: int) -> bool:
 	var seat := _seat_of_group((slot - 1) >> 1)
+	# ★ 只对自己那一家生效（用户口径 2026-11-06）：
+	#   以前不分座位，服务端又把全桌的遮罩表发下来 → 别人遮罩过自己的协战卡，
+	#   我们这边就会把他的卡 `set_hidden(false)` → 能点开看技能（身份泄露）。
+	if seat != _view_seat:
+		return false
 	var shown := int(_slot_card.get(slot, -1))
 	return shown > 0 and int(_support_mute.get(seat, 0)) == shown
 

@@ -3583,8 +3583,12 @@ class Game:
                 r = self._dispatch_deal_skill(s, c, k)
                 if r is None:
                     r = self._finish_deal_arm(s, c, k)
-            except Exception:                     # noqa: BLE001
-                # 这时机已经发不了了（被剔除 / 已经用过 / 场上条件变了）→ 跳过这一个
+            except Exception as e:                # noqa: BLE001
+                # 这时机已经发不了了（被剔除 / 已经用过 / 场上条件变了）→ 跳过这一个。
+                # ★ 必须留一条日志：以前是静默 continue，玩家只会看到「技能没发动」，
+                #   而我们这边什么都查不到（用户口径 2026-11-06）。
+                print("[DEAL] 队列里的配牌技能发不动，跳过：seat=%s card=%s skill=%s (%s: %s)"
+                      % (s, c, k, type(e).__name__, e), flush=True)
                 self.save_flags()
                 continue
             if r is not None and not r.get("armed", False) and not r.get("already"):

@@ -13316,9 +13316,21 @@ func _apply_entity_states(st2: Dictionary) -> void:
 			if kind == "kakan" and n == 4:
 				kakan_top = arr[3]
 			var lay: Array = arr if kakan_top.is_empty() else arr.slice(0, 3)
+			# ★ 每张副露牌的**真实**显示尺寸：问牌本体，不用 mw / mrw 估算
+			#   （估算比实际大一点，副露里就会裂出缝 —— 加杠上下两张最明显）
+			var lay_sz: Array = []
 			var group_w := 0.0
 			for td in lay:
-				group_w += mrw if bool(td.get("rotated", false)) else mw
+				var rot0 := bool(td.get("rotated", false))
+				var p0 := tile_bank.piece(String(td.get("id", "")))
+				var s0 := Vector2(mrw if rot0 else mw, mrh if rot0 else mh)
+				if p0 != null:
+					var sz0 := p0.form_size("rot" if rot0 else "face_meld", Vector2.ONE * ms)
+					if sz0.x > 1.0 and sz0.y > 1.0:
+						s0 = sz0
+				lay_sz.append(s0)
+				group_w += s0.x
+			var meld_bottom := vp.y + hand_offset.y
 			var x := my_right - group_w
 			if is_ankan:
 				# 暗杠：两侧暗牌 + 中间两张明牌，等宽 4 张
@@ -13328,26 +13340,29 @@ func _apply_entity_states(st2: Dictionary) -> void:
 					var p := tile_bank.piece(String(td.get("id", "")))
 					if p != null:
 						var form := "back_meld" if (k == 0 or k == 3) else "face_meld"
-						p.apply_state(form, Vector2(x0 + mw * 0.5 + k * mw, vp.y + hand_offset.y - mh * 0.5), 0.0, Vector2.ONE * ms)
+						p.apply_state(form, Vector2(x0 + mw * 0.5 + k * mw, meld_bottom - mh * 0.5), 0.0, Vector2.ONE * ms)
 			else:
 				var rot_x := -1.0
-				for td in lay:
-					var k := int(td.get("slot", 0))
-					var rot := bool(td.get("rotated", false))
-					var sw := mrw if rot else mw
-					var p := tile_bank.piece(String(td.get("id", "")))
+				var rot_h := mrh
+				for k in range(lay.size()):
+					var td2: Dictionary = lay[k]
+					var rot := bool(td2.get("rotated", false))
+					var sz2: Vector2 = lay_sz[k]
+					var p := tile_bank.piece(String(td2.get("id", "")))
 					if p != null:
 						if rot:
-							rot_x = x + sw * 0.5
-							p.apply_state("rot", Vector2(rot_x, vp.y + hand_offset.y - mrh * 0.5), 0.0, Vector2.ONE * ms)
+							rot_x = x + sz2.x * 0.5
+							rot_h = sz2.y
+							p.apply_state("rot", Vector2(rot_x, meld_bottom - sz2.y * 0.5), 0.0, Vector2.ONE * ms)
 						else:
-							p.apply_state("face_meld", Vector2(x + sw * 0.5, vp.y + hand_offset.y - mh * 0.5), 0.0, Vector2.ONE * ms)
-					x += sw
+							p.apply_state("face_meld", Vector2(x + sz2.x * 0.5, meld_bottom - sz2.y * 0.5), 0.0, Vector2.ONE * ms)
+					x += sz2.x
 				if not kakan_top.is_empty() and rot_x >= 0.0:
-					# 加杠的第 4 张：横着叠在原来那张横置牌的正上方（明杠不动）
+					# 加杠的第 4 张：横着叠在原来那张横置牌的正上方，严丝合缝（明杠不动）
 					var p2 := tile_bank.piece(String(kakan_top.get("id", "")))
 					if p2 != null:
-						p2.apply_state("rot", Vector2(rot_x, vp.y + hand_offset.y - mrh * 1.5), 0.0, Vector2.ONE * ms)
+						p2.apply_state("rot", Vector2(rot_x, meld_bottom - rot_h * (0.5 + KAKAN_STACK_OFFSET)),
+						0.0, Vector2.ONE * ms)
 			my_right -= group_w
 	# 其他家副露锚点 = 屏幕四个角（与旧版 add_opp_meld / add_opp_ankan 一致）
 	# 注意：不要加 _opp_offset（那是给手牌用的，C 的 -60 会把副露/暗杠推出屏幕）
@@ -13385,33 +13400,44 @@ func _apply_entity_states(st2: Dictionary) -> void:
 			if kind2 == "kakan" and arr.size() == 4:
 				kakan_top2 = arr[3]
 			var lay2: Array = arr if kakan_top2.is_empty() else arr.slice(0, 3)
+			var oscale := Vector2.ONE * (sz.x / maxf(tile_size.x, 1.0))
+			var rot_depth := ol * (301.0 / 359.0)
+			var lay_sz2: Array = []
 			var group_w2 := 0.0
 			for td in lay2:
-				group_w2 += ol if bool(td.get("rotated", false)) else ow
+				var rot0 := bool(td.get("rotated", false))
+				var p0 := tile_bank.piece(String(td.get("id", "")))
+				var s0 := Vector2(ol if rot0 else ow, rot_depth if rot0 else ol)
+				if p0 != null:
+					var sz0 := p0.form_size("rot" if rot0 else "face_meld", oscale)
+					if sz0.x > 1.0 and sz0.y > 1.0:
+						s0 = sz0
+				lay_sz2.append(s0)
+				group_w2 += s0.x
 			var c := 0.0
 			var rot_base := Vector2.INF
-			var rot_depth := ol * (301.0 / 359.0)
+			var rot_h2 := rot_depth
 			for k in range(lay2.size()):
 				var td: Dictionary = lay2[k]
 				var rot := bool(td.get("rotated", false))
-				var sw2 := ol if rot else ow
-				var depth := ol if not rot else (ol * (301.0 / 359.0))
-				var pos := anc + to_far * (group_w2 - c - sw2 * 0.5) + out_dir * (depth * 0.5)
+				var sz2: Vector2 = lay_sz2[k]
+				var pos := anc + to_far * (group_w2 - c - sz2.x * 0.5) + out_dir * (sz2.y * 0.5)
 				if rot:
-					rot_base = anc + to_far * (group_w2 - c - sw2 * 0.5)
+					rot_base = anc + to_far * (group_w2 - c - sz2.x * 0.5)
+					rot_h2 = sz2.y
 				var form := "rot" if rot else "face_meld"
 				if is_ankan2:
 					# 暗杠：左右两张暗置、中间两张亮牌（所有视角一致）
 					form = "back_meld" if (k == 0 or k == arr.size() - 1) else "face_meld"
 				var p := tile_bank.piece(String(td.get("id", "")))
 				if p != null:
-					p.apply_state(form, pos, rot_deg, Vector2.ONE * (sz.x / maxf(tile_size.x, 1.0)))
-				c += sw2
+					p.apply_state(form, pos, rot_deg, oscale)
+				c += sz2.x
 			if not kakan_top2.is_empty() and rot_base != Vector2.INF:
 				var pk := tile_bank.piece(String(kakan_top2.get("id", "")))
 				if pk != null:
-					pk.apply_state("rot", rot_base + out_dir * (rot_depth * 1.5), rot_deg,
-						Vector2.ONE * (sz.x / maxf(tile_size.x, 1.0)))
+					pk.apply_state("rot", rot_base + out_dir * (rot_h2 * (0.5 + KAKAN_STACK_OFFSET)),
+						rot_deg, oscale)
 			anc = anc + to_far * group_w2
 		opp_anchor[who] = anc
 
@@ -17099,6 +17125,10 @@ const KAKAN_TILE_AT_LEFT := true
 #     C：远端在右 → 取 true （紧贴右侧）
 #     D：远端在下 → 取 true （紧贴下侧）
 const KAKAN_OPP_AT_FAR := {"B": false, "C": true, "D": true}
+
+#   加杠的第 4 张「叠」进下面那张多少：中心间距 = 横置牌厚度 × (0.5 + 这个值)
+#   1.0 = 严丝合缝（两张牌各自的边框会连成一条缝）→ 0.85 = 叠进去 15%
+const KAKAN_STACK_OFFSET := 0.85
 
 
 # ── 副露牌大小接口 ──

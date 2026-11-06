@@ -157,6 +157,15 @@ func show_form(f: String) -> void:
 		if is_instance_valid(spr):
 			spr.visible = (key == f)
 
+# 某个显示形式在父节点坐标系里的**实际**尺寸（含节点 p_scale）
+# ★ 副露摆位用它，别用 mw / mrw×(302/360) 之类的估算 —— 估大一点就会裂出缝
+func form_size(f: String, p_scale: Vector2 = Vector2.ONE) -> Vector2:
+	var spr: Sprite2D = _sprites.get(String(FORM_SPRITE.get(f, "")))
+	if spr == null or spr.texture == null:
+		return _base_size * p_scale
+	return spr.texture.get_size() * spr.scale * p_scale
+
+
 func apply_form(f: String) -> void:
 	show_form(String(FORM_SPRITE.get(f, "")))
 

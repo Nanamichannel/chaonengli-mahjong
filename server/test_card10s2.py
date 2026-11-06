@@ -145,7 +145,7 @@ def main() -> int:
     g3 = to_discard(Game(db, rid), 0)
     check("乱牌也能自摸（就绪）", g3._win_ok(0, "7z", tsumo=True), True)
     res = g3._judge_win(0, "7z", tsumo=True)
-    check("判成小四喜", [y["name"] for y in (res or {}).get("yaku", [])], ["小四喜（四喜）"])
+    check("判成小四喜", [y["name"] for y in (res or {}).get("yaku", [])], ["四喜"])
     check("是役满", int((res or {}).get("yakuman", 0)), 1)
     check("点数按役满算", int(((res or {}).get("pays") or {}).get("total", 0)) > 0, True)
 
@@ -164,7 +164,7 @@ def main() -> int:
     ev = g6._c10s2_auto_tsumo(0, "7z")
     check("第 5 张摸牌直接结算", (ev or {}).get("event"), "tsumo")
     check("结算成小四喜",
-          "小四喜（四喜）" in [y["name"] for y in ((g6.result or {}).get("yaku") or [])],
+          "四喜" in [y["name"] for y in ((g6.result or {}).get("yaku") or [])],
           True)
     check("本局结束", (g6.result or {}).get("result"), "tsumo")
     g6b = Game(db6, rid6)

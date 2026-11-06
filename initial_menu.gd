@@ -183,6 +183,7 @@ func _ready() -> void:
 	_prepare_cards()
 	_build_ui()
 	_build_room_ui()
+	_make_voice_picker()          # 左下角：角色语音包下拉框
 	if start_btn != null and not start_btn.pressed.is_connected(_on_start_pressed):
 		start_btn.pressed.connect(_on_start_pressed)
 	_wipe_if_fresh()                    # 上一次记录没清干净 → 这里补一刀，从「准备」重新开始
@@ -370,6 +371,112 @@ var net_badge: Label = null
 
 
 # 连不上服务端时的一行提示（放左上角，平时隐藏）
+# ── 角色语音包（左下角下拉框）────────────────────────────────────────
+const VOICE_DB := preload("res://voice_db.gd")
+var wind_label: Label = null
+
+
+# 本局自风：大厅（选卡 / 排序）就告诉玩家「进对局后你是哪家」——
+# 用户口径 2026-11-05：这条提示不该等到进游戏配牌时才弹。
+func _refresh_my_wind() -> void:
+	if wind_label == null or not is_instance_valid(wind_label):
+		return
+	var d = lobby.get("dealer", -1) if typeof(lobby) == TYPE_DICTIONARY else -1
+	if (typeof(d) != TYPE_INT and typeof(d) != TYPE_FLOAT) or my_seat < 0:
+		wind_label.text = ""
+		return
+	var idx := (int(my_seat) - int(d) + 4) % 4
+	var nm: String = ["东", "南", "西", "北"][idx]
+	wind_label.text = "本局自风：%s（%d 号位%s）" % [
+		nm, int(my_seat) + 1, "·坐庄" if idx == 0 else ""]
+var voice_opt: OptionButton = null
+var _voice_prev: AudioStreamPlayer = null
+
+
+func _voice_pack_now() -> String:
+	var cs := get_node_or_null("/root/ClientState")
+	if cs != null and String(cs.get("voice_pack")) != "":
+		return String(cs.get("voice_pack"))
+	var f := FileAccess.open("user://voice_pack.txt", FileAccess.READ)
+	if f != null:
+		var t := f.get_as_text().strip_edges()
+		f.close()
+		if t != "":
+			return t
+	return "miyanaga_saki"
+
+
+func _make_voice_picker() -> void:
+	var ui := get_node_or_null("LobbyUI")
+	if ui == null:
+		return
+	var tag := Label.new()
+	tag.name = "VoiceTag"
+	tag.text = "语音包"
+	tag.position = Vector2(48, 992)
+	tag.size = Vector2(96, 40)
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.add_theme_font_size_override("font_size", 22)
+	tag.add_theme_color_override("font_color", Color(0.88, 0.92, 1.0))
+	tag.add_theme_color_override("font_outline_color", Color(0.04, 0.05, 0.09))
+	tag.add_theme_constant_override("outline_size", 4)
+	ui.add_child(tag)
+	voice_opt = OptionButton.new()
+	voice_opt.name = "VoicePick"
+	wind_label = Label.new()
+	wind_label.name = "WindLabel"
+	wind_label.position = Vector2(48, 944)
+	wind_label.size = Vector2(520, 40)
+	wind_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wind_label.add_theme_font_size_override("font_size", 24)
+	wind_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.42))
+	wind_label.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.02))
+	wind_label.add_theme_constant_override("outline_size", 5)
+	ui.add_child(wind_label)
+	_refresh_my_wind()
+	voice_opt.position = Vector2(150, 988)
+	voice_opt.size = Vector2(300, 44)
+	voice_opt.add_theme_font_size_override("font_size", 20)
+	for id in VOICE_DB.PACK_IDS:
+		voice_opt.add_item(VOICE_DB.display_name(id))
+	ui.add_child(voice_opt)
+	var cur := _voice_pack_now()
+	var idx: int = VOICE_DB.PACK_IDS.find(cur)
+	voice_opt.selected = idx if idx >= 0 else 0
+	voice_opt.item_selected.connect(_on_voice_picked)
+
+
+func _on_voice_picked(i: int) -> void:
+	if i < 0 or i >= VOICE_DB.PACK_IDS.size():
+		return
+	var pid: String = VOICE_DB.PACK_IDS[i]
+	var cs := get_node_or_null("/root/ClientState")
+	if cs != null:
+		cs.set("voice_pack", pid)          # 本窗口内存（进牌桌直接读它）
+	var f := FileAccess.open("user://voice_pack.txt", FileAccess.WRITE)
+	if f != null:
+		f.store_string(pid)
+		f.close()
+	_voice_preview(pid)
+	_set_hint("语音包：%s（自己吃碰杠立直和牌时播）" % VOICE_DB.display_name(pid))
+
+
+# 试听：放一句「自摸」
+func _voice_preview(pid: String) -> void:
+	var path: String = VOICE_DB.path_of(pid, "tsumo")
+	if path == "" or not ResourceLoader.exists(path):
+		return
+	if _voice_prev == null or not is_instance_valid(_voice_prev):
+		_voice_prev = AudioStreamPlayer.new()
+		_voice_prev.volume_db = -4.0
+		add_child(_voice_prev)
+	var st = load(path)
+	if st == null:
+		return
+	_voice_prev.stream = st
+	_voice_prev.play()
+
+
 func _make_net_badge() -> void:
 	net_badge = Label.new()
 	net_badge.name = "NetBadge"
@@ -678,6 +785,7 @@ func _apply_lobby(l) -> void:
 		order.clear()
 
 	_refresh_seats()
+	_refresh_my_wind()            # 本局自风（排序时就要看得到）
 	_refresh_hint()
 	_refresh_ready_frame()
 

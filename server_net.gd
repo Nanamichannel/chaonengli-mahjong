@@ -324,11 +324,17 @@ func _ensure_connected() -> bool:
 	return true
 
 func _post(req: Dictionary) -> Dictionary:
+	# 单次请求可以自带更短的超时（出牌/推一步这种：卡住时别冻满 10 秒）
+	var tmo := timeout_ms
+	if req.has("_timeout_ms"):
+		tmo = clampi(int(req.get("_timeout_ms", timeout_ms)), 1000, timeout_ms)
+		req = req.duplicate()
+		req.erase("_timeout_ms")
 	var body := JSON.stringify(req)
 	var path := "/rpc/" + room.uri_encode()
 	if token != "":
 		path += "?token=" + token.uri_encode()
-	var deadline := Time.get_ticks_msec() + timeout_ms
+	var deadline := Time.get_ticks_msec() + tmo
 
 	if not _ensure_connected():
 		_retry_safe = true                 # 连接都没建起来，动作肯定没执行
@@ -356,7 +362,7 @@ func _post(req: Dictionary) -> Dictionary:
 	while http.get_status() == HTTPClient.STATUS_REQUESTING:
 		http.poll()
 		if Time.get_ticks_msec() > deadline:
-			last_error = "等响应超时（%d ms）" % timeout_ms
+			last_error = "等响应超时（%d ms）" % tmo
 			_reset_conn()
 			return {}
 		OS.delay_msec(2)
@@ -376,7 +382,7 @@ func _post(req: Dictionary) -> Dictionary:
 		else:
 			OS.delay_msec(2)
 		if Time.get_ticks_msec() > deadline:
-			last_error = "读响应超时（%d ms）" % timeout_ms
+			last_error = "读响应超时（%d ms）" % tmo
 			_reset_conn()
 			return {}
 

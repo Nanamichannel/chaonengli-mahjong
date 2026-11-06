@@ -215,7 +215,7 @@ def main() -> int:
     g16 = Game(db7, rid7)
     check("35 号卡在 1 号位（赢家是 0）", g16.c35s2_owner(), 1)
     r7 = settle_ron(db7, rid7)
-    check("有逆势明细", "逆势（得点减半）" in (r7.get("yaku_names") or []), True)
+    check("有逆势明细", "逆势" in (r7.get("yaku_names") or []), True)
     check("得点 = 减半后的值", int(r7.get("points") or 0), 2000)
     check("结算面板的 pays.total 也减半（不然玩家看到「没减半」）",
           int((r7.get("pays") or {}).get("total", -1)), int(r7.get("points") or 0))

@@ -91,7 +91,7 @@ def main() -> int:
     dd = res.get("deltas") or {}
     check("收付 ±1000", [int(dd.get("0", dd.get(0, 0))),
                         int(dd.get("1", dd.get(1, 0)))], [-1000, 1000])
-    check("明细写「故意」", (res.get("yaku_names") or [""])[0], "故意（支付 1000 点）")
+    check("明细写「故意」", (res.get("yaku_names") or [""])[0], "故意")
     check("状态清掉", int(Game(db, rid).c36s2_on), -1)
 
     print("\n④ 多家都能成 → 下家优先")

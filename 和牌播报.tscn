@@ -591,7 +591,7 @@ frame_progress = 1.0
 position = Vector2(921.66, 540.105)
 scale = Vector2(0.965, 0.965)
 sprite_frames = SubResource("SpriteFrames_tuq5b")
-animation = &"役满"
+animation = &"倍满"
 
 [node name="三倍满" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=766946116]
 position = Vector2(921.66, 540.105)

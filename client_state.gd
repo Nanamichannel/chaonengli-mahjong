@@ -6,7 +6,8 @@ extends Node
 # 注意：user:// 是四个实例共用的目录，所以「我这个窗口是几号位」不能写文件，
 # 只能放进程内存（就是这里）。
 
-var seat := -1                 # 0..3，-1 = 还没认领
+var seat := -1
+var voice_pack := ""           # 这个窗口选的角色语音包 id（见 voice_db.gd）                 # 0..3，-1 = 还没认领
 var lobby: Dictionary = {}     # 服务端大厅快照（phase / seats / pool / turn）
 var orders: Array = []         # 四家各自的 5 张最终顺序（进牌桌时从服务端抄下来）
 var picks: Array = []

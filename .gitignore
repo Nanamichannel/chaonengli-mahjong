@@ -44,3 +44,6 @@ server/net_config.json
 # 本地调试开关：announce=1 时 F5 直接进和牌播报调界面
 autoplay.cfg
 server/mahjong.db
+
+# 参考素材（每张卡的示范截图，80MB / 5000+ 文件，不进仓库）
+Cailiao/UI/示范/

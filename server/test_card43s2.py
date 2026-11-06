@@ -140,7 +140,30 @@ def main() -> int:
     g6 = Game(db6, rid6)
     check("牌河 seq 501 → 2 号位", g6.c43s2_targets("c27s1_swap", {"seq": 501}), {2})
     check("river 列表", g6.c43s2_targets("c33s1_swap", {"river": [501]}), {2})
-    check("算不准的按其他三家", g6.c43s2_targets("swap", {}), {0, 1, 2, 3})
+    # ★ 2026-11-04 改口径：只有「真的波及三家」（风神）才按全体算；
+    #   其余靠 payload / 内部状态精确推导 —— 别家对别家的技能，第三方不该被问。
+    check("换牌没写目标 → 不瞎问", g6.c43s2_targets("swap", {}), set())
+    check("换牌写了 target → 只问那一家", g6.c43s2_targets("swap", {"target": 3}), {3})
+    check("海神挪宝（无目标）", g6.c43s2_targets("haishin_swap", {"hand": "5m"}), set())
+    check("魔术换指示牌（无目标）", g6.c43s2_targets("card11_swap", {"hand": "1p"}), set())
+    # ★ 2026-11-04 再改口径：风神 / 宝牌运是「一家一步」→ 目标只是这一步那一家
+    g6.deal_flow = {"kind": "fengshen", "seat": 0, "card": 4, "skill": 1,
+                    "stage": 0, "n": 0, "target": -1, "targets": [1, 2, 3]}
+    check("风神：只问这一步那家", g6.c43s2_targets("deal_swap", {}), {1})
+    g6.deal_flow["stage"] = 1
+    check("风神：下一步换一家问", g6.c43s2_targets("deal_swap", {}), {2})
+    g6.deal_flow = None
+    check("风神：没有流程就不问", g6.c43s2_targets("deal_swap", {}), set())
+    g6.wind_swap = {"owner": 0, "from": 2, "tile": "dong"}
+    check("自风 → 刚摸牌那家（内部状态）", g6.c43s2_targets("wind_swap", {}), {2})
+    g6.haishin_offer = {"owner": 3, "from": 1, "tile": "5m"}
+    check("海神借牌 → 被借那家（内部状态）", g6.c43s2_targets("haishin_give", {}), {1})
+    g6.wind_swap = None
+    g6.haishin_offer = None
+    g6.granted = {0: {27}, 2: {43}}
+    _nid = g6.act_spawn(0, 7, 1, op="swap", payload={"target": 1, "hand": "1p"})
+    _nd = g6.acts[str(_nid)]
+    check("别家对别家换牌：第三方不被问免疫", 2 in g6.act_askers(_nd), False)
     check("没有目标就不问", g6.c43s2_targets("c46s1_apply", {"tile": "1m"}), set())
 
     print("\n" + "=" * 78)

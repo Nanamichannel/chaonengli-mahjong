@@ -88,7 +88,8 @@ def main():
     g3 = Game(db, rid)
     check("9p" not in g3.discards_for_furiten(0), "暗置牌不该造成振听")
     check(g3.pofa_discard_pending is None, "打完之后应该清掉")
-    check(g3.phase == "discard", f"打完该进入打牌阶段，实际 {g3.phase}")
+    check(g3.phase == "draw", f"打完该轮到下家摸牌，实际 {g3.phase}")
+    check(g3.turn == 1, f"打完该轮到下家，实际 {g3.turn}")
 
     # ── ② 3 张杠 ─────────────────────────────────────────
     db2 = tg.fresh_db("po3")

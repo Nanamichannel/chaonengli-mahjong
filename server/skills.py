@@ -116,6 +116,13 @@ REGISTRY: dict[tuple[int, int], dict] = {
     (42, 2): {"name": "夺目", "kind": "c42_dealer", "timing": "discard"},
     (40, 2): {"name": "同盟", "kind": "c40_ally", "timing": "discard"},
     (43, 2): {"name": "免疫", "kind": "c43_immune", "timing": "any"},
+    # 下面 5 条以前漏登记（REGISTRY 里没有）→ info() 返回 {} → 播报/技能记录里
+    # 名字是空的（「玩家发动了【】」），客户端拿到的 skill_name 也是空串。
+    (1, 2): {"name": "避开", "kind": "evade", "timing": "draw"},
+    (2, 1): {"name": "画板", "kind": "board", "timing": "draw"},
+    (2, 2): {"name": "换牌", "kind": "swap3", "timing": "draw"},
+    (24, 1): {"name": "一发", "kind": "ippatsu", "timing": "draw"},
+    (24, 2): {"name": "未来", "kind": "future", "timing": "draw"},
 }
 
 # 每个 Skill 的发动时机（配牌 / 摸牌 / 结算）。

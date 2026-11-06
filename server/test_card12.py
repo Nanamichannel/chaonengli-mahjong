@@ -119,6 +119,19 @@ def main() -> int:
     check("配牌阶段可以开启", g4.haishin_can(0), True)
     check("state haishin_can", g4.state_for(0).get("haishin_can"), True)
     try:
+        g4.haishin_swap(0, "5m")
+        check("配牌阶段不能换宝（用户口径 2026-11-04）", False)
+    except RuleError as e:
+        check("配牌阶段不能换宝（用户口径 2026-11-04）", "摸牌前" in str(e))
+    g4.haishin_start(0)                        # 配牌开启（此时会问看破；测试直接放行）
+    g4 = Game(db3, rid3)
+    g4.phase = "draw"          # 摸牌前（服务端挪宝只认 draw）
+    g4.turn = 0
+    g4.save_flags()
+    g4 = Game(db3, rid3)
+    check("state haishin_swap_can（自己回合·没摸牌）",
+          g4.state_for(0).get("haishin_swap_can"), True)
+    try:
         g4.haishin_swap(0, "1p")
         check("只能用万子/红中", False)
     except RuleError as e:
@@ -130,11 +143,20 @@ def main() -> int:
     check("没走完 → 和牌门闸", g5.haishin_gate, 0)
     check("手里换到指示牌", r1.get("got") != "", True)
     check("state 里 gate=True", g5.state_for(0).get("haishin_gate"), True)
+    # 用户口径 2026-11-06：一回合只能换一张 → 同一巡再换要被拒
     try:
         g5.haishin_swap(0, "5m")
-        check("杠宝没翻 → 拒绝", False)
+        check("一回合只能换一张", False)
     except RuleError as e:
-        check("杠宝没翻 → 拒绝", "指示牌" in str(e))
+        check("一回合只能换一张", "一回合" in str(e))
+    # 模拟下一巡（本巡指纹翻页）→ 可以换第 2 种：杠宝（没翻也能换）
+    g5.haishin_turn_used = {}
+    g5.save_flags()
+    g5b = Game(db3, rid3)
+    r2 = g5b.haishin_swap(0, "5m")
+    check("下一巡换杠宝（没翻也能换）", r2.get("kind"), "dora")
+    check("第 2 步完 → next=2", int(r2.get("next", -1)), 2)
+    check("一种牌只换一次 → step 不会回到 0", int(r2.get("step", -1)), 1)
     tg.set_hand(db3, rid3, 0, H_ME + ["1p"], drawn="1p")
     g6 = Game(db3, rid3)
     g6.phase = "discard"
@@ -143,7 +165,7 @@ def main() -> int:
     g6.act(0, "discard", tile="1p")               # 打牌 → 门闸清掉
     g7 = Game(db3, rid3)
     check("打牌后门闸清掉", g7.haishin_gate, None)
-    check("打牌后进度重置", int(g7.haishin_step.get(0, 0)), 0)
+    check("打牌后进度保留（整小局累计）", int(g7.haishin_step.get(0, 0)), 2)
 
     print("\n◆ X神：跳过摸切 2 次")
     db4 = tg.fresh_db("hs4")

@@ -44,6 +44,8 @@ def _default() -> dict:
         "pending": [False, False, False, False],
         "since": 0.0,
         "draft_no": 0,
+        # 起家（东）：每轮选卡（draft）开始时随机定，排序界面就能告诉玩家「进对局后你是哪家」
+        "dealer": random.randrange(4),
     }
 
 
@@ -93,6 +95,10 @@ def load(db) -> dict:
     out["phase"] = str(out.get("phase") or "waiting")
     out["round"] = int(out.get("round") or 0)
     out["draft_no"] = int(out.get("draft_no") or 0)
+    try:
+        out["dealer"] = int(out.get("dealer", 0)) % 4
+    except (TypeError, ValueError):
+        out["dealer"] = random.randrange(4)
     for key in ("joined", "pending"):
         arr = out.get(key)
         vals = [bool(arr[i]) if isinstance(arr, list) and len(arr) > i else False for i in range(4)]
@@ -127,6 +133,7 @@ def payload(lobby: dict, seat: int) -> dict:
         "pending": lobby.get("pending", [False] * 4),
         "joined": lobby.get("joined", [False] * 4),
         "draft_no": int(lobby.get("draft_no", 0)),
+        "dealer": int(lobby.get("dealer", 0)) % 4,
         "bots": list(lobby.get("bots") or []),
         "my_seat": int(seat),
         "total": DRAFT_TOTAL,
@@ -169,6 +176,9 @@ def start_draft(lobby: dict) -> None:
     lobby["since"] = time.time()
     lobby["phase"] = "draft"
     lobby["draft_no"] = int(lobby.get("draft_no", 0)) + 1
+    # 新一轮选卡 = 新半庄：起家（东）重新随机（用户口径 2026-11-05：
+    # 排序的时候就要知道进对局后自己是哪家，不是进游戏之后再弹提示）
+    lobby["dealer"] = random.randrange(4)
 
 
 def _settle_round(lobby: dict) -> None:
@@ -541,7 +551,9 @@ def op_test_seats(db, req: dict) -> dict:
                 return _error("第 %d 家有个卡号不在 1..46：%d" % (i, v))
         orders.append(vals)
     with db.tx():
-        lobby = reset(load(db))
+        _old = load(db)
+        _already = str(_old.get("phase", "")) == "play"
+        lobby = reset(_old)
         for i in range(4):
             lobby["seats"][i]["order"] = list(orders[i])
             lobby["seats"][i]["picks"] = list(orders[i])
@@ -549,7 +561,8 @@ def op_test_seats(db, req: dict) -> dict:
             lobby["joined"][i] = True
         lobby["phase"] = "play"
         save(db, lobby)
-        _start_new_hanchan(db)
+        if not _already:
+            _start_new_hanchan(db)      # 只让第一个窗口开半庄；后面 2~4 号窗口直接接上
     return _ok(lobby, int(req.get("seat", 0)) % 4, {"test_seats": True})
 
 

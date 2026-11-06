@@ -34,6 +34,34 @@ var right_panel_offset := Vector2.ZERO   # 右边那个小面板单独偏移（�
 var _font: Font = null
 var center_y := 0.53            # 结算面板中心在屏高上的比例（越小越靠上；由和牌播报.gd 传进来）
 
+# ── 分数面板动画（用户口径 2026-11-04）────────────────────────────────
+#   ① 只有「原始分数」淡入（0.3s），位置不动
+#   ② 0.3s 后「本次变化」从下方升到与原分等高（0.3s）+ 淡入；涨绿 / 跌红
+#   ③ 停 0.5s
+#   ④ 再按同样距离上移并淡出（0.3s，位移与 ② 对称）
+#   ⑤ ④ 开始那一刻，原分计数器从 before 涨到 after（1000 点/秒）
+#   ⑥ 涨完再停 0.5s → 发 seats_anim_done（外层据此出「確認」按钮）
+signal seats_anim_done
+
+const T_BASE := 0.3          # ① 原分淡入
+const T_DELTA := 0.3         # ②④ 变化值上移（两段等距，方向相反）
+const T_HOLD := 0.5          # ③ 中间休息
+const T_TAIL := 0.5          # ⑥ 涨完再休息多久才出确认按钮
+# ⑤ 计数器时长：按「这次变化多少点」动态给（点数越大给的时间越长，但对数增长 + 封顶）
+#   时长 = COUNT_A + COUNT_B * log2(1 + |Δ| / COUNT_REF)，再夹在 [COUNT_MIN, COUNT_MAX]
+#   实测：400→0.77s  1000→1.17s  4000→2.03s  8000→2.55s  12000→2.85s  32000→封顶
+const COUNT_A := 0.30        # 基础时长（秒）
+const COUNT_B := 0.30        # 点数每翻一倍，多给多久（用户 2026-11-04 从 0.55 调到 0.30）
+const COUNT_REF := 500.0     # 参考点数
+const COUNT_MIN := 0.30      # 再小的变化也至少给这么久（不然看不清在跳）
+const COUNT_MAX := 3.20      # 封顶（役满 +48000 也只是 3.2 秒，不会拖太久）
+
+var anim_delay := 0.0        # 面板整体淡入的时长：这段时间先不启动分数动画
+var _anim_running := false
+var _anim_finished := false
+var _anim_elapsed := 0.0
+var _anim_len := 0.0
+
 
 func set_content(data: Dictionary) -> void:
 	title = String(data.get("title", title))
@@ -44,7 +72,55 @@ func set_content(data: Dictionary) -> void:
 	is_draw = bool(data.get("is_draw", false))
 	var _seats = data.get("seats", [])
 	seats = _seats if typeof(_seats) == TYPE_ARRAY else []
+	start_seats_anim()
 	queue_redraw()
+
+
+func _ready() -> void:
+	set_process(false)
+
+
+## 开始播一次分数动画（set_content 里调用；重播时从头走）
+func start_seats_anim() -> void:
+	_anim_elapsed = 0.0
+	_anim_len = _anim_total()
+	_anim_finished = false
+	_anim_running = not seats.is_empty()
+	set_process(_anim_running)
+	queue_redraw()
+
+
+func _count_dur(delta: int) -> float:
+	"""计数器走完这一段要多久（秒）：按点数动态，对数增长 + 上下限。"""
+	var d := absf(float(delta))
+	var t := COUNT_A + COUNT_B * log(1.0 + d / COUNT_REF) / log(2.0)
+	return clampf(t, COUNT_MIN, COUNT_MAX)
+
+
+func _anim_total() -> float:
+	var mx := 0.0
+	for it in seats:
+		if typeof(it) != TYPE_DICTIONARY:
+			continue
+		var d: Dictionary = it
+		mx = maxf(mx, _count_dur(int(d.get("after", 0)) - int(d.get("before", 0))))
+	return T_BASE + T_DELTA + T_HOLD + T_DELTA + mx + T_TAIL
+
+
+func _process(dt: float) -> void:
+	if not _anim_running:
+		set_process(false)
+		return
+	_anim_elapsed += dt
+	if _anim_elapsed - anim_delay >= _anim_len:
+		_anim_running = false
+		_anim_finished = true
+		set_process(false)
+		queue_redraw()
+		seats_anim_done.emit()
+		return
+	queue_redraw()
+
 
 
 func _f() -> Font:
@@ -163,6 +239,10 @@ func _draw_seat_scores(f: Font, _rect: Rect2, w: float, h: float) -> void:
 	if seats.is_empty():
 		return
 	var rects := _seat_rects(w, h)
+	# 时间轴：running → 按秒数走；播完/从没播 → 直接显示结算后分数（t = -1）
+	var t := -1.0
+	if _anim_running:
+		t = maxf(_anim_elapsed - anim_delay, 0.0)
 	for i in range(seats.size()):
 		if i >= rects.size():
 			continue
@@ -178,25 +258,63 @@ func _draw_seat_scores(f: Font, _rect: Rect2, w: float, h: float) -> void:
 		r.position.y = clampf(r.position.y, 10.0, maxf(10.0, h - sh - 10.0))
 		var b := int(d.get("before", 0))
 		var a := int(d.get("after", 0))
-		var col := C_UP if a > b else (C_DOWN if a < b else C_WHITE)
+		var delta := a - b
+		var col := C_UP if delta > 0 else (C_DOWN if delta < 0 else C_WHITE)
 		var nick := String(d.get("nick", ""))
 		_text_black(f, r.get_center().x, r.position.y + sh * 0.14, nick,
 			sh * 0.30, r.size.x * 0.86)
-		# 第二行：原分（白）→ 箭头（涨绿/跌红）+ 新分（同色）
-		var s1 := str(b)
-		var s2 := "\u2192"
-		var s3 := str(a)
+
+		var base_a := 1.0          # 原始分数的透明度
+		var d_a := 0.0             # 变化值的透明度（动画播完 = 不显示，只剩最终分数）
+		var d_off := 0.0           # 变化值相对基线的纵向偏移（正 = 下方）
+		var shown := float(a)      # 原始分数现在的数值（计数器）
+		if t >= 0.0:
+			var dy := sh * 0.36                                  # 一行的高度
+			var p_in := clampf((t - T_BASE) / T_DELTA, 0.0, 1.0)
+			var c_start := T_BASE + T_DELTA + T_HOLD
+			var p_out := clampf((t - c_start) / T_DELTA, 0.0, 1.0)
+			base_a = clampf(t / T_BASE, 0.0, 1.0)                # ① 只有原分在淡入
+			d_a = p_in * (1.0 - p_out)                           # ② 淡入 → ④ 淡出
+			d_off = (1.0 - p_in) * dy - p_out * dy               # ②④ 等距、方向相反
+			# ⑤ 第二段上移开始那一刻起，原分按 1000 点/秒涨到 after
+			var span := _count_dur(delta)
+			if span <= 0.0 or t >= c_start + span:
+				shown = float(a)
+			elif t > c_start:
+				shown = float(b) + float(delta) * ((t - c_start) / span)
+			else:
+				shown = float(b)
+
+		var s1 := str(int(round(shown)))
+		var dtxt := ""
+		if delta > 0:
+			dtxt = "+%d" % delta
+		elif delta < 0:
+			dtxt = "%d" % delta
 		var fs := int(maxf(10.0, sh * 0.34))
-		while fs > 10 and _sw(f, s1, fs) + _sw(f, s2, fs) + _sw(f, s3, fs) + 16.0 > r.size.x * 0.86:
+		var gap := 14.0
+		# 原分居中、变化值挂右边：宽度预算按「原分半宽 + 间距 + 变化值」算
+		while fs > 10 and (_sw(f, s1, fs) * 0.5 + gap + _sw(f, dtxt, fs)) > r.size.x * 0.46:
 			fs -= 1
-		var pad := 8.0
-		var tx := r.get_center().x - (_sw(f, s1, fs) + _sw(f, s2, fs) + _sw(f, s3, fs) + pad * 2.0) * 0.5
+		var w1 := _sw(f, s1, fs)
+		# ★ 原分永远在昵称正下方（同一个中心）；变化值挂在原分右边，
+		#   不参与居中 —— 否则变化值一进场，原分就被推到左边（用户报的对不齐）。
+		var tx := r.get_center().x - w1 * 0.5
 		var ty := r.position.y + sh * 0.80
-		draw_string(f, Vector2(tx, ty), s1, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, C_WHITE)
-		tx += _sw(f, s1, fs) + pad
-		draw_string(f, Vector2(tx, ty), s2, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
-		tx += _sw(f, s2, fs) + pad
-		draw_string(f, Vector2(tx, ty), s3, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+		draw_string(f, Vector2(tx, ty), s1, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
+			Color(C_WHITE, base_a))
+		if dtxt != "":
+			# 字号和前面的分数完全一样；只有 +/- 符号单独小一号 ——
+			# 字体里「+」的字形比数字显大，同号字会让整串看着比原分粗（用户报的）。
+			var fs_sign := maxi(8, int(round(float(fs) * 0.82)))
+			var sign_ch := dtxt.substr(0, 1)
+			var num_txt := dtxt.substr(1)
+			var x2 := tx + w1 + gap
+			draw_string(f, Vector2(x2, ty + d_off + float(fs - fs_sign) * 0.34), sign_ch,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, fs_sign, Color(col, d_a))
+			draw_string(f, Vector2(x2 + _sw(f, sign_ch, fs_sign) + 2.0, ty + d_off), num_txt,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(col, d_a))
+
 
 
 func _sw(f: Font, txt: String, fs: int) -> float:

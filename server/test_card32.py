@@ -166,21 +166,21 @@ def main() -> int:
     names = [y["name"] for y in (res or {}).get("yaku", [])]
     check("判出来了", bool(res), True)
     check("有对对和", any("对对和" in n for n in names), True)
-    check("升级成四暗刻", any("四暗刻（无知）" in n for n in names), True)
+    check("升级成四暗刻", ("无知" in names), True)
     check("是役满", int((res or {}).get("yakuman", 0)) >= 1, True)
 
     print("\n⑥ 无知：索子清一色按绿一色算")
     res2, _g = judge("c32d", "234s234s567s888s66s", "6s")
     names2 = [y["name"] for y in (res2 or {}).get("yaku", [])]
     check("有清一色", any("清一色" in n for n in names2), True)
-    check("升级成绿一色", any("绿一色（无知）" in n for n in names2), True)
+    check("升级成绿一色", ("无知" in names2), True)
     check("是役满", int((res2 or {}).get("yakuman", 0)), 1)
 
     print("\n⑦ 无知：索子 + 只有发财的混一色 → 绿一色")
     res3, _g = judge("c32e", "234s234s567s888s66z", "fa")
     names3 = [y["name"] for y in (res3 or {}).get("yaku", [])]
     check("有混一色", any("混一色" in n for n in names3), True)
-    check("升级成绿一色", any("绿一色（无知）" in n for n in names3), True)
+    check("升级成绿一色", ("无知" in names3), True)
 
     print("\n⑧ 无知：索子只有发的混一色 + 对对和 → 绿一色四暗刻（双倍役满）")
     # 碰了 2s（明刻）→ 只是对对和/三暗刻；字牌只有发 → 混一色。
@@ -189,8 +189,8 @@ def main() -> int:
     names4 = [y["name"] for y in (res4 or {}).get("yaku", [])]
     check("本来是对对和", any(n.startswith("对对和") for n in names4), True)
     check("本来是混一色", any(n.startswith("混一色") for n in names4), True)
-    check("升级成四暗刻（无知）", any("四暗刻（无知）" in n for n in names4), True)
-    check("升级成绿一色（无知）", any("绿一色（无知）" in n for n in names4), True)
+    check("升级成无知（四暗刻）", ("无知" in names4), True)
+    check("两条命中也只写一条无知", names4.count("无知"), 1)
     check("役满 2 倍", int((res4 or {}).get("yakuman", 0)), 2)
     check("点数 = 双倍役满", int(((res4 or {}).get("pays") or {}).get("total", 0)), 96000)
 

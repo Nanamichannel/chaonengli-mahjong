@@ -128,7 +128,7 @@ def main() -> int:
     check("和牌了", res4.get("result"), "tsumo")
     check("番数双倍", int(res4.get("han", 0)), base_han * 2)
     names4 = [y["name"] for y in res4.get("yaku", [])]
-    check("播报里有「自信（番数双倍）」", "自信（番数双倍）" in names4)
+    check("播报里有「自信（番数双倍）」", "自信" in names4)
     want4 = score.payments(base_han * 2, base_fu, is_dealer=True,
                            tsumo=True).get("total")
     check("点数按双倍番重算", int((res4.get("pays") or {}).get("total", 0)), want4)
@@ -201,7 +201,7 @@ def main() -> int:
     g7.act(0, "tsumo")
     res7 = g7.result or {}
     check("是役满", int(res7.get("yakuman", 0)) > 0)
-    check("没有加「自信」番", "自信（番数双倍）" not in
+    check("没有加「自信」番", "自信" not in
           [y["name"] for y in res7.get("yaku", [])])
 
     # ── 8. 荣和也翻倍 ─────────────────────────────────────────

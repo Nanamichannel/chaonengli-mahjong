@@ -96,7 +96,7 @@ def main() -> int:
     Game(db0, rid0).act(0, "tsumo")
     res0 = (Game(db0, rid0).result or {})
     check("里宝牌 = 2（指示牌 4s → 5s，手里两张）", ura_of(res0), 2)
-    check("没有赤里", yaku_han(res0, "赤里（和到的「5s」算里宝）"), -1)
+    check("没有赤里", yaku_han(res0, "赤里"), -1)
     han0 = int(res0.get("han", 0))
 
     print("\n③ 带 46 卡：原里宝无效，和到的 5s 算里宝 2 张 + 5 再多 1 番")
@@ -104,17 +104,36 @@ def main() -> int:
     Game(db, rid).act(0, "tsumo")
     res = (Game(db, rid).result or {})
     check("原里宝无效（里宝牌 = 0）", ura_of(res), 0)
-    check("赤里（和到的「5s」算里宝）2 番",
-          yaku_han(res, "赤里（和到的「5s」算里宝）"), 2)
-    check("赤里 1 番（和到 5s）", yaku_han(res, "赤里"), 1)
+    check("赤里 3 番（2 张里宝 + 赤 5）",
+          yaku_han(res, "赤里"), 3)
+    check("只有一条赤里", [y["name"] for y in res["yaku"]].count("赤里"), 1)
     check("番数比对照组多 1（2 张里宝 + 1 赤里 - 原里宝 2）", int(res.get("han", 0)), han0 + 1)
     check("钩子记了总数", int(res.get("c46s2", 0)), 3)
+
+    print("\n③b 结算生效要补播报（客户端靠它播右上角进场特效）")
+    g_after = Game(db, rid)
+    blog = [e for e in (g_after.broadcast_log or []) if int(e.get("card", 0)) == 46]
+    check("播报流水里有 46 号卡", len(blog) >= 1, True)
+    check("播报里是技能名「赤里」",
+          str(blog[-1].get("name", "")) if blog else "", "赤里")
+    check("state.broadcast 是流水最后那条",
+          int((g_after.broadcast or {}).get("id", 0)),
+          int((g_after.broadcast_log or [{}])[-1].get("id", 0)))
+    check("被动技能不记「已发动」（不把卡面置灰）", bool(g_after.skill_used(0, 46, 2)), False)
+
+    print("\n③c 预测（dry_run）不许播特效")
+    db6, rid6 = setup("c46s2f")
+    g6 = Game(db6, rid6)
+    n_before = len(g6.broadcast_log)
+    res6 = Game(db6, rid6)._judge_win(0, "5s", tsumo=True)
+    g6.settle_preview(0, None, "tsumo", res6, dry_run=True)
+    check("满贯判定那种预测不加播报", len(g6.broadcast_log), n_before)
 
     print("\n④ 没立直 → 赤里不生效")
     db2, rid2 = setup("c46s2b", riichi=False)
     Game(db2, rid2).act(0, "tsumo")
     res2 = (Game(db2, rid2).result or {})
-    check("没有赤里", yaku_han(res2, "赤里（和到的「5s」算里宝）"), -1)
+    check("没有赤里", yaku_han(res2, "赤里"), -1)
     check("也没有赤里 1 番", yaku_han(res2, "赤里"), -1)
 
     print("\n⑤ 和到的不是 5 → 只有里宝那一条（没有「赤里 1 番」）")
@@ -124,8 +143,8 @@ def main() -> int:
     res3 = (Game(db3, rid3).result or {})
     check("原里宝无效", ura_of(res3), 0)
     check("和到的 9s 算里宝 2 张",
-          yaku_han(res3, "赤里（和到的「9s」算里宝）"), 2)
-    check("不是 5 → 没有单独的赤里 1 番", yaku_han(res3, "赤里"), -1)
+          yaku_han(res3, "赤里"), 2)
+    check("不是 5 → 赤里只有里宝 2 番（没有赤 5 那 1 番）", yaku_han(res3, "赤里"), 2)
 
     print("\n⑥ 荣和：铳张也算进「和到的那张」的张数")
     db4, rid4 = setup("c46s2d", hand=H13, drawn=None)
@@ -144,8 +163,8 @@ def main() -> int:
     g5.settle_preview(0, 1, "ron", res4)
     check("里宝无效", ura_of(res4), 0)
     check("铳张 5s + 手里 5s = 2 张里宝",
-          yaku_han(res4, "赤里（和到的「5s」算里宝）"), 2)
-    check("5s 再多 1 番", yaku_han(res4, "赤里"), 1)
+          yaku_han(res4, "赤里"), 3)
+    check("只有一条赤里", [y["name"] for y in res4["yaku"]].count("赤里"), 1)
 
     print("\n" + "=" * 78)
     print(f" 合计：{PASS + FAIL} 断言，{FAIL} 失败")

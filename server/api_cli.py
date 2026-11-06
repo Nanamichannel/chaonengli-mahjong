@@ -27,6 +27,7 @@ import argparse
 import hashlib
 import json
 import os
+import random
 import sys
 import threading
 import time
@@ -71,6 +72,54 @@ def _set_round_id(db: DB, round_id: int) -> None:
         db.conn.execute("INSERT INTO meta(key, value) VALUES(?,?) "
                         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                         (LOCAL_KEY, str(round_id)))
+
+
+def auto_resolve_prompt(g, humans: set) -> str:
+    """把「挂给没有窗口的座位」的询问替它跳过（每个请求都会跑一次）。
+
+    为什么必须有：客户端看到 prompt 就停止一切推进（连 op=step 都不发），
+    而 op_step 里的 auto-skip 没有 step 就永远执行不到 → 全桌死锁。
+    返回处理掉的 kind（"" = 没处理）。
+    """
+    try:
+        pr = g.prompt_state()
+        if not pr:
+            return ""
+        kind = str(pr.get("kind", ""))
+        waiting = [int(x) for x in (pr.get("waiting") or [])]
+        # 看破/封堵/阻止/免疫 是「人对人」的应答，不用这条自动过
+        if not waiting or kind in ("act", "kangpo", "c42s2"):
+            return ""
+        who = next((w for w in waiting if w not in humans), -1)
+        if who < 0:
+            return ""
+        if kind == "c29s1":
+            g.c29s1_skip(who)
+        elif kind == "c25s2":
+            off = g.c25s2_offer or {}
+            if int(off.get("owner", -1)) == who:
+                g.c25s2_auto_swap(who)               # 替他换一张非宝牌
+        elif kind == "haishin":
+            g.haishin_pass(who)
+        elif kind == "shenshan":
+            g.shenshan_resolve(who, "")
+        elif kind == "youyin_meld":
+            g.youyin_meld_skip()
+        elif kind == "youyin":
+            g.youyin_take(who, -1)
+        elif kind == "gift":
+            g.gift_skip(who)
+        elif kind == "pofa":
+            g.pofa_pass(who)
+        elif kind in ("oracle", "card09", "haishin_swap", "zhalie",
+                      "future", "c26", "c45"):
+            g.pre_draw_skip(who)
+        else:
+            return ""
+        g.save_flags()
+        return kind
+    except Exception:                            # noqa: BLE001
+        return ""
 
 
 def _game(db: DB, round_id: int, rules: dict | None = None) -> Game:
@@ -340,11 +389,25 @@ def op_start(db: DB, req: dict) -> dict:
     room = _local_room(db)
     row = db._row("SELECT match_id FROM matches WHERE room_id=? AND status='playing' "
                   "ORDER BY match_id DESC LIMIT 1", (room["room_id"],))
+    new_match = row is None
     match_id = int(row["match_id"]) if row else db.start_match(room["room_id"], seed=req.get("seed"))
+    dealer_seat = int(req.get("dealer", 0))
+    _lb = None
+    if new_match:
+        try:
+            import lobby as _lobby_mod
+            _lb = _lobby_mod.load(db)
+        except Exception:                        # noqa: BLE001
+            _lb = None
+    if new_match:
+        # ★ 东南西北开局前随机分给四名玩家（用户口径 2026-11-04）：
+        #   新半庄的第一局随机决定谁坐东，其余按 (seat - dealer) % 4 依次是南/西/北。
+        #   后面的局照旧按「连庄 / 亲家下移」轮转（由 op_next 算，不走这里）。
+        dealer_seat = int((_lb or {}).get("dealer", random.randrange(4))) % 4
     round_id = db.start_round(match_id, wind=str(req.get("wind", "dong")),
                               number=int(req.get("number", 1)),
                               honba=int(req.get("honba", 0)),
-                              dealer_seat=int(req.get("dealer", 0)),
+                              dealer_seat=dealer_seat,
                               riichi_sticks=int(req.get("riichi_sticks", 0)))
     _set_round_id(db, round_id)
     _snapshot_round_cards(db, round_id)      # ★ 卡序抄进本局，之后不看大厅
@@ -639,7 +702,20 @@ def op_new_hanchan(db: DB, req: dict) -> dict:
         # 新半庄 = 人物卡状态从零开始：清掉「发动过 / 寿命」记录
         db.conn.execute("DELETE FROM meta WHERE key='char_use'")
         db.conn.execute("DELETE FROM meta WHERE key='skill_log'")
-    round_id = db.start_round(match_id, "dong", 1, honba=0, dealer_seat=0,
+        # 天梯（Card26 S2）的连续次数也是半庄级 —— 换半庄一并清掉（按 match_id 存的老记录）
+        db.conn.execute("DELETE FROM meta WHERE key LIKE 'c26_state_%'")
+    # ★ 东南西北开局前随机分给四名玩家（用户口径 2026-11-04）：
+    #   随机决定谁坐东（起家），其余按 (seat - dealer) % 4 依次是南/西/北。
+    #   之后每一局照常按「亲家和了连庄 / 子家和了亲家下移」轮转。
+    dealer_seat = random.randrange(4)
+    try:                                     # 用大厅排序时就已经告诉玩家的那个起家
+        import lobby as _lobby_mod2
+        _d2 = _lobby_mod2.load(db).get("dealer", -1)
+        if isinstance(_d2, int) and 0 <= _d2 <= 3:
+            dealer_seat = int(_d2)
+    except Exception:                        # noqa: BLE001
+        pass
+    round_id = db.start_round(match_id, "dong", 1, honba=0, dealer_seat=dealer_seat,
                               seed=req.get("seed"))
     _set_round_id(db, round_id)
     g = _game(db, round_id)
@@ -726,6 +802,16 @@ def _tick_timeouts(g) -> list:
         if r:
             out.append({"event": "timeout", "what": name, "ret": r if isinstance(r, dict) else True})
     return out
+
+
+def op_voice_pack(db: DB, req: dict) -> dict:
+    """玩家在初始界面选了角色语音包 → 记到自己的座位上（全场可见，别人听他的也是这个包）。"""
+    rid = req.get("round_id") or _get_round_id(db)
+    g = _game(db, rid)
+    seat = int(req.get("seat", 0))
+    r = g.set_voice_pack(seat, str(req.get("pack", "")))
+    return {"ok": True, "voice": r, "state": g.state_for(seat), "events": [],
+            "round_id": rid}
 
 
 def op_poll(db: DB, req: dict) -> dict:
@@ -1146,6 +1232,7 @@ _NO_GATE_OPS = {
     "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
     "lobby_state", "lobby_unorder", "test_seats",
     "rename",                       # 本局昵称：不是技能，不问看破
+    "voice_pack",                   # 角色语音包：不是技能，不问看破
     "lobby_add_bot", "lobby_remove_bot",      # 房间管理，不是技能，不问看破
     # ── 看破自己 / 取消 ──
     "kangpo", "kangpo_answer", "kangpo_skip", "skill_cancel", "card05_cancel",
@@ -1161,6 +1248,8 @@ _NO_GATE_OPS = {
     "shenshan_resolve",           # 深山（19-1）：用户口径「只问开这一次」
     "haishin_give",               # 海神（12-1）：配牌开启时已问过
     "haishin_swap",               # 海神（12-1）后续
+    "haishin_swap_skip",          # 海神（12-1）后续：这次不换
+    "pre_draw_skip",              # 摸牌前询问：这次不发动（通用）
     "haishin_pass",
     "zhalie_swap",                # 炸裂（14-2）：点燃（配牌）那一步已问过
     "pofa_discard", "pofa_pass",
@@ -2293,6 +2382,37 @@ def op_pofa_pass(db: DB, req: dict) -> dict:
             "result": g.result, "round_id": rid}
 
 
+_PRE_DRAW_KIND_SET = {"oracle", "card09", "haishin_swap", "zhalie",
+                      "future", "c26", "c45"}
+
+
+_PRE_DRAW_CONSUME_OPS = {
+    "oracle_pick", "oracle_toggle", "card09_swap", "zhalie_swap",
+    "future_set", "future_abort", "c26_set", "c26_skip",
+    "c45s1_apply", "haishin_swap",
+}
+
+
+def op_pre_draw_skip(db: DB, req: dict) -> dict:
+    """这次摸牌前的询问不发动（降神/间合/炸裂/未来/天梯/神境/挪宝 通用）"""
+    rid = req.get("round_id") or _get_round_id(db)
+    g = _game(db, rid)
+    seat = int(req.get("seat", 0))
+    r = g.pre_draw_skip(seat)
+    return {"ok": True, "pre_draw": r, "state": g.state_for(seat), "events": [],
+            "result": g.result, "round_id": rid}
+
+
+def op_haishin_swap_skip(db: DB, req: dict) -> dict:
+    """Card12 S1 挪宝：这次不换（关掉服务端挂的那笔询问）"""
+    rid = req.get("round_id") or _get_round_id(db)
+    g = _game(db, rid)
+    seat = int(req.get("seat", 0))
+    r = g.haishin_swap_skip(seat)
+    return {"ok": True, "haishin": r, "state": g.state_for(seat), "events": [],
+            "result": g.result, "round_id": rid}
+
+
 def op_haishin_start(db: DB, req: dict) -> dict:
     """Card12 S1「海神」：配牌时开启（本小局别人摸万子/红中都会强制问你换不换）"""
     rid = req.get("round_id") or _get_round_id(db)
@@ -2696,10 +2816,20 @@ def op_step(db: DB, req: dict) -> dict:
                 ev = g.pass_claim(others[0]) if others else None
         elif g.phase == "draw":
             if g.turn == seat:
-                if bool(req.get("pre_ok")) or not g.pre_draw_pending(seat):
-                    ev = g.advance()                         # 我自己摸（客户端问完技能了）
+                if bool(req.get("pre_ok")):
+                    # 客户端说「问完了」→ 还挂着的摸牌前询问按「跳过」处理，再摸牌
+                    if g.close_pre_draw_ask(seat):
+                        g.save_flags()
+                    ev = g.advance()
+                elif not g.pre_draw_pending(seat):
+                    ev = g.advance()                         # 没有要问的
+                elif g.open_pre_draw_ask(seat):
+                    # P2：海神·挪宝挂成**服务端**询问（客户端只渲染，不再自己判断时机）
+                    ev = {"event": "wait_pre", "seat": seat}
+                elif g.pre_draw_pending(seat, include_haishin=False):
+                    ev = {"event": "wait_pre", "seat": seat}  # 其它摸牌前技能：客户端闸门
                 else:
-                    ev = {"event": "wait_pre", "seat": seat}  # 还有摸牌前技能要问
+                    ev = g.advance()                          # 海神这一巡已经问过 → 放行
             elif g.turn in humans:
                 ev = None                                    # 另一个窗口的人还没摸 → 等他
             elif auto:
@@ -2752,6 +2882,7 @@ OPS = {
     "deal_step": op_deal_step,
     "state": op_state,
     "poll": op_poll,
+    "voice_pack": op_voice_pack,
     "advance": op_advance,
     "act": op_act,
     "wall": op_wall,
@@ -2846,6 +2977,8 @@ OPS = {
     "c25s2_swap": op_c25s2_swap,
     "haishin_give": op_haishin_give,
     "haishin_swap": op_haishin_swap,
+    "haishin_swap_skip": op_haishin_swap_skip,
+    "pre_draw_skip": op_pre_draw_skip,
     "haishin_start": op_haishin_start,
     "haishin_pass": op_haishin_pass,
     "xn_activate": op_xn_activate,
@@ -3086,6 +3219,20 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                 # 未来：已经发动了却一直不排序（客户端掉线）→ 放弃这次重排，放开摸牌。
                 if _gt.future_timeout():
                     _gt.future_abort()
+                # 摸牌前询问（海神挪宝 / 降神 / 间合 …）挂太久没人答 → 自动跳过。
+                # 没有这条：客户端一崩/一掉线，这一局就永远卡在「有人在等回答」。
+                # ★ 询问挂在「没窗口的座位」上 → 直接替它跳过（防全桌死锁）
+                try:
+                    auto_resolve_prompt(_gt, _human_seats(db))
+                except Exception:                    # noqa: BLE001
+                    pass
+                if _gt.pre_draw_ask_timeout():
+                    _seat_pd = int((_gt.cur_ask or {}).get("seat", -1))
+                    if 0 <= _seat_pd <= 3:
+                        try:
+                            _gt.pre_draw_skip(_seat_pd)
+                        except Exception:                    # noqa: BLE001
+                            pass
                 # 天梯：轮到某人摸牌却一直不排牌山 → 第一次发现记截止时间，超时就跳过。
                 if _gt.turn is not None and _gt.c26_can_sort(int(_gt.turn)):
                     if float(_gt.c26_deadline or 0) <= 0.0:
@@ -3115,6 +3262,13 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                 if _pr:
                     _sw = int(seat) if isinstance(seat, int) and 0 <= int(seat) <= 3 else 0
                     _kind = str(_pr.get("kind", ""))
+                    # 客户端带着 pre_ok 来说「我这边问完了」→ 允许它进来
+                    # （op_step 会把还挂着的那笔摸牌前询问关掉再摸牌）
+                    if (op == "step" and bool(req.get("pre_ok"))
+                            and _kind in _PRE_DRAW_KIND_SET
+                            and int(seat) in [int(x) for x in (_pr.get("waiting") or [])]):
+                        _pr = None
+                if _pr:
                     return {"ok": False, "state": _gw.state_for(_sw), "events": [],
                             "result": _gw.result, "round_id": _rid_w,
                             "waiting_prompt": _kind,
@@ -3156,12 +3310,25 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                     if str(_node.get("note", "")) == "poked":
                         req = dict(req)
                         req["_act_ran"] = True          # 这张卡已经被剔除 → 让 op 自己拒
+                    elif op == "deal_swap":
+                        # ★ 风神 / 宝牌运是一家一步：免疫只让**那一家**这一步跳过，
+                        #   其他两家照常换（用户口径 2026-11-04）。不能整次作废。
+                        _r = _gk.deal_swap_immune_skip(int(seat))
+                        return {"ok": True, "state": _gk.state_for(int(seat)),
+                                "events": [], "result": _gk.result, "round_id": _rid_k,
+                                "deal_swap": _r, "immune_skip": True}
                     else:
                         return {"ok": False, "state": _gk.state_for(int(seat)),
                                 "events": [], "result": _gk.result, "round_id": _rid_k,
                                 "error": "【免疫】：这个技能对你无效（本次发动作废）"}
                 if _node.get("state") != "applied" and not req.get("_act_ran"):
                     _st = _gk.state_for(int(seat))
+                    if (_node.get("state") == "voided" and _node.get("note") == "免疫"
+                            and op == "deal_swap"):
+                        _r = _gk.deal_swap_immune_skip(int(seat))
+                        return {"ok": True, "state": _st, "events": [],
+                                "result": _gk.result, "round_id": _rid_k,
+                                "deal_swap": _r, "immune_skip": True}
                     if _node.get("state") == "voided" and _node.get("note") == "免疫":
                         return {"ok": False, "state": _st, "events": [],
                                 "result": _gk.result, "round_id": _rid_k,
@@ -3182,6 +3349,17 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                             "events": [], "result": None,
                             "error": "已经立直了：不能再发动会改动自己手牌的技能"}
         res = fn(db, req)
+        # 摸牌前技能真的用掉了 → 把服务端挂着的那笔询问关掉（不然询问锁会挡住摸牌）
+        if isinstance(res, dict) and res.get("ok") and op in _PRE_DRAW_CONSUME_OPS:
+            _rid_pd = req.get("round_id") or _get_round_id(db)
+            _seat_pd = req.get("seat")
+            if _rid_pd and isinstance(_seat_pd, int) and 0 <= int(_seat_pd) <= 3:
+                try:
+                    _gpd = _game(db, _rid_pd)
+                    if _gpd.close_pre_draw_ask(int(_seat_pd)):
+                        res["state"] = _gpd.state_for(int(_seat_pd))
+                except Exception:                        # noqa: BLE001
+                    pass
         # 所有带 state 的响应都附上 ver：客户端轮询时带回来，服务端就能只回
         # {"same": true}（几十字节），不用每次都传整份 21KB
         if isinstance(res, dict) and isinstance(res.get("state"), dict):

@@ -131,7 +131,7 @@ def main() -> int:
     check("赢家还是拿全额", d2.get(1), base_total)
     check("少付的那份没补给赢家", sum(d2.values()), base_total - (-want2))
     check("役种里有「坚韧（失点减半）」",
-          "坚韧（失点减半）" in [y["name"] for y in (r2.get("yaku") or [])], True)
+          "坚韧" in [y["name"] for y in (r2.get("yaku") or [])], True)
     check("番数没被动过", int(r2.get("han", 0)), int(rc.get("han", 0)))
     check("点数显示还是赢家的得点", int((r2.get("pays") or {}).get("total", 0)), base_total)
 
@@ -179,7 +179,7 @@ def main() -> int:
     check("南场照常全额放铳", (r5.get("deltas") or {}).get(0),
           -int((r5.get("pays") or {}).get("total", 0)))
     check("南场役种里没有「坚韧」",
-          "坚韧（失点减半）" in [y["name"] for y in (r5.get("yaku") or [])], False)
+          "坚韧" in [y["name"] for y in (r5.get("yaku") or [])], False)
 
     # ── ⑤ 自己赢了不受影响 ──────────────────────────────────────
     print("\n⑤ 坚韧持有者和牌时不减别人")

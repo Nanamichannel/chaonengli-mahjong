@@ -159,7 +159,7 @@ def main() -> int:
     check("0 号自摸和牌", res2.get("result"), "tsumo")
     check("额外番数 = 4", int(res2.get("duel_bonus", 0)), 4)
     names = [y.get("name") for y in (res2.get("yaku") or [])]
-    check("役种里有「决斗标记（+4 番）」", "决斗标记（+4 番）" in names, True)
+    check("役种里有「决斗标记（+4 番）」", "决斗标记" in names, True)
     bonus_han = sum(int(y.get("han", 0)) for y in (res2.get("yaku") or [])
                     if str(y.get("name", "")).startswith("决斗标记"))
     check("番数里确实算进去了", bonus_han, 4)

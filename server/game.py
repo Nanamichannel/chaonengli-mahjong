@@ -311,7 +311,25 @@ class Game:
         self._c13_cache: dict[int, bool] = {}
         self.haishin_offer: dict | None = None
         self.haishin_step: dict[int, int] = {}
+        # 真的换过哪几个位置：[{idx, hand, got, seq}]（step 只认这个，防脏计数）
+        self.haishin_done: dict[int, list] = {}     # 整小局累计：0/1/2/3
+        # 这一巡**已经主动换过**的座位（seat → live_left-turn 指纹）。
+        # 用户口径：一回合只能换一张；别家找我换（被动借牌）不限次数。
+        self.haishin_turn_used: dict[int, str] = {}
         self.haishin_gate: int | None = None
+        # 询问流水号：每挂出一笔询问 +1。客户端用它去重（不再用
+        # live_left/turn/tile 拼指纹 —— 换局、岭上补牌都会撞车）。
+        self.ask_seq: int = 0
+        # P2：统一询问队列 —— 所有「挂着等人回答」的东西先入队，
+        # 再按队头挂到下面那几个槽位上（槽位只是队列头的投影，旧代码照旧读）。
+        self.asks: list[dict] = []
+        self.cur_ask: dict | None = None
+        # 海神·挪宝：这一巡已经问过谁（seat → 指纹）；借完牌后下一次
+        # 自己摸牌先别自动问（用户口径：刚交换完别再问一次）
+        self.haishin_swap_asked: dict[int, str] = {}
+        # P3：这一巡「摸牌前技能」已经问过谁 → {"seat:kind": 指纹}
+        self.pre_draw_asked: dict[str, str] = {}
+        self.haishin_swap_hold: int = -1
         self._c12_cache: dict[int, bool] = {}
         # X神（Card12 S2）：被跳过的摸切次数
         self.x_skip: dict[int, int] = {}
@@ -398,6 +416,14 @@ class Game:
         # 技能播报（全场）：客户端看到 id 变了就弹字幕
         self.broadcast: dict | None = None
         self.broadcast_id = 0
+        # 角色语音包：seat -> 语音包 id（见 客户端 voice_db.gd 的 PACKS）
+        self.voice_packs: dict[int, str] = {}
+        # 语音事件（吃/碰/杠/立直/荣和/自摸）：{id, seat, kind}，客户端看到 id 变了就播
+        self.voice_evt: dict | None = None
+        self.voice_id = 0
+        # 本小局「谁发动了什么」的完整流水（右上角技能记录用）：
+        # 元素 = {id, seat, card, skill, name, wind}，按发动先后 append
+        self.broadcast_log: list[dict] = []
         # 人物卡翻明（第一次发动技能后，别人视角永久翻面）
         self._revealed_cache: set[int] = set()
         self._owns_cache: dict[tuple[int, int], bool] = {}
@@ -443,6 +469,32 @@ class Game:
         ho = f.get("haishin_offer")
         self.haishin_offer = ho if isinstance(ho, dict) else None
         self.haishin_step = {int(k): int(v) for k, v in (f.get("haishin_step") or {}).items()}
+        self.haishin_done = {}
+        for _k, _v in (f.get("haishin_done") or {}).items():
+            if isinstance(_v, list):
+                self.haishin_done[int(_k)] = [dict(_x) for _x in _v
+                                             if isinstance(_x, dict)]
+        # ★ 自愈：step 只认「真的换过」的位置数。
+        #   历史脏数据：一张都没换却记成 3 → 整小局再也不问挪宝（用户 2026-11-06 报）。
+        for _s0 in set(self.haishin_step) | set(self.haishin_done):
+            _real = len({int(_x.get("idx", -1))
+                         for _x in (self.haishin_done.get(int(_s0)) or [])})
+            if int(self.haishin_step.get(int(_s0), 0)) != _real:
+                self.haishin_step[int(_s0)] = _real
+        self.haishin_turn_used = {int(k): str(v) for k, v in
+                                  (f.get("haishin_turn_used") or {}).items()}
+        self.ask_seq = int(f.get("ask_seq", 0) or 0)
+        self.asks = [x for x in (f.get("asks") or []) if isinstance(x, dict)]
+        _ca = f.get("cur_ask")
+        self.cur_ask = _ca if isinstance(_ca, dict) and _ca else None
+        self.haishin_swap_asked = {int(k): str(v) for k, v in
+                                   (f.get("haishin_swap_asked") or {}).items()}
+        # ★ 不能写 `int(x or -1)`：座位 0 是 falsy，会被当成「没有抑制」（0 号位永远不生效）
+        _hsh = f.get("haishin_swap_hold", -1)
+        self.haishin_swap_hold = int(_hsh) if (_hsh is not None
+                                               and int(_hsh) in range(4)) else -1
+        self.pre_draw_asked = {str(k): str(v) for k, v in
+                               (f.get("pre_draw_asked") or {}).items()}
         self.shenshan = {int(x) for x in (f.get("shenshan") or [])}
         so = f.get("shenshan_offer")
         self.shenshan_offer = so if isinstance(so, dict) else None
@@ -480,6 +532,7 @@ class Game:
         self.c26_last = {int(k): int(v) for k, v in (f.get("c26_last") or {}).items()}
         self.c26_done = {int(k): int(v) for k, v in (f.get("c26_done") or {}).items()}
         self.c26_deadline = float(f.get("c26_deadline", 0) or 0)
+        self._c26_restore()          # 天梯的 n / 开启状态是半庄级（meta），不让每局清空
         self.c27_mark = {int(k): int(v) for k, v in (f.get("c27_mark") or {}).items()}
         self.c27_cnt = {int(k): int(v) for k, v in (f.get("c27_cnt") or {}).items()}
         self.c27_s2 = {int(x) for x in (f.get("c27_s2") or []) if int(x) in range(4)}
@@ -733,6 +786,20 @@ class Game:
         b = f.get("broadcast")
         self.broadcast = b if isinstance(b, dict) and b else None
         self.broadcast_id = int(f.get("broadcast_id", 0) or 0)
+        _bl = f.get("broadcast_log")
+        self.broadcast_log = [dict(x) for x in _bl if isinstance(x, dict)] \
+            if isinstance(_bl, list) else []
+        _vp = f.get("voice_packs")
+        if isinstance(_vp, dict):
+            self.voice_packs = {}
+            for k, v in _vp.items():
+                try:
+                    self.voice_packs[int(k)] = str(v)
+                except (ValueError, TypeError):
+                    pass
+        self.voice_id = int(f.get("voice_id", 0) or 0)
+        _ve = f.get("voice_evt")
+        self.voice_evt = _ve if isinstance(_ve, dict) and _ve else None
         self._revealed_cache = self._load_revealed()
         self.boards = {}
         for k, v in (f.get("boards") or {}).items():
@@ -923,7 +990,18 @@ class Game:
             "diaoyu_locked": self.diaoyu_locked,
             "haishin_offer": self.haishin_offer,
             "haishin_step": {str(k): v for k, v in self.haishin_step.items()},
+            "haishin_done": {str(k): [dict(x) for x in v]
+                             for k, v in self.haishin_done.items()},
+            "haishin_turn_used": {str(k): v for k, v in
+                                  self.haishin_turn_used.items()},
             "haishin_gate": self.haishin_gate,
+            "ask_seq": int(getattr(self, "ask_seq", 0)),
+            "asks": self.asks,
+            "cur_ask": self.cur_ask,
+            "haishin_swap_asked": {str(k): v for k, v in
+                                   self.haishin_swap_asked.items()},
+            "haishin_swap_hold": int(self.haishin_swap_hold),
+            "pre_draw_asked": dict(self.pre_draw_asked),
             "x_skip": {str(k): v for k, v in self.x_skip.items()},
             "deal_wait": sorted(self.deal_wait),
             "deal_used": sorted(self.deal_used),
@@ -977,6 +1055,10 @@ class Game:
             "must_tsumogiri": sorted(self.must_tsumogiri),
             "broadcast": self.broadcast,
             "broadcast_id": self.broadcast_id,
+            "broadcast_log": self.broadcast_log,
+            "voice_packs": {str(k): str(v) for k, v in self.voice_packs.items()},
+            "voice_id": self.voice_id,
+            "voice_evt": self.voice_evt,
             "round_phase": self.round_phase,
             "dice": list(self.dice) if self.dice else None,
             "deal_i": self.deal_i,
@@ -1451,12 +1533,24 @@ class Game:
             # 我这家的卡序（主战 → 协战 → 传承）：客户端摸牌前的几个询问按它排
             "my_cards": (self._seat_cards(int(seat)) if seat is not None else []),
             "dawa": self.owns_dawa(seat),
+            # P2：这一座位现在挂着哪些「摸牌时」的询问（海神借牌 / 挪宝 …）。
+            # ★ 字段名不能叫 "asks"：state["asks"] 早就是「看破/封堵/阻止」的
+            #   act 树（act_ask_view），同名会把看破那套整个盖掉。
+            "pending_asks": ([{"ask_id": int(a.get("ask_id", 0)),
+                       "kind": str(a.get("kind", "")),
+                       "seat": int(a.get("seat", -1)),
+                       "from": int(a.get("from", -1)),
+                       "tile": str(a.get("tile", ""))}
+                      for a in self.asks
+                      if int(a.get("seat", -1)) == int(seat)]
+                     if seat is not None else []),
             "haishin_offer": (self.haishin_offer
                               if (self.haishin_offer or {}).get("owner") == int(seat) else None),
             "haishin_can": self.haishin_can(seat),
             "haishin_on": bool(self.haishin_on),
             "haishin_step": int(self.haishin_step.get(int(seat), 0)),
             "haishin_gate": (self.haishin_gate == int(seat)),
+            "haishin_swap_can": self.haishin_swap_can(seat),
             "xn_can": self.xn_can(seat),
             "x_skip": {str(k): int(v) for k, v in self.x_skip.items()},
             "char_states": self._char_states(-1 if seat is None else int(seat)),
@@ -1542,6 +1636,11 @@ class Game:
                        },
                        # 技能播报（全场共用一个 id，客户端只看 id 变没变）
                        "broadcast": self.broadcast,
+                       # 本小局「谁发动了什么」流水（右上角技能记录，只给最近 16 条）
+                       "broadcast_log": (self.broadcast_log[-16:] if self.broadcast_log else []),
+                       # 角色语音包（谁选了哪个）+ 最新一条语音事件
+                       "voice_packs": {str(k): str(v) for k, v in self.voice_packs.items()},
+                       "voice": self.voice_evt,
                        # 已经翻明的人物卡（别人视角不再盖住）
                        "revealed": sorted(self._revealed_cache),
                        # 画板：指定的三张 + 已经给过的 + 压在卡下等我摸的明牌
@@ -1898,6 +1997,15 @@ class Game:
             return self._event("dealing", {"msg": "配牌技能还没结算完"})
         if self.phase != "draw":
             raise RuleError(f"现在是 {self.phase} 阶段，不能摸牌")
+        # 这一座位还挂着「海神·挪宝」询问（人掉线 / 没人答）→ 替他跳过再摸，
+        # 否则会带着一句「有人在等」把牌摸走，询问永远关不掉。
+        if (self.cur_ask is not None
+                and str(self.cur_ask.get("kind", "")) in self._PRE_DRAW_KINDS):
+            self.cur_ask = None
+            if self.asks:
+                self.asks.pop(0)
+            self._clear_ask_slots()
+            self.save_flags()
         # 友引（22S2）：四副露单骑 → 摸牌前可以先从牌河挑一张
         # 21S2 段2（馈赠换牌）：摸牌前先问一次（跳过下次继续问）
         if self.turn is not None and self.gift_offer_open(int(self.turn)):
@@ -1953,8 +2061,16 @@ class Game:
                 continue
             # 换牌类：先记摸牌账，再把这张牌挂给抢的人（我停在这里等他换）
             self._draw_bookkeeping(int(seat))
-            self._open_intercept(int(seat), tile0, plan)   # 余下的放进 offer["plan"]
+            self._open_intercept(int(seat), tile0, plan)   # 全部入队，只挂队头
             self.save_flags()
+            if self.cur_ask is None:
+                # 复检时全都失效了（立直 / 牌已被换走…）→ 当没被抢：正常进「摸牌后」
+                # ★ 不处理的话：牌已经记账、phase 还停在 draw → 客户端再推一次就多摸一张。
+                _ev1 = self._draw_after(int(seat), tile0, moved, info)
+                if _ev1 is not None:
+                    return _ev1
+                return self._event("draw", {"seat": int(seat), "tile": tile0,
+                                            "board": moved})
             return self._event("draw", {"seat": int(seat), "tile": tile0, "board": moved,
                                         kind: (True if kind == "shenshan" else int(who))})
         got = info["tile"]
@@ -1963,18 +2079,47 @@ class Game:
         if self.c34_muted(int(seat)) and self._c10s2_ready(int(seat)):
             self._c10s2_clear(int(seat))
             self._event("c10s2_wasted", {"seat": int(seat)})
-        # Card34 S2【海底】：最后一张摸进来 → 海底自摸（厄运已在这一次摸牌结束）
-        if int(self.c34s2_on) == int(seat) and int(self.live_left()) <= 0:
-            _ev_last = self._c34s2_last_tsumo(int(seat), info)
-            if _ev_last is not None:
-                return _ev_last
-        elif int(self.c34s2_on) >= 0 and int(self.live_left()) <= 0:
-            # 这三巡里有人鸣牌/杠 → 摸牌顺序错开，最后一张落到了别家手里
-            self.c34s2_why_seat = int(self.c34s2_on)
-            self.c34s2_why = "海底：最后一张被别家摸走了（这三巡里有人鸣牌）"
-            self.c34s2_on = -1
-            self.save_flags()
-        self.last_was_rinshan = False
+        _ev_after = self._draw_after(int(seat), got, moved, info)
+        if _ev_after is not None:
+            return _ev_after
+        return self._event("draw", {"seat": seat, "tile": got, "board": moved})
+
+    def _draw_after(self, seat: int, got: str, moved: list | None = None,
+                    info: dict | None = None, rinshan: bool = False,
+                    extra_checks: bool = True) -> dict | None:
+        """摸牌后的**统一尾段**：同巡振听解除 / 一发 / 自风 / 替身 / 四喜 / 海底 / phase。
+
+        ★ 这段以前只写在 _draw_common 里，于是两条路全跳过：
+          · 岭上摸牌（加杠 / 明杠 / 友引摊完之后的补牌）；
+          · 摸到的牌被海神 / 深山 / 宝牌集合 / 画板抢走（提前 return）。
+        结果：借完牌的人还挂着「同巡振听」、一发不结束、自风不判。
+
+        extra_checks=False：只补「状态类」的（振听 / 一发 / 自风 / phase），
+        不碰替身 / 四喜 / 海底 —— 那三个要产生事件，而拦截类的答复 op
+        （haishin_give / haishin_pass / *_skip）没有事件通道，只会丢。
+
+        返回 dict = 这段产生了**优先级更高**的事件（海底 / 替身 / 四喜 / 自风），
+        调用方拿到就原样 return；None = 调用方按自己的事件名发。
+        """
+        seat = int(seat)
+        got = str(got)
+        moved = list(moved or [])
+        if info is None:
+            info = {"tile": got}
+        if extra_checks:
+            # Card34 S2【海底】：最后一张摸进来 → 海底自摸（厄运已在这一次摸牌结束）
+            if int(self.c34s2_on) == int(seat) and int(self.live_left()) <= 0:
+                _ev_last = self._c34s2_last_tsumo(int(seat), info)
+                if _ev_last is not None:
+                    return _ev_last
+            elif int(self.c34s2_on) >= 0 and int(self.live_left()) <= 0:
+                # 这三巡里有人鸣牌/杠 → 摸牌顺序错开，最后一张落到了别家手里
+                self.c34s2_why_seat = int(self.c34s2_on)
+                self.c34s2_why = "海底：最后一张被别家摸走了（这三巡里有人鸣牌）"
+                self.c34s2_on = -1
+                self.save_flags()
+        if not rinshan:
+            self.last_was_rinshan = False
         self.temp_furiten.discard(seat)          # 摸牌 → 同巡振听解除
         if seat in self.ippatsu and self._ippatsu_over(seat):
             self.ippatsu.discard(seat)           # 立直宣言牌之后又打过 → 一发结束
@@ -1985,17 +2130,18 @@ class Game:
             self.wind_swap = {"owner": int(owner), "from": int(seat), "tile": got}
             self.phase = "wind_swap"
             return self._event("draw", {"seat": seat, "tile": got, "board": moved,
-                                        "self_wind": owner})
+                                        "self_wind": int(owner)})
         self.phase = "discard"
-        # Card45 S2【替身】：这家摸完牌 → 由「第二位玩家」指定切哪张
-        _s2 = self._c45s2_try(int(seat))
-        if _s2 is not None:
-            return _s2
-        # Card10 S2【四喜】：第 5 张摸到的牌直接视为小四喜自摸（不用再点按钮）
-        _c10ev = self._c10s2_auto_tsumo(int(seat), str(got))
-        if _c10ev is not None:
-            return _c10ev
-        return self._event("draw", {"seat": seat, "tile": got, "board": moved})
+        if extra_checks:
+            # Card45 S2【替身】：这家摸完牌 → 由「第二位玩家」指定切哪张
+            _s2 = self._c45s2_try(int(seat))
+            if _s2 is not None:
+                return _s2
+            # Card10 S2【四喜】：第 5 张摸到的牌直接视为小四喜自摸（不用再点按钮）
+            _c10ev = self._c10s2_auto_tsumo(int(seat), got)
+            if _c10ev is not None:
+                return _c10ev
+        return None
 
     def _draw_bookkeeping(self, seat: int) -> None:
         """摸牌后必做的那几件事（被抢牌 / 没被抢 都要做）。"""
@@ -2111,7 +2257,9 @@ class Game:
             self.c11_win = None
         if self.haishin_gate is not None and int(self.haishin_gate) == int(seat):
             self.haishin_gate = None
-        self.haishin_step[int(seat)] = 0
+        # ★ 用户口径 2026-11-06：里宝 / 杠宝 / 杠里宝 各只能说换一次，
+        #   所以进度**整小局累计**，打一张牌不能把它清零（以前清零 =
+        #   每巡都能再换一次「里宝」）。
         # 破发窗口不在这里关：别家立直后要留给我决定（摸牌或破发时才清）                   # 打出牌了 → 不再是「交换后直接和牌」          # 打完牌了，「技能导致的自摸」窗口关闭
         if self.phase == "deal_skill" or self.deal_flow:
             # A0: phase 已经推进到 discard，说明配牌流程早走完了 -> 收掉残留，别再挡
@@ -2289,6 +2437,7 @@ class Game:
                                    "declarer": self.first_riichi_seat(int(seat))}
             self.save_flags()
         ev = self._do_discard(seat, tile=tile, riichi=True, face_down=face_down)
+        self._voice(seat, "reach")
         if self.phase == "ended" or self.result is not None:
             return ev                       # 这一张已经把这一局打完了（命中结算）
         # 破发（Card13 S1）：别人宣布立直 → 开一个窗口，等我下次摸牌就关
@@ -2686,6 +2835,32 @@ class Game:
         wind = ["dong", "nan", "xi", "bei"][(s - self.dealer) % 4]
         self.broadcast = {"id": self.broadcast_id, "seat": s,
                           "wind": wind, "card": c, "skill": k, "name": name}
+        # 本小局流水（右上角技能记录）：从新到旧显示用
+        self.broadcast_log.append({"id": int(self.broadcast_id), "seat": int(s),
+                                   "card": int(c), "skill": int(k),
+                                   "name": str(name), "wind": wind})
+        self.save_flags()
+
+    def set_voice_pack(self, seat: int, pack: str) -> dict:
+        """玩家在初始界面选的语音包（每个座位一份，全场可见）。"""
+        s_ = int(seat)
+        if not (0 <= s_ < 4):
+            raise RuleError("座位号不对")
+        p = str(pack).strip()
+        if p == "":
+            self.voice_packs.pop(s_, None)
+        else:
+            self.voice_packs[s_] = p[:40]
+        self.save_flags()
+        return {"seat": s_, "pack": p}
+
+    def _voice(self, seat: int, kind: str) -> None:
+        """记一条语音事件：吃 chi / 碰 pon / 杠 kan / 立直 reach / 荣和 ron / 自摸 tsumo。
+
+        客户端按 (seat 的语音包, kind) 播，自己视角和别人视角都用**那一家自己选的**包。
+        """
+        self.voice_id += 1
+        self.voice_evt = {"id": int(self.voice_id), "seat": int(seat), "kind": str(kind)}
         self.save_flags()
 
     def _note_pay_broadcast(self, seat: int, card: int, skill: int, text: str) -> None:
@@ -2860,6 +3035,12 @@ class Game:
     #   同一家同时满足多个时，按 _INTERCEPT_ORDER 里的先后取一个。
     _INTERCEPT_ORDER = ("board", "shenshan", "haishin", "c25s2")
 
+    # 「摸牌前」技能：卡号 → 询问种类（P3 统一收进 asks 队列）
+    _PRE_DRAW_KIND = {7: "oracle", 9: "card09", 12: "haishin_swap",
+                      14: "zhalie", 24: "future", 26: "c26", 45: "c45"}
+    _PRE_DRAW_KINDS = ("oracle", "card09", "haishin_swap", "zhalie",
+                       "future", "c26", "c45")
+
     # 卡号 → 「拿走摸到的牌」的技能（遍历卡序时用它把卡翻成技能）
     _INTERCEPT_BY_CARD = {2: "board", 19: "shenshan", 12: "haishin", 25: "c25s2"}
 
@@ -2934,40 +3115,138 @@ class Game:
         return int(plan[0][0]), str(plan[0][1])
 
     def _open_intercept(self, drawer: int, tile: str, plan: list) -> str:
-        """把 plan 里的第一个挂成询问（画板不走这里）。返回技能种类。"""
+        """把「摸到的牌归谁」这一串询问**全部入队**，然后挂出队头。
+
+        每笔询问带 ask_id（流水号），客户端靠它去重。三家的顺序、
+        同一家的主战/协战顺序都在 plan 里，队列天然就是「先问谁、后问谁」。
+        """
         who, kind = int(plan[0][0]), str(plan[0][1])
-        rest = [[int(a), str(b)] for a, b in plan[1:]]
-        if kind == "shenshan":
-            self.shenshan_offer = {"seat": who, "from": int(drawer),
-                                   "tile": str(tile), "plan": rest}
-            self.phase = "shenshan"
-        elif kind == "haishin":
-            self.haishin_offer = {"owner": who, "from": int(drawer),
-                                  "tile": str(tile), "plan": rest}
-            self.phase = "haishin"
-        else:
-            self.c25s2_offer = {"owner": who, "from": int(drawer),
-                                "tile": str(tile), "plan": rest}
-            self.phase = "c25s2"
+        self.asks = []
+        for a_seat, a_kind in plan:
+            self.ask_seq = int(getattr(self, "ask_seq", 0)) + 1
+            self.asks.append({"ask_id": int(self.ask_seq),
+                              "seat": int(a_seat), "kind": str(a_kind),
+                              "from": int(drawer), "tile": str(tile),
+                              "plan": [], "asked": []})
+        self._pump_ask()
         return kind
 
+    def _ask_still_ok(self, a: dict) -> bool:
+        """这条排队中的询问现在还成立吗（期间可能立直 / 牌被换走…）。"""
+        kind = str(a.get("kind", ""))
+        who = int(a.get("seat", -1))
+        if kind in ("oracle", "card09", "haishin_swap", "zhalie",
+                    "future", "c26", "c45"):
+            return self._pre_draw_kind_ok(who, kind)
+        return self._intercept_kind_ok(who, int(a.get("from", -1)),
+                                       str(a.get("tile", "")), kind)
+
+    def _clear_ask_slots(self) -> None:
+        self.haishin_offer = None
+        self.shenshan_offer = None
+        self.c25s2_offer = None
+
+    def _pump_ask(self) -> dict | None:
+        """取队头：失效的丢掉，第一个有效的挂到槽位 + phase。
+
+        返回 {"event":"ask", "ask_id", "skill", "seat", "tile"} 或 None（队列空了）。
+        """
+        while self.asks:
+            a = self.asks[0]
+            if not self._ask_still_ok(a):
+                self.asks.pop(0)
+                continue
+            if not a.get("ts"):
+                a["ts"] = time.time()
+            self.cur_ask = dict(a)
+            kind = str(a.get("kind", ""))
+            who = int(a.get("seat", -1))
+            if kind == "shenshan":
+                self.shenshan_offer = dict(a, seat=who)
+                self.phase = "shenshan"
+            elif kind == "haishin":
+                self.haishin_offer = dict(a, owner=who)
+                self.phase = "haishin"
+            elif kind == "c25s2":
+                self.c25s2_offer = dict(a, owner=who)
+                self.phase = "c25s2"
+            # haishin_swap：phase 保持 "draw"（服务端 haishin_swap 要它）
+            self.save_flags()
+            return {"event": "ask", "ask_id": int(a.get("ask_id", 0)),
+                    "skill": kind, "seat": who, "tile": str(a.get("tile", ""))}
+        self.cur_ask = None
+        self._clear_ask_slots()
+        return None
+
+    def _close_ask(self) -> None:
+        """把队头那笔询问关掉（答复完成 / 跳过）。不会自动挂下一个。"""
+        if self.asks:
+            self.asks.pop(0)
+        self.cur_ask = None
+        self._clear_ask_slots()
+
+    @staticmethod
+    def _asked_set(offer: dict | None) -> set:
+        """这一笔摸牌已经问过谁 → {(座位, 种类)}。
+
+        用途：give（把牌换走）之后按新牌重建计划时，别把同一家再问一遍。
+        """
+        out = set()
+        for x in ((offer or {}).get("asked") or []):
+            try:
+                out.add((int(x[0]), str(x[1])))
+            except Exception:
+                continue
+        return out
+
+    def _active_offer(self) -> dict | None:
+        """当前挂着的询问（三个槽位里挑活的那个）。"""
+        for d in (self.haishin_offer, self.shenshan_offer, self.c25s2_offer):
+            if isinstance(d, dict) and d:
+                return d
+        return None
+
     def _advance_intercept(self, offer: dict) -> dict | None:
-        """这笔询问被跳过了 → 按 plan 继续问下一个（同一家的协战卡、再往后的人）。
+        """这笔询问答完了 → 队列里的下一笔；队列空了就收尾。
 
         返回 {"event":"intercept", ...} = 又挂出了一笔询问；None = 都问完了。
         """
         drawer = int(offer.get("from", -1))
         tile = str(offer.get("tile", ""))
+        aid = int(offer.get("ask_id", -2))
+        # ① 队列驱动：offer 就是队头 → 弹掉，挂下一个
+        if self.asks and aid > 0 and int(self.asks[0].get("ask_id", -1)) == aid:
+            self._close_ask()
+            nxt = self._pump_ask()
+            if nxt is not None:
+                self.save_flags()
+                return {"event": "intercept", "skill": nxt["skill"],
+                        "seat": nxt["seat"], "tile": nxt["tile"],
+                        "ask_id": nxt["ask_id"]}
+        else:
+            self._clear_ask_slots()
+        # ② 兼容：手工注入的 offer / 旧 flags 里没有队列 → 按 plan 继续
         plan = [[int(a), str(b)] for a, b in (offer.get("plan") or [])]
-        while plan:
-            who, kind = int(plan[0][0]), str(plan[0][1])
-            plan = plan[1:]
-            if not self._intercept_kind_ok(who, drawer, tile, kind):
-                continue                 # 期间状态变了（立直 / 手里没非宝牌了…）
-            got = self._open_intercept(drawer, tile, [[who, kind]] + plan)
-            self.save_flags()
-            return {"event": "intercept", "skill": got, "seat": who, "tile": tile}
-        self.phase = "discard"
+        if plan:
+            asked = self._asked_set(offer)
+            while plan:
+                who, kind = int(plan[0][0]), str(plan[0][1])
+                plan = plan[1:]
+                if (who, kind) in asked:
+                    continue             # 这一笔已经问过他这一种
+                if not self._intercept_kind_ok(who, drawer, tile, kind):
+                    continue             # 期间状态变了（立直 / 手里没非宝牌了…）
+                got = self._open_intercept(drawer, tile, [[who, kind]] + plan)
+                self.save_flags()
+                return {"event": "intercept", "skill": got, "seat": who, "tile": tile}
+        # ③ 都问完了 → 把「摸牌后」那半段补齐。
+        # ★ 以前这里只有 self.phase = "discard"：被抢牌的人同巡振听不解除、
+        #   一发不结束、自风不判 —— 看起来就是「该问/该判的地方没做」。
+        if drawer >= 0:
+            cur = str(self.drawn_tile(drawer) or tile or "")
+            self._draw_after(int(drawer), cur, extra_checks=False)
+        else:
+            self.phase = "discard"
         self.save_flags()
         return None
 
@@ -3877,6 +4156,25 @@ class Game:
         self.save_flags()
         return r
 
+    def _drawn_mark_move(self, took_seq: int, given_seq: int) -> None:
+        """「借对方摸牌」类技能换完手牌后，把 is_drawn 标记跟着走。
+
+        `took_seq`  = 我从对方手里拿走的那张（他原本的摸牌）→ 取消标记
+        `given_seq` = 我给他、他现在要打的那张 → 标成「刚摸到」
+
+        ★ 不做这一步：他 drawn_tile=None（技能全不可用、hand13 按 14 张算），
+          我这边多一张 is_drawn=1（hand13 少算一张）。海神 / 深山 / 宝牌的集合 都会踩。
+        """
+        with self.db.tx():
+            self.db.conn.execute(
+                "UPDATE round_hands SET is_drawn=0 "
+                "WHERE round_id=? AND wall_seq IN (?,?)",
+                (self.round_id, int(took_seq), int(given_seq)))
+            self.db.conn.execute(
+                "UPDATE round_hands SET is_drawn=1 WHERE round_id=? AND wall_seq=?",
+                (self.round_id, int(given_seq)))
+        self.save_flags()
+
     # ── 换两张手牌的**唯一**实现（自风 / 南风 / 风神·宝牌运 / 向听 都走这里）──
     def _swap_hand_tiles(self, seat_a: int, seq_a: int, seat_b: int, seq_b: int,
                          reason: str, *, by: int | None = None,
@@ -4325,6 +4623,44 @@ class Game:
                 "skill_name": skills.info(card, skill).get("name", ""),
                 "kind": "c26s1", "pending": sorted(self.deal_wait)}
 
+    # -- 天梯（Card26 S2）的半庄级状态：meta，key 带 match_id ----------------
+    def _c26_meta_key(self) -> str:
+        return "c26_state_%s" % (self.match_id,)
+
+    def _c26_restore(self) -> None:
+        """本小局还没发过天梯时，从 meta 把上一局攒的 n / 上次得点拿回来。
+
+        「本局有没有开」（c26s2_on）还是**每局重发**，跟着 round_flags 走；
+        只有连续次数 n 和上次得点是**半庄级**的进度。
+        """
+        if self.c26_n or self.c26_last:
+            return                        # 本局已经发过天梯了，以 flags 为准
+        try:
+            row = self.db._row("SELECT value FROM meta WHERE key=?",
+                               (self._c26_meta_key(),))
+            if not row:
+                return
+            d = json.loads(str(row["value"])) or {}
+            self.c26_n = {int(k): int(v) for k, v in (d.get("n") or {}).items()
+                          if int(k) in range(4)}
+            self.c26_last = {int(k): int(v) for k, v in (d.get("last") or {}).items()
+                             if int(k) in range(4)}
+        except Exception:                 # noqa: BLE001
+            pass
+
+    def _c26_save(self) -> None:
+        """把连续次数 n / 上次得点写进 meta（半庄级），下一局还能接着涨。"""
+        try:
+            with self.db.tx():
+                self.db.conn.execute(
+                    "INSERT OR REPLACE INTO meta(key, value) VALUES(?,?)",
+                    (self._c26_meta_key(),
+                     json.dumps({"n": {str(k): int(v) for k, v in self.c26_n.items()},
+                                 "last": {str(k): int(v) for k, v in self.c26_last.items()}},
+                                ensure_ascii=False)))
+        except Exception:                 # noqa: BLE001
+            pass
+
     def _arm_c26s2(self, seat: int, card: int, skill: int) -> dict:
         """配牌点「天梯」：本局开启 —— 每次自己摸牌前先排接下来 1+n 张。"""
         s = int(seat)
@@ -4332,9 +4668,12 @@ class Game:
             return {"ok": True, "armed": True, "already": True,
                     "pending": sorted(self.deal_wait)}
         self.c26s2_on.add(s)
-        self.c26_n[s] = C26_N0            # n 从 1 开始（第一次排 1+n = 2 张）
-        self.c26_last[s] = -1
+        if s not in self.c26_n:           # 半庄级进度：没攒过才从 1 开始
+            self.c26_n[s] = C26_N0        # n 从 1 开始（第一次排 1+n = 2 张）
+        if s not in self.c26_last:
+            self.c26_last[s] = -1
         self.c26_done.pop(s, None)
+        self._c26_save()
         self.note_use(s, card, skill, gate=False)
         if not self._deal_wait_keep(s):               # 还有云外镜没发就继续等
             self.deal_wait.discard(s)
@@ -4516,7 +4855,7 @@ class Game:
         """固定 1000 点：不走番数链（否则 pays 会被按 0 番重算），收付链照常。"""
         pays = {"total": 1000, "each": 0, "from_dealer": 0, "from_other": 1000,
                 "ron": 1000}
-        res = {"yaku": [{"name": "故意（支付 1000 点）", "han": 0}],
+        res = {"yaku": [{"name": "故意", "han": 0}],
                "han": 0, "fu": 0, "pays": pays, "c36s2": True,
                "fu_items": [], "_tile": str(tile), "_tsumo": False}
         self._finish(int(winner), int(me), "ron", res)
@@ -5403,14 +5742,15 @@ class Game:
             return False
         return ("%d-%d" % (int(card), int(skill))) in self.c43s2_imm[s]
 
-    # 一定波及别人、但目标算不准的 op → 按「其他三家」算（宁可多问，不漏）
-    _C43_ALL_OTHERS = {
-        "deal_swap", "swap", "wind_swap", "card05_swap", "card05_extra",
-        "card09_swap", "card11_swap", "card11s2_swap", "haishin_swap",
-        "haishin_give", "c30s1_swap", "gift_swap", "xianfu_swap",
-        "youyin_take", "press", "c29s1_chi", "diaoyu_force", "c30s1_give",
-        "c32s1_give", "zhalie_swap", "nongwu", "zhalie",
-    }
+    # ★ 只有「**真的**一次波及其他三家、而且目标算不出来」的技能才按全体算。
+    #   用户口径 2026-11-04：别家对别家发动技能时，第三方**不该**能免疫。
+    #   以前这张表塞了 22 个 op（其中 9 个根本没有对应的 op 函数），连
+    #   「海神挪宝 / 魔术换指示牌」这种没有任何目标的都算成全体，导致谁都来问一句。
+    #   现在只留风神（依次换三家的风牌）；其余全部靠 payload / 内部状态精确推导。
+    #   ★ 2026-11-04 第二轮：连风神/宝牌运也不按全体算了 —— 它们本来就是**一家一步**，
+    #     目标 = 这一步的那一家（见 c43s2_targets 里的 deal_swap 分支）。
+    #     用户口径：这种涉及三家的技能，**免疫的那家不换，其他两家照常换**。
+    _C43_ALL_OTHERS: set[str] = set()
     # op / payload 里「指向谁」的键（够覆盖目前所有指向性技能）
     # op / payload 里「指向谁」的键（够覆盖目前所有指向性技能）
     _C43_KEYS = ("target", "to", "dst", "other", "with", "seat2", "partner")
@@ -5437,7 +5777,9 @@ class Game:
                         pass
         # ② 牌河 seq → 这几张牌是谁打的
         seqs: list[int] = []
-        for k in ("seq", "discard_seq", "called_seq"):
+        # "river" 在不同 op 里可能是 int（牌河 seq）也可能是 list（swap 的牌河列表）：
+        # 这里按 int 收，list 的情况下面 ② 的列表分支自己会处理。
+        for k in ("seq", "discard_seq", "called_seq", "river"):
             v = pay.get(k)
             if isinstance(v, int) and not isinstance(v, bool):
                 seqs.append(int(v))
@@ -5477,7 +5819,24 @@ class Game:
                     "SELECT seat FROM round_hands WHERE round_id=? "
                     "AND wall_seq IN (%s)" % marks2, (self.round_id, *hs)):
                 out.add(int(r["seat"]))
-        # ④ 算不准但一定波及别人的 → 其他三家全算上
+        # ③.5 目标写在服务端内部状态里（客户端 payload 没带）
+        if str(op) == "wind_swap":
+            w = self.wind_swap or {}          # 自风：目标是刚摸牌那家
+            if int(w.get("from", -1)) >= 0:
+                out.add(int(w["from"]))
+        elif str(op) == "haishin_give":
+            off = self.haishin_offer or {}    # 海神借牌：目标是被借牌那家
+            if int(off.get("from", -1)) >= 0:
+                out.add(int(off["from"]))
+        elif str(op) == "deal_swap":
+            # 风神 / 宝牌运：一家一步 → 目标只是**这一步**的那一家
+            f = self.deal_flow or {}
+            if str(f.get("kind")) in ("dora_luck", "fengshen"):
+                tg = f.get("targets") or []
+                st = f.get("stage")
+                if isinstance(st, int) and 0 <= int(st) < len(tg):
+                    out.add(int(tg[int(st)]))
+        # ④ 只有真·波及三家的（风神）才整体算上
         if str(op) in self._C43_ALL_OTHERS:
             out |= {0, 1, 2, 3}
         return out
@@ -5726,21 +6085,29 @@ class Game:
         return bool(self.c42s1_on)
 
     def _c42s1_void_deal(self) -> None:
-        """已经发动过的配牌技能全部作废（清掉它们留在局上的持续状态）。"""
+        """已经发动过的配牌技能全部作废（清掉它们留在局上的持续状态）。
+
+        注意：天梯（Card26 S2）的连续次数 n / 上次得点是**半庄级进度**（存在 meta 里），
+        不属于「局上持续状态」，这里故意不清 —— 否则对家放一张理论战就把别人
+        整个半庄的天梯进度抹掉了。本局的 c26_done 还是清（这一巡的排牌机会作废）。
+        """
         for name, val in (("confident", set()), ("c25_on", set()),
                           ("c25s2_on", set()), ("c26s2_on", set()),
                           ("c28s1_on", set()), ("shenshan", set()),
                           ("oracle", {}), ("c27_s2", set()), ("gift", {}),
                           ("gift_used", set()), ("gift_asked", set()),
                           ("c40_cnt", {}), ("c40_show", {}), ("yiding", set()),
-                          ("yiding_src", {}), ("c26_n", {}), ("c26_last", {}),
-                          ("c26_done", {}), ("c11_win", None),
+                          ("yiding_src", {}), ("c26_done", {}), ("c11_win", None),
                           ("c24_armed", -1), ("future_armed", -1),
                           ("haishin_on", False), ("haishin_gate", None),
                           ("haishin_offer", None), ("haishin_step", {}),
                           ("ignite_ok", False), ("ignite_done", True),
                           ("c29s1_offer", None), ("shenshan_offer", None),
-                          ("c25s2_offer", None), ("c25s2_pending", -1)):
+                          ("c25s2_offer", None), ("c25s2_pending", -1),
+                          ("asks", []), ("cur_ask", None),
+                          ("haishin_swap_asked", {}), ("haishin_swap_hold", -1),
+                          ("haishin_turn_used", {}),
+                          ("pre_draw_asked", {})):
             if hasattr(self, name):
                 try:
                     setattr(self, name, val)
@@ -6693,8 +7060,10 @@ class Game:
         # ★ swap_hand_hand 的口径：hand_seq_a 必须是 seat_a 自己的那张（a→seat_b、b→seat_a）
         self.do_swap("hand_hand", s, "宝牌的集合",
                      seat_a=s, hand_seq_a=hseq, seat_b=drawer, hand_seq_b=tseq)
+        self._drawn_mark_move(tseq, hseq)
         self.c25s2_offer = None
-        self.phase = "discard"
+        self._draw_after(int(drawer), str(self.drawn_tile(drawer) or got),
+                         extra_checks=False)
         self.save_flags()
         return {"got": got, "gave": tile, "from": drawer}
 
@@ -7667,6 +8036,15 @@ class Game:
         if int(stage) != int(f.get("stage", -1)):
             raise RuleError("阶段对不上，请重新选牌")
         target = int(f["targets"][int(stage)])
+        # ★ 这一家免疫了这个技能（风神/宝牌运）→ 跳过这一步，其他两家照常换。
+        # 用户口径 2026-11-04：免疫只保护自己，不该把整次发动废掉。
+        if target != int(seat) and self.c43s2_immune(
+                target, int(f.get("card", 0)), int(f.get("skill", 0))):
+            f["stage"] = int(stage) + 1
+            self._advance_deal_flow()
+            self.save_flags()
+            return {"stage": int(stage), "target": target, "skipped": True,
+                    "immune": True, "got": [], "next": self.deal_flow_view(int(seat))}
         _dl = str(f.get("kind")) == "dora_luck"
         winds = self._flow_target_tiles(f, target)
         if _dl:
@@ -7730,6 +8108,23 @@ class Game:
         self.save_flags()
         return {"stage": int(stage), "target": target, "count": len(winds),
                 "got": got, "next": self.deal_flow_view(seat)}
+
+    def deal_swap_immune_skip(self, seat: int) -> dict:
+        """风神 / 宝牌运：这一步的目标【免疫】了这个技能 → 跳过这一家。
+
+        返回和「正常换完一步」同样的形状（带 next），客户端照常走下一步。
+        """
+        f = self.deal_flow
+        if not f or int(f.get("seat", -1)) != int(seat):
+            return {"skipped": True, "immune": True, "next": None}
+        stage = int(f.get("stage", 0))
+        tg = f.get("targets") or []
+        tgt = int(tg[stage]) if 0 <= stage < len(tg) else -1
+        f["stage"] = stage + 1
+        self._advance_deal_flow()
+        self.save_flags()
+        return {"stage": stage, "target": tgt, "skipped": True, "immune": True,
+                "got": [], "next": self.deal_flow_view(int(seat))}
 
     def _maybe_close_deal(self) -> None:
         if self.phase == "deal_skill" and not self.deal_wait:
@@ -7966,6 +8361,7 @@ class Game:
             raise RuleError("暗杠要手里有 4 张一样的")
         self.db.meld(self.round_id, seat, kind, tiles, called_tile=tile, from_seat=seat,
                      rot_index=-1 if kind == "ankan" else 0)
+        self._voice(seat, "kan")
         if str(kind) == "kakan":
             self.c35_start(int(seat))              # 加杠也算副露 → 流势
         self.ippatsu.clear()
@@ -7986,13 +8382,9 @@ class Game:
         if got is None:
             return self._ryuukyoku("exhaustive")
         self.last_was_rinshan = True
-        self.phase = "discard"
-        owner = self._self_wind_owner(seat, got)
-        if owner is not None and (self.c34_muted(int(seat)) or self.c34_muted(int(owner))):
-            owner = None                       # 【厄运】：自风三巡内无效
-        if owner is not None:
-            self.wind_swap = {"owner": int(owner), "from": int(seat), "tile": got}
-            self.phase = "wind_swap"
+        # 岭上摸牌也走统一的「摸牌后」尾段（同巡振听解除 / 一发 / 自风 / phase）。
+        # 以前这段只写在 _draw_common 里 → 杠后补牌全跳过：振听不解除、自风不判。
+        self._draw_after(int(seat), got, rinshan=True, extra_checks=False)
         ev = self._event(kind, {"seat": seat, "tile": tile, "drawn": got,
                                 "rinshan": True})
         abort = self._check_abortive()
@@ -8157,6 +8549,7 @@ class Game:
                     self.diaoyu_locked = False
                     self.save_flags()
             ev = self._apply_claim(s, a["action"], a["tiles"], p)
+            self._voice(s, "kan" if str(a["action"]) == "minkan" else str(a["action"]))
             self._youyin_disarm(s, a["action"])      # 没真副露就把开启状态清掉
             # _apply_claim 有事要额外说（明杠补岭上 / 杠后流局）就用它返回的事件，否则用标准事件
             return ev or self._event(a["action"], {"seat": s, "tiles": a["tiles"],
@@ -8232,6 +8625,7 @@ class Game:
             abort = self._check_abortive()                   # 可能是四杠散了
             if abort:
                 return abort
+            self._draw_after(int(seat), got, rinshan=True, extra_checks=False)
             if int(self.c37s1_auto) == int(seat):
                 # 【岭上开花】在鸣牌窗口里点的 → 杠已经开成，接着走「换和牌张」那一段
                 self.c37s1_auto = -1
@@ -8526,6 +8920,9 @@ class Game:
         hseq, tseq = int(mine["wall_seq"]), int(theirs["wall_seq"])
         self.do_swap("hand_hand", s, "深山",
                      seat_a=s, hand_seq_a=hseq, seat_b=drawer, hand_seq_b=tseq)
+        self._drawn_mark_move(tseq, hseq)
+        self._draw_after(int(drawer), str(self.drawn_tile(drawer) or got),
+                         extra_checks=False)
         self.save_flags()
         return {"seat": s, "from": drawer, "gave": tile, "got": got, "skipped": False}
 
@@ -8780,8 +9177,8 @@ class Game:
         res = self._judge_best_kind(me, tsumo=False, riichi=True, ippatsu=True)
         if res is None:
             pays = score.payments(1, 30, is_dealer=(me == self.dealer), tsumo=False)
-            res = {"yaku": [{"name": "先负（立直·一发）", "han": 1}], "han": 1, "fu": 30,
-                   "pays": pays, "fu_items": [("先负（固定）", 30)]}
+            res = {"yaku": [{"name": "先负", "han": 1}], "han": 1, "fu": 30,
+                   "pays": pays, "fu_items": [("先负", 30)]}
         self._finish(me, int(declarer), "ron", res)
         return self._event("xianfu", {"seat": me, "from": int(declarer),
                                       "yaku": res.get("yaku"), "han": res.get("han"),
@@ -9268,12 +9665,7 @@ class Game:
                 self._ryuukyoku("exhaustive")
                 return
             self.last_was_rinshan = True
-            owner = self._self_wind_owner(s, got)
-            if owner is not None and (self.c34_muted(int(s)) or self.c34_muted(int(owner))):
-                owner = None                   # 【厄运】：自风三巡内无效
-            if owner is not None:
-                self.wind_swap = {"owner": int(owner), "from": s, "tile": got}
-                self.phase = "wind_swap"
+            self._draw_after(int(s), got, rinshan=True, extra_checks=False)
             if self._check_abortive():
                 return
         with self.db.tx():
@@ -9780,27 +10172,139 @@ class Game:
             raise RuleError("点燃只能在配牌阶段发动")
         return self._start_ignite(s, 14, 1)
 
-    def pre_draw_pending(self, seat: int) -> bool:
-        """这个座位在摸牌前还有没有「要先问一句」的技能可用。"""
+    def _pre_draw_fp(self) -> str:
+        """「这一巡」的指纹：活牌山剩余 + 当前座位。摸牌之后活牌山会变，天然翻页。"""
+        return "%d-%d" % (int(self.live_left()),
+                          int(self.turn if self.turn is not None else -1))
+
+    def _pre_draw_kind_ok(self, seat: int, kind: str) -> bool:
+        """这个座位此刻**还能不能**发动这一类摸牌前技能。"""
+        s = int(seat)
+        # ★ 必须先确认「他真的持有这张卡」：没有大厅数据时 cards_in_order 会
+        #   退回「1..33 全都能用」，那样人机会被挂上一堆它根本没有的询问 → 卡死。
+        _card = 0
+        for _c, _k in self._PRE_DRAW_KIND.items():
+            if _k == kind:
+                _card = int(_c)
+                break
+        try:
+            if _card and not skills.owns_card(self.db, self, s, _card, strict=True):
+                return False
+        except Exception:                           # noqa: BLE001
+            return False
+        try:
+            if kind == "oracle":
+                return bool((self.oracle.get(s) or {}).get("on", False))
+            if kind == "card09":
+                return bool(self.card09_can(s))
+            if kind == "haishin_swap":
+                return bool(self.haishin_swap_can(s))
+            if kind == "zhalie":
+                return bool(self.zhalie_can(s))
+            if kind == "future":
+                return (int(self.future_armed) == s) or bool(self.future_can(s))
+            if kind == "c26":
+                return bool(self.c26_can_sort(s))
+            if kind == "c45":
+                return bool(self.c45s1_can(s))
+        except Exception:                       # noqa: BLE001
+            return False
+        return False
+
+    def _pre_draw_asked_now(self, seat: int, kind: str) -> bool:
+        return (self.pre_draw_asked.get("%d:%s" % (int(seat), str(kind)))
+                == self._pre_draw_fp())
+
+    def _pre_draw_kinds(self, seat: int) -> list[str]:
+        """这个座位按**卡序**排的摸牌前技能（主战 → 协战 → 传承）。"""
+        out: list[str] = []
+        for card in self._seat_cards(int(seat)):
+            k = self._PRE_DRAW_KIND.get(int(card))
+            if k and k not in out:
+                out.append(str(k))
+        return out
+
+    def close_pre_draw_ask(self, seat: int) -> bool:
+        """把这个座位挂着的「摸牌前」询问关掉（技能用掉了 / 玩家跳过）。"""
+        a = self.cur_ask or {}
+        if int(a.get("seat", -1)) != int(seat):
+            return False
+        if str(a.get("kind", "")) not in ("oracle", "card09", "haishin_swap",
+                                          "zhalie", "future", "c26", "c45"):
+            return False
+        self._close_ask()
+        self.save_flags()
+        return True
+
+    def pre_draw_skip(self, seat: int) -> dict:
+        """这次摸牌前的询问不发动（关掉它，放开摸牌）。"""
+        s = int(seat)
+        a = self.cur_ask or {}
+        if int(a.get("seat", -1)) != s or str(a.get("kind", "")) not in (
+                "oracle", "card09", "haishin_swap", "zhalie",
+                "future", "c26", "c45"):
+            return {"skipped": True, "already": True}
+        self._close_ask()
+        self.save_flags()
+        return {"skipped": True, "kind": str(a.get("kind", ""))}
+
+    def open_pre_draw_ask(self, seat: int) -> bool:
+        """轮到我摸牌前：按卡序找第一个「可问且这一巡没问过」的技能，挂成询问。
+
+        返回 True = 挂上了（客户端去弹面板）；False = 这一次不用问。
+        """
+        s = int(seat)
+        if self.cur_ask is None and self.asks:
+            self._pump_ask()             # 队列里有遗留 → 先挂队头
+        if self.cur_ask is not None:
+            _k0 = str(self.cur_ask.get("kind", ""))
+            if _k0 in self._PRE_DRAW_KINDS and not self._pre_draw_kind_ok(
+                    int(self.cur_ask.get("seat", -1)), _k0):
+                self._close_ask()        # 失效（已经摸到牌/回合变了）→ 清掉
+            else:
+                return True              # 已经有询问挂着：别再挂一笔
+        for kind in self._pre_draw_kinds(s):
+            if not self._pre_draw_kind_ok(s, kind):
+                continue
+            if kind == "haishin_swap":
+                if self.haishin_swap_asked.get(s) == self._pre_draw_fp():
+                    continue
+                self.haishin_swap_asked[s] = self._pre_draw_fp()
+            elif self._pre_draw_asked_now(s, kind):
+                continue                 # 这一巡已经问过他 / 他跳过了
+            self.pre_draw_asked["%d:%s" % (s, kind)] = self._pre_draw_fp()
+            self.ask_seq = int(getattr(self, "ask_seq", 0)) + 1
+            self.asks.append({"ask_id": int(self.ask_seq), "seat": s,
+                              "kind": str(kind), "from": s, "tile": "",
+                              "plan": [], "asked": [], "ts": time.time()})
+            self._pump_ask()
+            self.save_flags()
+            return True
+        return False
+
+    def pre_draw_pending(self, seat: int, include_haishin: bool = True) -> bool:
+        """这个座位在摸牌前还有没有「要先问一句」的技能可用。
+
+        ★ 必须和 open_pre_draw_ask() 同源：否则会出现
+          「pre_draw_pending=True 但一笔也挂不出来」→ 客户端被 wait_pre 无限循环。
+
+        include_haishin=False：不算海神那条（给旧调用/兜底用）。
+        """
         s = int(seat)
         if self.c34_muted(s):
             return False                       # 【厄运】：三巡内不问技能
         try:
-            if self.zhalie_can(s):
-                return True
-            if self.card09_can(s):
-                return True
-            o = self.oracle.get(s) or {}
-            if bool(o.get("on", False)):
-                return True
-            if int(self.future_armed) == s:
-                return True                  # 未来：已经发动，等玩家把 5 张排好
-            if self.c26_can_sort(s):
-                return True                  # 天梯：摸牌前要先排牌山
-            if self.c45s1_can(s):
-                return True              # 神境：摸牌前先问一句
-            if self.future_can(s):
-                return True
+            for kind in self._pre_draw_kinds(s):
+                if kind == "haishin_swap" and not include_haishin:
+                    continue
+                if not self._pre_draw_kind_ok(s, kind):
+                    continue
+                if kind == "haishin_swap":
+                    if self.haishin_swap_asked.get(s) == self._pre_draw_fp():
+                        continue
+                    return True
+                if not self._pre_draw_asked_now(s, kind):
+                    return True
         except Exception:
             return False
         return False
@@ -10072,7 +10576,7 @@ class Game:
             res = yaku.judge(ctx)
             if not res.get("yaku"):
                 # 一定和牌：无役也能和 → 记一个 1 番 30 符的兜底候选
-                res = {"yaku": [{"name": "上钩（三副露听牌·无役和）", "han": 1}],
+                res = {"yaku": [{"name": "上钩", "han": 1}],
                        "han": 1, "fu": 30,
                        "pays": score.payments(1, 30, is_dealer=(s == self.dealer),
                                               tsumo=tsumo, yakuman=0,
@@ -10096,6 +10600,17 @@ class Game:
         """渣和：13 号卡的第二技能（跟主/协战同一套拥有判定）"""
         return skills.owns_card(self.db, self, int(seat), 13, strict=True)
 
+    def pre_draw_ask_timeout(self, secs: float = 90.0) -> bool:
+        """摸牌前询问挂了太久（客户端崩了/玩家挂机）→ 该自动跳过。"""
+        a = self.cur_ask or {}
+        if str(a.get("kind", "")) not in self._PRE_DRAW_KINDS:
+            return False
+        try:
+            ts = float(a.get("ts") or 0.0)
+        except Exception:                    # noqa: BLE001
+            return False
+        return ts > 0 and (time.time() - ts) > float(secs)
+
     def prompt_state(self) -> dict | None:
         """现在有没有人在等回答（统一询问锁）。
 
@@ -10118,6 +10633,17 @@ class Game:
             ask = self.kangpo_ask or {}
             w = [int(ask.get("owner", -1))] if ask else []
             return {"kind": "kangpo", "waiting": [x for x in w if x >= 0]}
+        # P2：统一询问队列 —— 队头是谁在等，就是谁在等（含海神·挪宝）
+        if self.cur_ask is not None:
+            _k = str(self.cur_ask.get("kind", ""))
+            _s0 = int(self.cur_ask.get("seat", -1))
+            # 摸牌前询问：条件已经没了（摸到牌/回合变了/立直了）→ 别锁桌，等自愈清掉
+            if _k in self._PRE_DRAW_KINDS and not self._pre_draw_kind_ok(_s0, _k):
+                return None
+            w = [_s0]
+            w = [x for x in w if 0 <= x <= 3]
+            if w:                        # 座位非法就别当成「有人在等」（会永久锁桌）
+                return {"kind": _k, "waiting": w}
         if self.haishin_offer is not None:
             w = [int((self.haishin_offer or {}).get("owner", -1))]
             return {"kind": "haishin", "waiting": [x for x in w if x >= 0]}
@@ -10288,8 +10814,15 @@ class Game:
         self.pofa_discard_pending = None
         self.phase = "discard"
         self.turn = s
+        self._after_discard_hooks(s, t)
+        # 暗置牌进河：只有「压制」持有者能荣这张（和决斗暗置同一个口径），
+        # 没人荣就轮到**下家**摸牌 —— 以前这里没推进回合，破发的人会接着再打一张。
+        if not self._open_facedown_claim(seq, t, s, resume_back=False):
+            self._advance_after_discard(s)
         self.save_flags()
-        return {"seat": s, "tile": t, "seq": seq, "face_down": True}
+        return {"seat": s, "tile": t, "seq": seq, "face_down": True,
+                "next": int(self.turn) if self.turn is not None else -1,
+                "phase": self.phase}
 
     @staticmethod
     def _pofa_kind(called: str, a: str, b: str) -> str:
@@ -10344,7 +10877,9 @@ class Game:
             raise RuleError("海神本局已经决定过了（配牌时没开就不能再用）")
         self.haishin_on = True
         self.deal_wait.discard(s)
-        self.note_use(s, 12, 1)          # 翻面 + 播报 + 传承
+        # once=False：海神整小局都要用（借牌 / 3 步挪宝），记成一次性会把图标永久置灰，
+        # 后面点图标换第 2/3 步就点不动了。gate=True：配牌开启这一刻要问看破。
+        self.note_use(s, 12, 1, once=False, gate=True)
         self.save_flags()
         self._maybe_close_deal()
         return {"ok": True, "card": 12, "skill": 1, "haishin_on": True,
@@ -10388,13 +10923,36 @@ class Game:
         if theirs is None:
             raise RuleError("找不到对方刚摸的那张牌")
         hseq, tseq = int(mine["wall_seq"]), int(theirs["wall_seq"])
+        # ★ swap_hand_hand 的口径：hand_seq_a 必须是 seat_a 自己的那张（a→seat_b、b→seat_a）
+        #   以前这里传反了 → 两行 seat 各改回原主，净零，表现为「发动了但手牌没换」。
         self.do_swap("hand_hand", s, "海神借牌",
-                     seat_a=s, hand_seq_a=tseq, seat_b=drawer, hand_seq_b=hseq)
+                     seat_a=s, hand_seq_a=hseq, seat_b=drawer, hand_seq_b=tseq)
+        self._drawn_mark_move(tseq, hseq)     # 他换到的那张才是他的摸牌（他还要打）
         self.haishin_offer = None
-        self.phase = "discard"
-        self.note_skill(s, 12, 1)
+        # ★ 以前这里直接 phase="discard"：offer["plan"] 里剩下的询问（另一家的
+        #   海神 / 深山 / 宝牌集合）被整个丢掉，而且「摸牌后」半段也没跑。
+        #   现在按他**换到手的那张新牌**继续往下问，问完由 _advance_intercept 统一收尾。
+        cur = str(self.drawn_tile(drawer) or "")
+        # 队列里剩下的询问要改成「他换到手的那张新牌」
+        for _a in self.asks:
+            if int(_a.get("from", -1)) == int(drawer):
+                _a["tile"] = cur or got
+        _next = dict(offer)
+        _next["tile"] = cur or got
+        _next["asked"] = [[int(a), str(b)] for a, b in
+                          (self._asked_set(offer) | {(int(s), "haishin")})]
+        _next["plan"] = [[int(a), str(b)] for a, b in (offer.get("plan") or [])]
+        self._advance_intercept(_next)
+        # ★ 用户口径 2026-11-06：借牌（被动）和挪宝（主动）是**两件事**，
+        #   借完牌不影响下一次自己摸牌前问挪宝（以前这里设 hold，
+        #   一局里频繁借牌就变成「从来不问挪宝」）。
+        self.haishin_swap_hold = -1
+        # once=False：整小局每次别人摸万子/红中都会借，不能一次就置灰；
+        # gate=False：配牌开启时已经问过看破。
+        self.note_use(s, 12, 1, once=False, gate=False)
         self.save_flags()
-        return {"got": got, "gave": tile, "from": drawer}
+        return {"got": got, "gave": tile, "from": drawer,
+                "next_phase": str(self.phase)}
 
     def haishin_can(self, seat: int) -> bool:
         """主动·挪宝：自己回合、还没摸牌、手上还有万子/红中、三步没走完"""
@@ -10408,6 +10966,30 @@ class Game:
             return s in self.deal_wait            # 配牌阶段：还能开
         return bool(self.haishin_on)              # 配牌没开 → 整小局都用不了
 
+    def haishin_swap_can(self, seat: int) -> bool:
+        """现在能不能挪宝（一步）：自己回合、还没摸牌、三步没走完。
+
+        配牌阶段不算（用户口径 2026-11-04：配牌不能换宝，只能开技能）。
+        """
+        s = int(seat)
+        if self.is_riichi(s):
+            return False
+        if not self.owns_card12(s) or not self.haishin_on:
+            return False
+        # ★ 摸牌前 = phase=="draw"（轮到我摸牌、还没摸）。
+        #   以前写 phase=="discard" 是错的：discard 是「已经摸完、该打牌」，
+        #   那之后当然不能换宝 —— 结果客户端永远拿不到 true，面板压根不弹。
+        if self.phase != "draw" or self.turn is None or int(self.turn) != s:
+            return False
+        if self.drawn_tile(s) is not None:
+            return False
+        # 用户口径 2026-11-06：里宝 / 杠宝 / 杠里宝 是**牌墩上的位置**，
+        # 指示牌翻没翻都能换（换进去的牌，将来翻开就是新的指示牌）。
+        if int(self.haishin_step.get(s, 0)) >= 3:
+            return False
+        # 一回合只能换一张：这一巡已经换过 → 不能再换
+        return self.haishin_turn_used.get(s) != self._pre_draw_fp()
+
     def haishin_swap(self, seat: int, hand_tile: str) -> dict:
         """主动：用一张万子/红中，按 里宝 → 杠宝 → 杠里宝 的顺序换指示牌"""
         s = int(seat)
@@ -10415,11 +10997,23 @@ class Game:
             raise RuleError("手里不是这一轮的海神卡")
         if self.turn is None or int(self.turn) != s:
             raise RuleError("只能在自己摸牌前发动")
+        if self.phase != "draw":
+            raise RuleError("海神挪宝只能在自己摸牌前发动")
+        if self.drawn_tile(s) is not None:
+            raise RuleError("摸牌之后不能再换宝牌")
         step = int(self.haishin_step.get(s, 0))
         if step >= 3:
             raise RuleError("里宝/杠宝/杠里宝都换过了")
+        # 一回合只能换一张（用户口径 2026-11-06）
+        if self.haishin_turn_used.get(s) == self._pre_draw_fp():
+            raise RuleError("这一回合已经换过宝牌了（一回合只能换一张）")
         tile = str(hand_tile)
         if tile == "":
+            _ca0 = self.cur_ask or {}
+            if str(_ca0.get("kind", "")) == "haishin_swap" \
+                    and int(_ca0.get("seat", -1)) == s:
+                self._close_ask()
+                self.save_flags()
             return {"skipped": True, "step": step}     # 直接点开始 = 跳过
         if not self._is_man_or_zhong(tile):
             raise RuleError("只能用万子或红中去换")
@@ -10431,23 +11025,61 @@ class Game:
             raise RuleError(f"手里没有 {tile}")
         kind, idx = (("ura", 0), ("dora", 1), ("ura", 1))[step]
         n = self.wall_first_stack()
-        if not n or int(self.dora_revealed) <= idx:
-            raise RuleError("这一步的指示牌还没翻开")
+        if not n:
+            raise RuleError("拿不到王牌墩，换不了")
+        # ★ 不检查 dora_revealed：这一步的指示牌没翻开也能换（用户口径 2026-11-06）。
+        #   换的是牌墩上那个位置的牌，将来翻开时它就变成新的指示牌。
         no_d, no_u = wallmodel.dora_tile_nos(n, idx)
         seq = int(wallmodel.seq_of_tile(no_d if kind == "dora" else no_u))
         target = self._tile_of_no(seq)
         hseq = int(mine["wall_seq"])
-        self.do_swap("hand_wall", s, "海神换宝", hand_seq=hseq, wall_seq=seq)
+        _sw = self.do_swap("hand_wall", s, "海神换宝", hand_seq=hseq, wall_seq=seq)
+        if not (_sw or {}).get("seqs"):
+            raise RuleError("这张牌没换成（牌面相同），不算一次")   # 不该发生，兜底
         self._c11_sync_dora({seq})             # 宝牌信息按牌墩现状重算
-        self.haishin_step[s] = step + 1
+        # ★ 只记「真的换过」的位置：step 由这份记录推导，绝不再写死 +1
+        self.haishin_done.setdefault(s, []).append(
+            {"idx": int(step), "hand": tile, "got": target, "seq": int(seq)})
+        self.haishin_step[s] = len({int(_x.get("idx", -1))
+                                    for _x in self.haishin_done[s]})
+        with self.db.tx():                     # 审计：下次出问题直接查这条
+            self.db._log(self.round_id, s, "haishin_swap",
+                         {"step": int(step), "hand": tile, "got": target,
+                          "wall_seq": int(seq), "hand_seq": int(hseq),
+                          "done": list(self.haishin_done[s])})
+        self.haishin_turn_used[s] = self._pre_draw_fp()   # 这一巡的份额用掉了
         self.haishin_gate = s                  # 没走完不许和
         if self.haishin_step[s] >= 3:
             self.haishin_gate = None
-        self.mark_skill_used(s, 12, 1)
+        # 这一笔服务端询问（如果挂着）算答复完了
+        _ca = self.cur_ask or {}
+        if str(_ca.get("kind", "")) == "haishin_swap" \
+                and int(_ca.get("seat", -1)) == s:
+            self._close_ask()
+        # once=False：海神是「每小局最多 3 步」的连续技能，不能一记 used_skills
+        # 就把图标永久置灰（否则第 2/3 步点不动）。gate=False：配牌开启时已经问过看破。
+        self.note_use(s, 12, 1, once=False, gate=False)
         self.save_flags()
+        # 下一步能不能接着换：要看那张指示牌翻了没有
+        _nxt = int(self.haishin_step[s])
+        # 一回合只能换一张 → 这一笔换完，「本巡还能不能接着换」永远是 False；
+        # 真正的「还有没有下一种牌」用 next < 3 判断。
         return {"step": step, "kind": kind, "hand": tile, "got": target,
-                "next": int(self.haishin_step[s]),
+                "next": _nxt,
+                "next_ready": bool(_nxt < 3 and
+                                   self.haishin_turn_used.get(s) != self._pre_draw_fp()),
                 "dora": self.revealed_dora("dora")}
+
+    def haishin_swap_skip(self, seat: int) -> dict:
+        """这次「挪宝」询问不换（关掉服务端那笔 ask，放开摸牌）。"""
+        s = int(seat)
+        a = self.cur_ask or {}
+        if str(a.get("kind", "")) != "haishin_swap" \
+                or int(a.get("seat", -1)) != s:
+            return {"skipped": True, "already": True}
+        self._close_ask()
+        self.save_flags()
+        return {"skipped": True}
 
     def xn_can(self, seat: int) -> bool:
         s = int(seat)
@@ -10684,7 +11316,7 @@ class Game:
         if tsumo and self._c10s2_ready(seat):
             pays = score.payments(0, 0, is_dealer=(int(seat) == self.dealer), tsumo=True,
                                   yakuman=1, kiriage_mangan=False)
-            return {"yaku": [{"name": "小四喜（四喜）", "han": 0}], "han": 0, "fu": 0,
+            return {"yaku": [{"name": "四喜", "han": 0}], "han": 0, "fu": 0,
                     "pays": pays, "yakuman": 1, "fu_items": [], "c10s2": True,
                     "win_tile": str(tile)}
         hand = self.hand(seat)
@@ -10711,6 +11343,7 @@ class Game:
         if self.shanggou_active(seat):
             sg = self._judge_shanggou(seat, tsumo)
             if sg is not None:
+                sg["shanggou"] = True       # 结算时播【上钩】的进场特效（判定这里可能被反复调用）
                 return sg
         if self.owns_dawa(seat):
             # 渣和＝**获得性质**：这里只给「能和牌」的占位（0 番），
@@ -10798,7 +11431,7 @@ class Game:
         pays = score.payments(1, 30, is_dealer=(int(seat) == self.dealer),
                               tsumo=tsumo, yakuman=0, kiriage_mangan=False)
         return {"yaku": [{"name": "一定和牌", "han": 1}], "han": 1, "fu": 30,
-                "pays": pays, "fu_items": [("一定和牌（固定）", 30)]}
+                "pays": pays, "fu_items": [("一定和牌", 30)]}
 
     # ─── 一定和牌（主动宣言，立直式）────────────────────────────
     def yiding_grant(self, seat: int, card: int, skill: int) -> None:
@@ -11048,6 +11681,44 @@ class Game:
         used = 124 - int(self.live_left())    # 活牌山一共 62 墩 = 124 张
         return used >= need_tiles
 
+    # ── 结算类技能（timing=settle）生效时补一条播报 → 客户端播右上角进场特效 ──
+    #    发动那一刻已经有播报/特效的技能不放进来（否则同一次和牌会响两遍）：
+    #    自信(3) / 拔北(5) / 枷锁(18) / 宝牌的集合(25) / 弃子·电报(44)
+    SETTLE_FX_SKILL = {6: 2, 8: 2, 13: 2, 15: 2, 16: 2, 21: 2, 23: 2, 28: 2,
+                       29: 2, 30: 2, 32: 2, 35: 2, 38: 2, 41: 2, 46: 2}
+
+    def _settle_fx(self, seat: int, card: int, env: dict | None = None) -> None:
+        """结算技能真的生效了 → 记一条 broadcast（带卡号），客户端据此播进场特效。
+
+        只写播报，**不动** used_skills / 卡面翻明 / 看护：这些是被动技能，
+        没有「发动」这个动作，记一遍会把图标错误地置灰。
+        """
+        if env is not None and env.get("_dry"):
+            return                            # 预测（满贯判定）不要播
+        s = int(seat)
+        c = int(card)
+        if not (0 <= s < 4) or c not in self.SETTLE_FX_SKILL:
+            return
+        done = getattr(self, "_fx_done", None)
+        if done is None:
+            done = set()
+            self._fx_done = done
+        if c in done:                         # 精算重放钩子时会重复调用
+            return
+        done.add(c)
+        k = int(self.SETTLE_FX_SKILL[c])
+        nm = skills.info(c, k).get("name", "") or ("%d号卡" % c)
+        self.broadcast_id += 1
+        wind = ["dong", "nan", "xi", "bei"][(s - int(self.dealer)) % 4]
+        self.broadcast = {"id": int(self.broadcast_id), "seat": s, "wind": wind,
+                          "card": c, "skill": k, "name": str(nm)}
+        self.broadcast_log.append({"id": int(self.broadcast_id), "seat": s,
+                                   "card": c, "skill": k, "name": str(nm),
+                                   "wind": wind})
+        if len(self.broadcast_log) > 24:
+            self.broadcast_log = self.broadcast_log[-24:]
+        self.save_flags()
+
     def _settle_c30s2(self, res: dict, env: dict) -> None:
         """Card30 S2【W立】：立直和牌时，若牌山第 4 列已经被摸 → 里宝牌 +4 番
 
@@ -11077,6 +11748,7 @@ class Game:
         res["han"] = int(res.get("han", 0)) + add
         self._recompute(res, env)
         res["c30s2"] = add
+        self._settle_fx(w, 30, env)
 
     @staticmethod
     def _c32_is_green(tiles: list[str]) -> bool:
@@ -11116,15 +11788,16 @@ class Game:
         add = 0
         if (any(n.startswith("对对和") for n in names)
                 and not any(n.startswith("四暗刻") for n in names)):
-            res.setdefault("yaku", []).append({"name": "四暗刻（无知）", "han": 13})
             add += 1
         if (not any("绿一色" in n for n in names)
                 and self._c32_is_green(self._c32_all_tiles(w, res))):
-            res.setdefault("yaku", []).append({"name": "绿一色（无知）", "han": 13})
             add += 1
         if add:
+            # 番种名只用技能名「无知」；两条都命中就一条写 13×倍数
+            res.setdefault("yaku", []).append({"name": "无知", "han": 13 * add})
             res["yakuman"] = int(res.get("yakuman", 0)) + add
             self._recompute(res, env)
+        self._settle_fx(w, 32, env)
 
     def _settle_c29s2(self, res: dict, env: dict) -> None:
         """Card29 S2【精算】：非门前清和牌 → 把副露「当没鸣过」重判一遍番符
@@ -11170,6 +11843,7 @@ class Game:
         res.update(keep)
         res["real_yaku"] = True
         res["c29s2"] = True
+        self._settle_fx(w, 29, env)
         for card in list(env.get("_done") or []):
             hook = self._FAN_HOOKS.get(int(card))
             if hook and hook != "_settle_c29s2":
@@ -11196,13 +11870,14 @@ class Game:
         if name == "役满":
             res["yakuman"] = 1
             res["han"] = max(new_han, old_han)
-            add = {"name": "蜕变（→ 役满）", "han": 0}
+            add = {"name": "蜕变", "han": 0}
         else:
             res["han"] = new_han
-            add = {"name": "蜕变（→ %s）" % name, "han": max(0, new_han - old_han)}
+            add = {"name": "蜕变", "han": max(0, new_han - old_han)}
         res["yaku"] = list(res.get("yaku") or []) + [add]
         self._recompute(res, env)
         res["c28s2"] = name
+        self._settle_fx(w, 28, env)
 
     def _settle_dawa(self, res: dict, env: dict) -> None:
         """Card13 S2【渣和】：无役也能和 → 垫 1 番 30 符（固定，不叠手牌宝牌）
@@ -11213,11 +11888,12 @@ class Game:
         if res.get("real_yaku") or res.get("dawa") or not res.get("dawa_pending"):
             return
         res["dawa"] = True
+        self._settle_fx(int(env["winner"]), 13, env)
         res["fu"] = 30
-        res["fu_items"] = [("渣和（固定）", 30)]
+        res["fu_items"] = [("渣和", 30)]
         res["han"] = int(res.get("han", 0)) + 1
         res["yaku"] = list(res.get("yaku") or []) + [
-            {"name": "渣和（无役和牌）", "han": 1}]
+            {"name": "渣和", "han": 1}]
         self._recompute(res, env)
 
     def _settle_c44s2(self, res: dict, env: dict) -> None:
@@ -11238,8 +11914,8 @@ class Game:
         old_total = int((res.get("pays") or {}).get("total", 0) or 0)   # 压番之前的得点
         res["han"] = 1
         res["fu"] = 30
-        res["fu_items"] = [("电报（明牌，固定 30 符）", 30)]
-        res["yaku"] = [{"name": "电报（明牌，按 30 符 1 番计）", "han": 1}]
+        res["fu_items"] = [("电报", 30)]
+        res["yaku"] = [{"name": "电报", "han": 1}]
         self._recompute(res, env)
         res["c44s2"] = {"old_han": old_han,
                        "old_total": old_total,
@@ -11279,12 +11955,13 @@ class Game:
             n = 1
         five = k in ("5m", "5p", "5s")
         res["han"] = int(res.get("han", 0)) + int(n) + (1 if five else 0)
+        # 番种名只用技能名「赤里」；具体算了几番里宝写在 detail 里（不进名字）
         res["yaku"] = list(res.get("yaku") or []) + [
-            {"name": "赤里（和到的「%s」算里宝）" % t, "han": int(n)}]
-        if five:
-            res["yaku"] = list(res.get("yaku") or []) + [{"name": "赤里", "han": 1}]
+            {"name": "赤里", "han": int(n) + (1 if five else 0),
+             "detail": {"里宝牌": int(n), "赤5": 1 if five else 0}}]
         self._recompute(res, env)
         res["c46s2"] = int(n) + (1 if five else 0)
+        self._settle_fx(w, 46, env)
 
     def _settle_c25s2(self, res: dict, env: dict) -> None:
         """Card25 S2【宝牌的集合】：本局每开一次杠 +4 番（算进「宝牌」条目）
@@ -11357,9 +12034,10 @@ class Game:
             return
         res["han"] = int(res["han"]) + bonus
         res["yaku"] = list(res.get("yaku") or []) + [
-            {"name": "决斗标记（+%d 番）" % bonus, "han": bonus}]
+            {"name": "决斗标记", "han": bonus}]
         self._recompute(res, env)
         res["duel_bonus"] = bonus
+        self._settle_fx(w, 8, env)
 
     def _settle_jiasuo(self, res: dict, env: dict) -> None:
         """枷锁（Card18 S1）：番数正好等于期待值 → 番数翻倍"""
@@ -11369,9 +12047,9 @@ class Game:
             return
         res["han"] = int(res["han"]) * 2
         res["yaku"] = list(res.get("yaku") or []) + [
-            {"name": "枷锁（%d 番成真，翻倍）" % want, "han": int(res["han"])}]
+            {"name": "枷锁", "han": int(res["han"])}]
         self._recompute(res, env)
-        res["jiasuo"] = want
+        res["jiasuo"] = want  # 18 没进 SETTLE_FX_SKILL（发动时已经播过特效）
 
     def _settle_gift(self, res: dict, env: dict) -> None:
         """馈赠（Card21 S2）：番数加成（1→+1，2/3→+3）"""
@@ -11381,9 +12059,10 @@ class Game:
         add = 1 if gv == 1 else 3
         res["han"] = int(res["han"]) + add
         res["yaku"] = list(res.get("yaku") or []) + [
-            {"name": "馈赠（+%d 番）" % add, "han": add}]
+            {"name": "馈赠", "han": add}]
         self._recompute(res, env)
         res["gift"] = gv
+        self._settle_fx(int(env["winner"]), 21, env)
 
     # ── ② 得点链（固定顺序）────────────────────────────────────
     def _settle_confidence(self, res: dict, env: dict) -> None:
@@ -11395,7 +12074,7 @@ class Game:
         res["han"] = base_han * 2
         # 播报里把奖励番单独列出来（和 Card01 的奖励番一个写法）
         res["yaku"] = list(res.get("yaku") or []) + [
-            {"name": "自信（番数双倍）", "han": base_han}]
+            {"name": "自信", "han": base_han}]
         self._recompute(res, env)
         res["confidence"] = True
 
@@ -11415,8 +12094,9 @@ class Game:
         res["pays"] = p
         res["multi"] = mult
         res["multi_n"] = n
+        self._settle_fx(w, 16, env)
         res["yaku"] = list(res.get("yaku") or []) + [
-            {"name": "多面（%d 面，得点 ×%d）" % (n, mult), "han": 0}]
+            {"name": "多面", "han": 0}]
 
     def _settle_heat(self, res: dict, env: dict) -> None:
         """暖气（Card23 S1）：冷系牌 0 张 ×3、≤3 张 ×2（得点性质）"""
@@ -11433,8 +12113,9 @@ class Game:
                 p2[k] = int(math.ceil(int(p2[k]) * cm / 100.0) * 100)
         res["pays"] = p2
         res["nuanqi"] = cm
+        self._settle_fx(w, 23, env)
         res["yaku"] = list(res.get("yaku") or []) + [
-            {"name": "暖气（冷系 %d 张，得点 ×%d）" % (cold, cm), "han": 0}]
+            {"name": "暖气", "han": 0}]
 
     def settle_preview(self, winner: int, loser: int | None, result: str,
                        res: dict, dry_run: bool = False) -> dict:
@@ -11445,6 +12126,7 @@ class Game:
         """
         env = {"winner": int(winner), "loser": loser, "result": result,
                "tsumo": result == "tsumo",
+               "_dry": bool(dry_run),          # 纯预测：结算技能不要播特效
                # 【夺目】(42S2)：只改「算点数时谁是庄家」，不动 self.dealer
                "is_dealer": int(winner) == int(self.c42s2_dealer())}
         res.setdefault("han", 0)
@@ -11470,6 +12152,8 @@ class Game:
         # 【夺目】(42S2) **结算那一刻问一次**（用户口径 2026-10-28）：
         #   以前只能自己在切牌前点图标，很容易错过（#98）。这里先把这次结算挂起，
         #   等 c42s2_answer（或 15 秒超时）回来再真正跑下去。
+        # 语音：和牌那一刻（荣和 / 自摸都算），播赢家自己选的语音包
+        self._voice(int(winner), "ron" if str(result) == "ron" else "tsumo")
         if self.c42s2_settle is not None:
             return                        # 已经挂起了：别用第二笔结算盖掉它
         _ask42 = self._c42s2_askers()
@@ -11491,6 +12175,8 @@ class Game:
         #  两条链的顺序规则见交接文档 §50；加新技能时只往这两张表里塞。
         # 故意（36S2）：固定支付 1000 点 —— 不能跑番数链（`_recompute` 会按 han/fu
         # 把 pays 重算成 0），所以直接用它自己带的那份 pays。
+        if res.get("shanggou"):
+            self._settle_fx(int(winner), 15)     # 【上钩】：无役也能和，生效就在这一刻
         if not res.get("c36s2"):
             res = self.settle_preview(winner, loser, result, res)
         han, fu, pays = res["han"], res["fu"], res["pays"]
@@ -11567,14 +12253,17 @@ class Game:
             halved.append(int(s))
         if halved:
             res["tenacity_payers"] = halved
+            for _tp in halved:
+                self._settle_fx(int(_tp), 6)          # 坚韧：付得少的那一家
             res["yaku"] = list(res.get("yaku") or []) + [
-                {"name": "坚韧（失点减半）", "han": 0}]
+                {"name": "坚韧", "han": 0}]
         # ── Card35 S2【逆势】：别人和牌 + 场上有人副露过 → 这一局收付减半 ──
         if self._c35s2_half(winner, deltas, pays):
             total = int(deltas.get(winner, 0))
             res["c35s2"] = True
+            self._settle_fx(int(self.c35s2_owner()), 35)   # 逆势
             res["yaku"] = list(res.get("yaku") or []) + [
-                {"name": "逆势（得点减半）", "han": 0}]
+                {"name": "逆势", "han": 0}]
         # ── Card37 S1【岭上开花】：这一手得点 ×2（收付链最后一道）──
         if res.get("c37s1"):
             for _k in list(deltas.keys()):
@@ -11584,7 +12273,7 @@ class Game:
                 if _k in pays:
                     pays[_k] = int(pays[_k]) * 2
             res["yaku"] = list(res.get("yaku") or []) + [
-                {"name": "岭上开花（得点×2）", "han": 0}]
+                {"name": "岭上开花", "han": 0}]
         # ── Card38 S2「逆袭」：自己点数 < 35000 → 本次和牌得点 ×2 ──
         #   位置就在收付链最后一段：番数链、拦截链都已经跑完（用户口径）。
         if not res.get("c38s2") and self.c38s2_on(int(winner)):
@@ -11595,8 +12284,9 @@ class Game:
                 if _k in pays:
                     pays[_k] = int(pays[_k]) * 2
             res["c38s2"] = True
+            self._settle_fx(int(winner), 38)               # 逆袭
             res["yaku"] = list(res.get("yaku") or []) + [
-                {"name": "逆袭（得点×2）", "han": 0}]
+                {"name": "逆袭", "han": 0}]
         # ── Card36 S2「故意」× 天梯（26S2）特判 ──
         #   这 1000 点：天梯还没记过 → 记成他的第一次成绩；记过 → 直接打断，天梯从 0 开始。
         # ── Card45 S1【神境】：得点上限（闲家 32000 / 庄家 48000）──
@@ -11607,7 +12297,7 @@ class Game:
             pays["total"] = int(total)
             res["c45s1"] = int(_c45cap)
             res["yaku"] = list(res.get("yaku") or []) + [
-                {"name": "神境（得点上限 %d）" % int(_c45cap), "han": 0}]
+                {"name": "神境", "han": 0}]
         _skip_c26 = False
         if res.get("c36s2"):
             self._c36s2_c26(int(winner))
@@ -11622,6 +12312,8 @@ class Game:
         _c41pay = self._c41s2_pay(int(winner), deltas)
         if _c41pay:
             res["c41s2"] = _c41pay
+            for _c41me in _c41pay:
+                self._settle_fx(int(_c41me), 41)           # 局终
         if sticks:
             deltas[winner] = int(deltas.get(winner, 0)) + 1000 * sticks
             with self.db.tx():
@@ -11955,12 +12647,14 @@ class Game:
             return
         self.c26_last[s] = int(total)
         self.c26_n[s] = int(self.c26_n.get(s, 0)) + 1
+        self._c26_save()          # 连续和牌 +1：要跨局留着
 
     def _c26_fail(self, winner: int, total: int, res: dict) -> None:
         """天梯失败：拿不到和牌得点，付每家 3000；本局按「无人听牌的荒牌流局」记。"""
         s = int(winner)
         self.c26_n[s] = C26_N0                # 断连：回到初始值
         self.c26_last[s] = -1
+        self._c26_save()
         with self.db.tx():
             self.db._score(self.round_id, s, -9000, "天梯失败")
             for o in range(4):
@@ -11987,6 +12681,7 @@ class Game:
         else:
             self.c26_n[s] = C26_N0
             self.c26_last[s] = -1
+        self._c26_save()
         self.save_flags()
 
     # 和牌后把「番 / 符 / 得点」打印出来（服务端控制台）

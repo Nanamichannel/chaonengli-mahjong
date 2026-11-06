@@ -83,7 +83,7 @@ def main() -> int:
     g2 = play_tsumo(db, rid)
     res = g2.result or {}
     names = res.get("yaku_names") or []
-    check("有逆袭明细", "逆袭（得点×2）" in names, True)
+    check("有逆袭明细", "逆袭" in names, True)
     dd = res.get("deltas") or {}
     check("赢家得点 = points",
           int(dd.get("0", dd.get(0, -1))), int(res.get("points", -2)))
@@ -96,7 +96,7 @@ def main() -> int:
     check("结算前 35000", int(g3.scores().get(0, 0)), 35000)
     check("不发动", g3.c38s2_on(0), False)
     g4 = play_tsumo(db2, rid2)
-    check("没有逆袭明细", "逆袭（得点×2）" in (g4.result or {}).get("yaku_names", []), False)
+    check("没有逆袭明细", "逆袭" in (g4.result or {}).get("yaku_names", []), False)
     check("得点和对照组一样", int((g4.result or {}).get("points", 0)), base_pts)
 
     print("\n④ 点数 34000（差一点）→ 发动")
@@ -117,7 +117,7 @@ def main() -> int:
     g7 = Game(db4, rid4)
     check("赢家是 seat1", int((g7.result or {}).get("winner", -1)), 1)
     check("seat1 没有逆袭",
-          "逆袭（得点×2）" in (g7.result or {}).get("yaku_names", []), False)
+          "逆袭" in (g7.result or {}).get("yaku_names", []), False)
 
     print("\n⑥ 叠加【岭上开花】(37S1) → 两个 ×2 都在")
     db5, rid5 = setup("c38s2e", card=37, delta=-5000)
@@ -134,7 +134,7 @@ def main() -> int:
         g8.act(0, "tsumo")
         g9 = Game(db5, rid5)
         names = (g9.result or {}).get("yaku_names") or []
-        check("两个 ×2 都在", ("岭上开花（得点×2）" in names and "逆袭（得点×2）" in names), True)
+        check("两个 ×2 都在", ("岭上开花" in names and "逆袭" in names), True)
         check("得点 > 0", int((g9.result or {}).get("points", 0)) > 0, True)
     else:
         check("（这一手没杠成，跳过叠加用例）", True, True)

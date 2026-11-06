@@ -139,7 +139,7 @@ def main() -> int:
     check("基本点 = 240", int((resU.get("pays") or {}).get("basic", 0)), 240)
     check("役种被换成电报一条",
           [y.get("name") for y in (resU.get("yaku") or [])],
-          ["电报（明牌，按 30 符 1 番计）"])
+          ["电报"])
     check("记号看破了原来的番数", int((resU.get("c44s2") or {}).get("old_han", 0)), 6)
 
     dbV, ridV = setup("c44s2v")

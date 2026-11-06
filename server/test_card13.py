@@ -116,6 +116,18 @@ def main() -> int:
                       (rid, int(rd["seq"])))["face_down"]), 1)
     check("暗置牌不进任何人的振听",
           "9p" not in g3.discards_for_furiten(0), True)
+    # ★ 用户报的 bug（2026-11-05）：暗置打出一张后应该轮到下家，不是自己接着打
+    check("暗置打出后回合交给下家", g3.turn, 1)
+    check("阶段变成下家摸牌", g3.phase, "draw")
+    ev = g3.advance()
+    g4po = Game(db, rid)
+    check("下家真的摸到牌了", g4po.phase, "discard")
+    check("轮到下家打牌", g4po.turn, 1)
+    try:
+        Game(db, rid).pofa_discard(0, "4s")
+        check("破发的人不能再打第二张", False, True)
+    except RuleError:
+        check("破发的人不能再打第二张", True, True)
 
     print("\n◆ 渣和：无役也能和，固定 1 番 30 符")
     db2 = tg.fresh_db("po2")
@@ -127,7 +139,7 @@ def main() -> int:
     res = g3.settle_preview(0, None, "ron", res, dry_run=True)   # 1番30符 由结算链垫
     check("标了 dawa", bool(res.get("dawa")), True)
     check("1 番 30 符", (res["han"], res["fu"]), (1, 30))
-    check("役种只有渣和", [y["name"] for y in res["yaku"]], ["渣和（无役和牌）"])
+    check("役种只有渣和", [y["name"] for y in res["yaku"]], ["渣和"])
     print("       点数", res["pays"].get("total"))
     check("庄家 1 番 30 符 = 1500（不封顶）", res["pays"].get("total"), 1500)
 

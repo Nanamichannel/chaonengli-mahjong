@@ -38,8 +38,11 @@ const STEP_WAIT := 1.0
 @export var hand_scale := 1.0
 @export var strip_scale := 0.62
 @export var strip_gap := 10.0                # 底座之间间距
-@export var strip_top := 319.85                  # 番种条上边缘（用户实测：上下居中的位置）
-@export var strip_x_offset := 0.0           # 番种条整体横向偏移（调试可拖）
+# 番种条上边缘。用户 2026-11-04 在编辑器里连拖带看定下来的竖直位置（实际存档 318.27）。
+@export var strip_top := 318.27
+# ★ 已弃用（用户口径 2026-11-04：番种条水平永远居中，别管他拖歪的值）。
+#   保留只是为了兼容旧的 announce_tune.cfg；代码里不再参与定位。
+@export var strip_x_offset := 0.0
 @export var fade_time := 1.2                 # 淡入时长
 @export var fade_time_seats := 0.75         # 最后「小面板 + 确认按钮」的淡入时长
 @export var plate_offset := Vector2.ZERO    # 「底座底座」整体偏移
@@ -488,8 +491,9 @@ func _apply_layout() -> void:
 	if strips_root != null:
 		for st in strips_root.get_children():
 			if st is Control:
+				# 水平固定居中（不再叠加 strip_x_offset）
 				(st as Control).position = Vector2(
-					float((st as Control).get_meta("base_x", 0.0)) + strip_x_offset, strip_top)
+					float((st as Control).get_meta("base_x", 0.0)), strip_top)
 
 
 # ── 番种底座：竖排文字（行楷、黑字带淡描边）────────────────────────────────
@@ -641,7 +645,7 @@ func _build_strips(rows: Array) -> void:
 		strip.clip_contents = true                  # ★ 靠它做「从上往下擦开」
 		strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var sx := x0 + float(n - 1 - i) * (w + strip_gap)
-		strip.position = Vector2(sx + strip_x_offset, strip_top)
+		strip.position = Vector2(sx, strip_top)      # 水平永远居中，不加 strip_x_offset
 		strip.set_meta("base_x", sx)
 		strip.size = Vector2(w, h)
 		strip.modulate.a = 1.0
@@ -708,6 +712,21 @@ func _fade_group(nodes: Array, dur: float, target: float = 1.0) -> void:
 		tw.tween_property(n, "modulate:a", target, maxf(dur, 0.05)) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tw.finished
+
+
+## 等四个小面板的分数动画播完（动画没在跑 / 已经播完 → 立即返回）
+func _wait_seats_anim() -> void:
+	if seats_panel == null or not is_instance_valid(seats_panel):
+		return
+	if not seats_panel.has_signal("seats_anim_done"):
+		return
+	if not bool(seats_panel.get("_anim_running")):
+		return
+	# 用剩余时长等，不硬等信号：万一被 reset / 重播信号丢了，也不至于把 busy 永远卡住
+	var remain := float(seats_panel.get("_anim_len")) - float(seats_panel.get("_anim_elapsed"))
+	if remain > 0.0:
+		await get_tree().create_timer(remain + 0.05).timeout
+
 
 
 func _enable_confirm() -> void:
@@ -785,9 +804,14 @@ func show_panel(data: Dictionary) -> void:
 		return
 	await get_tree().create_timer(0.2).timeout
 	if seats_panel != null:
+		seats_panel.set("anim_delay", fade_time_seats)
 		seats_panel.call("set_content", data)
 		seats_panel.visible = true
 		await _fade_group([seats_panel], fade_time_seats)
+	if gen != _gen:
+		busy = false
+		return
+	await _wait_seats_anim()          # 分数动画（涨分 + 0.5s 尾巴）走完
 	if gen != _gen:
 		busy = false
 		return
@@ -888,9 +912,14 @@ func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
 		busy = false
 		return
 	if seats_panel != null:
+		seats_panel.set("anim_delay", fade_time_seats)
 		seats_panel.call("set_content", data)
 		seats_panel.visible = true
 	await _fade_group([seats_panel], fade_time_seats)
+	if gen != _gen:
+		busy = false
+		return
+	await _wait_seats_anim()          # 分数动画（涨分 + 0.5s 尾巴）走完
 	if gen != _gen:
 		busy = false
 		return
@@ -1009,8 +1038,7 @@ func _input(event: InputEvent) -> void:
 		_tune_last = mm.position
 		match _tune_sel:
 			"strips":
-				strip_top += d.y
-				strip_x_offset += d.x
+				strip_top += d.y          # 只能上下拖；水平永远居中（用户口径 2026-11-04）
 			"seats":
 				seats_offset += d
 			"left":

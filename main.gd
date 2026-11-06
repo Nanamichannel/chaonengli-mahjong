@@ -7254,7 +7254,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_c28s1_activate()                  # Card28 S1「满贯」：配牌发动
 		return
 	if int(card_no) == 27 and int(index) == 0:
-		_c27s1_open()                      # Card27 S1「调包」
+		_c27s1_open()                      # Card27 S1「瞄准」
 		return
 	if int(card_no) == 27 and int(index) == 1:
 		_c27s2_open()                      # Card27 S2「命中」
@@ -11104,7 +11104,7 @@ func _c24_on_clicked() -> void:
 	_toast("一发：选一张打出去能立直的牌 → 开始")
 
 
-# ── Card27 S1「调包」/ S2「命中」──────────────────────────────────────
+# ── Card27 S1「瞄准」/ S2「命中」──────────────────────────────────────
 #   S1：摸牌后点图标 → 选 1 张手牌 + 1 张**别人牌河的明牌** → 开始 → 互换
 #       （换的谁的牌就进谁的牌河，换进来的那张进我手里），并标记那一家；本小局一次。
 #       立直宣言牌能换，暗置牌不能换。
@@ -11154,26 +11154,26 @@ func srv_c27_cnt() -> int:
 func _c27s1_open() -> void:
 	if c27_panel.active:
 		c27_panel.close()
-		_toast("调包：取消")
+		_toast("瞄准：取消")
 		return
 	if game_over:
 		return
 	if not srv_c27s1_can():
-		_toast("调包：要刚摸完牌、而且本小局还没用过")
+		_toast("瞄准：要刚摸完牌、而且本小局还没用过")
 		return
 	if _skill_panel_open():
 		_toast("先把现在的选牌面板处理掉")
 		return
 	c27_mode = "s1"
 	c27_panel.begin({
-		"name": "调包",
+		"name": "瞄准",
 		"want": 1, "min": 1,
 		"river": true, "river_match": true,
 		"cancel": true,
 		"river_ok": _c27_river_ok,
 		"on_confirm": _c27s1_confirm,
 	})
-	_toast("调包：选一张手牌，再点别人牌河里的一张明牌 → 开始")
+	_toast("瞄准：选一张手牌，再点别人牌河里的一张明牌 → 开始")
 
 
 # 牌河可点：只认服务端列的「别人牌河的明牌」（立直宣言牌可以，暗置牌不行）
@@ -11195,17 +11195,17 @@ func _c27s1_confirm(picks: Array, rivers: Array) -> void:
 	if srv_kangpo_blocked(r):
 		return                            # 面板已在 confirm 时关掉
 	if r.is_empty():
-		_toast(_srv_err("调包失败：服务端没有回应"))
+		_toast(_srv_err("瞄准失败：服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "调包失败")))
+		_toast(String(r.get("error", "瞄准失败")))
 		return
 	var sw: Dictionary = {}
 	if typeof(r.get("c27s1")) == TYPE_DICTIONARY:
 		sw = r.get("c27s1")
 	srv_apply_state(r.get("state"), r.get("events"))
 	if not sw.is_empty():
-		_toast("调包：%s ⇄ %s（标记 %d 号位）"
+		_toast("瞄准：%s ⇄ %s（标记 %d 号位）"
 			% [hand, String(sw.get("got", "")), int(sw.get("mark", -1))])
 
 
@@ -13311,8 +13311,13 @@ func _apply_entity_states(st2: Dictionary) -> void:
 			var kind := String((arr[0] as Dictionary).get("meld_kind", ""))
 			var is_ankan: bool = kind == "ankan"
 			var n: int = arr.size()
+			# 加杠：第 4 张（slot 3）不占横向槽位 —— 它横着叠在原来那张横置牌的正上方
+			var kakan_top: Dictionary = {}
+			if kind == "kakan" and n == 4:
+				kakan_top = arr[3]
+			var lay: Array = arr if kakan_top.is_empty() else arr.slice(0, 3)
 			var group_w := 0.0
-			for td in arr:
+			for td in lay:
 				group_w += mrw if bool(td.get("rotated", false)) else mw
 			var x := my_right - group_w
 			if is_ankan:
@@ -13325,17 +13330,24 @@ func _apply_entity_states(st2: Dictionary) -> void:
 						var form := "back_meld" if (k == 0 or k == 3) else "face_meld"
 						p.apply_state(form, Vector2(x0 + mw * 0.5 + k * mw, vp.y + hand_offset.y - mh * 0.5), 0.0, Vector2.ONE * ms)
 			else:
-				for td in arr:
+				var rot_x := -1.0
+				for td in lay:
 					var k := int(td.get("slot", 0))
 					var rot := bool(td.get("rotated", false))
 					var sw := mrw if rot else mw
 					var p := tile_bank.piece(String(td.get("id", "")))
 					if p != null:
 						if rot:
-							p.apply_state("rot", Vector2(x + sw * 0.5, vp.y + hand_offset.y - mrh * 0.5), 0.0, Vector2.ONE * ms)
+							rot_x = x + sw * 0.5
+							p.apply_state("rot", Vector2(rot_x, vp.y + hand_offset.y - mrh * 0.5), 0.0, Vector2.ONE * ms)
 						else:
 							p.apply_state("face_meld", Vector2(x + sw * 0.5, vp.y + hand_offset.y - mh * 0.5), 0.0, Vector2.ONE * ms)
 					x += sw
+				if not kakan_top.is_empty() and rot_x >= 0.0:
+					# 加杠的第 4 张：横着叠在原来那张横置牌的正上方（明杠不动）
+					var p2 := tile_bank.piece(String(kakan_top.get("id", "")))
+					if p2 != null:
+						p2.apply_state("rot", Vector2(rot_x, vp.y + hand_offset.y - mrh * 1.5), 0.0, Vector2.ONE * ms)
 			my_right -= group_w
 	# 其他家副露锚点 = 屏幕四个角（与旧版 add_opp_meld / add_opp_ankan 一致）
 	# 注意：不要加 _opp_offset（那是给手牌用的，C 的 -60 会把副露/暗杠推出屏幕）
@@ -13368,16 +13380,25 @@ func _apply_entity_states(st2: Dictionary) -> void:
 			arr.sort_custom(func(a, b): return int(a.get("slot", 0)) < int(b.get("slot", 0)))
 			var kind2 := String((arr[0] as Dictionary).get("meld_kind", ""))
 			var is_ankan2: bool = kind2 == "ankan"
+			# 加杠：第 4 张不占槽位 —— 横着叠在原来那张横置牌的外侧（明杠不动）
+			var kakan_top2: Dictionary = {}
+			if kind2 == "kakan" and arr.size() == 4:
+				kakan_top2 = arr[3]
+			var lay2: Array = arr if kakan_top2.is_empty() else arr.slice(0, 3)
 			var group_w2 := 0.0
-			for td in arr:
+			for td in lay2:
 				group_w2 += ol if bool(td.get("rotated", false)) else ow
 			var c := 0.0
-			for k in range(arr.size()):
-				var td: Dictionary = arr[k]
+			var rot_base := Vector2.INF
+			var rot_depth := ol * (301.0 / 359.0)
+			for k in range(lay2.size()):
+				var td: Dictionary = lay2[k]
 				var rot := bool(td.get("rotated", false))
 				var sw2 := ol if rot else ow
 				var depth := ol if not rot else (ol * (301.0 / 359.0))
 				var pos := anc + to_far * (group_w2 - c - sw2 * 0.5) + out_dir * (depth * 0.5)
+				if rot:
+					rot_base = anc + to_far * (group_w2 - c - sw2 * 0.5)
 				var form := "rot" if rot else "face_meld"
 				if is_ankan2:
 					# 暗杠：左右两张暗置、中间两张亮牌（所有视角一致）
@@ -13386,6 +13407,11 @@ func _apply_entity_states(st2: Dictionary) -> void:
 				if p != null:
 					p.apply_state(form, pos, rot_deg, Vector2.ONE * (sz.x / maxf(tile_size.x, 1.0)))
 				c += sw2
+			if not kakan_top2.is_empty() and rot_base != Vector2.INF:
+				var pk := tile_bank.piece(String(kakan_top2.get("id", "")))
+				if pk != null:
+					pk.apply_state("rot", rot_base + out_dir * (rot_depth * 1.5), rot_deg,
+						Vector2.ONE * (sz.x / maxf(tile_size.x, 1.0)))
 			anc = anc + to_far * group_w2
 		opp_anchor[who] = anc
 
@@ -14078,7 +14104,7 @@ func discard_tile(index: int) -> void:
 				and not srv_c27s2_ok(String(all27[index])):
 			_toast("命中：这张打出去就不听牌了")
 			return
-		c27_panel.handle_hand(index)            # 调包 / 命中：点手牌 = 选中/取消
+		c27_panel.handle_hand(index)            # 瞄准 / 命中：点手牌 = 选中/取消
 		return
 	if c24_panel.active:
 		var c24_tiles := display_tiles()
@@ -16398,7 +16424,7 @@ func _skill_panel_stale_close() -> void:
 			and (String(srv_state.get("phase", "")) != "discard"
 				 or int(srv_state.get("turn", -1)) != my_seat):
 		_c33s2_close()
-	# 调包 / 命中：服务端已经不允许发动了（被别的窗口推进 / 已经打过）就收起
+	# 瞄准 / 命中：服务端已经不允许发动了（被别的窗口推进 / 已经打过）就收起
 	if c27_panel.active:
 		if c27_mode == "s1" and not srv_c27s1_can():
 			_c27_close()
@@ -16632,7 +16658,7 @@ func _process(delta: float) -> void:
 		ym_panel.tick()
 		press_panel.tick()
 		c25b_panel.tick()            # 宝牌的集合
-		c27_panel.tick()             # 调包 / 命中
+		c27_panel.tick()             # 瞄准 / 命中
 		c30_panel.tick()             # 向听
 		c32_panel.tick()             # 新手运
 		c33_panel.tick()             # 染手
@@ -18517,7 +18543,7 @@ func _dev_auto_blocking_ui() -> String:
 	if c32_panel.active:
 		return "32S1 新手运（%s）" % String(c32_panel.mode)
 	if c27_panel.active:
-		return "27 调包/命中选牌"
+		return "27 瞄准/命中选牌"
 	if future_active:
 		return "24S2 未来排序"
 	if future_ask_ui != null:

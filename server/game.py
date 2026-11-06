@@ -204,7 +204,7 @@ class Game:
         self.c26_last: dict[int, int] = {}     # 上一次和牌的得点（-1 = 还没有）
         self.c26_done: dict[int, int] = {}     # 这一巡排过了（记当时的 next_no）
         self.c26_deadline: float = 0.0
-        # 调包 / 命中（27S1 / 27S2）：标记 + 手切计数
+        # 瞄准 / 命中（27S1 / 27S2）：标记 + 手切计数
         self.c27_mark: dict[int, int] = {}    # 我 → 被我标记的那一家
         self.c27_cnt: dict[int, int] = {}     # 我 → 他被手切了几张
         self.c27_s2: set[int] = set()         # 发动过命中的家（之后不能手切）
@@ -310,6 +310,8 @@ class Game:
         self.pofa_discard_pending: int | None = None   # 破发副露完，等我暗置打出
         self._c13_cache: dict[int, bool] = {}
         self.haishin_offer: dict | None = None
+        # 刚碰完的牌种 {seat: kind}：这一种牌要等自己下次摸牌才能加杠
+        self.pon_lock: dict[int, str] = {}
         self.haishin_step: dict[int, int] = {}
         # 真的换过哪几个位置：[{idx, hand, got, seq}]（step 只认这个，防脏计数）
         self.haishin_done: dict[int, list] = {}     # 整小局累计：0/1/2/3
@@ -470,6 +472,7 @@ class Game:
         self._c12_cache = {}
         ho = f.get("haishin_offer")
         self.haishin_offer = ho if isinstance(ho, dict) else None
+        self.pon_lock = {int(k): str(v) for k, v in (f.get("pon_lock") or {}).items()}
         self.haishin_step = {int(k): int(v) for k, v in (f.get("haishin_step") or {}).items()}
         self.haishin_done = {}
         for _k, _v in (f.get("haishin_done") or {}).items():
@@ -993,6 +996,7 @@ class Game:
             "po10_last": self.po10_last,
             "diaoyu_locked": self.diaoyu_locked,
             "haishin_offer": self.haishin_offer,
+            "pon_lock": {str(k): str(v) for k, v in self.pon_lock.items()},
             "haishin_step": {str(k): v for k, v in self.haishin_step.items()},
             "haishin_done": {str(k): [dict(x) for x in v]
                              for k, v in self.haishin_done.items()},
@@ -1471,7 +1475,7 @@ class Game:
             "c26_n": int(self.c26_n.get(int(seat), 0)),
             "c26_can": self.c26_can_sort(int(seat)),
             "c26_tiles": self.c26_view(int(seat)),
-            # 调包 / 命中（27S1 / 27S2）
+            # 瞄准 / 命中（27S1 / 27S2）
             "c27s1_can": self.c27s1_can(seat),
             "c27s1_rivers": self.c27s1_targets(seat),
             "c27s2_can": self.c27s2_can(seat),
@@ -1940,8 +1944,22 @@ class Game:
             return None
         no = nos[self.rinshan_used]
         self.rinshan_used += 1
-        return self.db.draw_seq(self.round_id, seat, wallmodel.seq_of_tile(no),
-                                self._tile_of_no(no), drawn=True, dead=True)
+        t = self.db.draw_seq(self.round_id, seat, wallmodel.seq_of_tile(no),
+                             self._tile_of_no(no), drawn=True, dead=True)
+        self._kan_fill_dead()          # 王牌补不上 → 从活牌山尾部拿一张（本局可摸 -1）
+        return t
+
+    def _kan_fill_dead(self) -> None:
+        """开杠补岭上后：本局可摸张数 -1（日麻规则：王牌从活牌山尾部补一张）。
+
+        活牌是按「编号」顺序摸的（`_draw_next_info` → `next_live_no`），
+        所以只要把 live_left 减 1，队尾那一张就自然摸不到 —— 荒牌流局也会提前一张。
+        """
+        with self.db.tx():
+            self.db.conn.execute(
+                "UPDATE rounds SET live_left = MAX(live_left - 1, 0) WHERE round_id=?",
+                (self.round_id,))
+        self.save_flags()
 
     def reveal_dora(self, force: bool = False) -> dict | None:
         """翻下一张宝牌指示牌：一墩两张，上面那张是表宝牌、下面那张是里宝牌。
@@ -2111,6 +2129,8 @@ class Game:
         """
         seat = int(seat)
         got = str(got)
+        # 摸到牌了 → 「刚碰完不能加杠」那一张的限制解除（只有自己摸牌才解除）
+        self.pon_lock.pop(int(seat), None)
         moved = list(moved or [])
         if info is None:
             info = {"tile": got}
@@ -2260,6 +2280,8 @@ class Game:
         跳过「宝牌运：确认要切宝牌吗」这一问（罚点只针对玩家自己切宝牌）。"""
         if self.win_pending and int((self.win_pending or {}).get("seat", -1)) == int(seat):
             self.win_pending = None    # 正常打牌 = 放弃技能给的那次和牌
+        # 碰完打过牌了 → 「刚碰完不能加杠」的限制解除（等下一次摸牌再说已经是下一步了）
+        self.pon_lock.pop(int(seat), None)
         self.press_win.discard(seat)
         if self.c11_win is not None and int(self.c11_win) == int(seat):
             self.c11_win = None
@@ -8402,8 +8424,17 @@ class Game:
         return before == after
 
     def kakan_allowed(self, seat: int, tile: str) -> bool:
-        """立直后不能加杠（标准日麻）。"""
-        return not self.is_riichi(int(seat))
+        """立直后不能加杠（标准日麻）；刚碰完的那一种牌也不能马上加杠。
+
+        用户口径 2026-11-06：碰完必须先打一张，加杠要等自己下一次摸牌。
+        """
+        s = int(seat)
+        if self.is_riichi(s):
+            return False
+        locked = str(self.pon_lock.get(s, ""))     # 刚碰的那个牌种
+        if locked and locked == kind_of(str(tile)):
+            return False
+        return True
 
     # ── 杠 ──
     def _do_ankan(self, seat: int, tile: str) -> dict:
@@ -8683,6 +8714,9 @@ class Game:
         self.ippatsu.clear()
         self.temp_furiten.clear()
         self.pending_kuikae = {"kind": kind, "called": p["tile"], "used": hand_used}
+        if str(kind) == "pon":
+            # 刚碰完：这一种牌不能马上加杠（等自己下一次摸牌再说）
+            self.pon_lock[int(seat)] = kind_of(str(p["tile"]))
         self.c35_start(int(seat))                 # 流势（35S1）：副露后自动排牌山
         # 22S2 段1：这一手是「点了友引」的副露 → 副露完先摊面子再打牌
         # （吃 / 碰 / 明杠 都算；明杠的岭上牌推迟到摊完面子之后再补）
@@ -12469,7 +12503,7 @@ class Game:
         self._print_result()
         self.save_flags()                 # 结果也要落库（别的进程要读得到）
 
-    # ── Card27 S1「调包」：手牌 ⇄ 别人牌河的明牌 + 标记那一家 ────────
+    # ── Card27 S1「瞄准」：手牌 ⇄ 别人牌河的明牌 + 标记那一家 ────────
     def c27s1_targets(self, seat: int) -> list[int]:
         """能换的牌河 seq：**别人的、明置的、没被鸣走的**。
         （立直宣言牌可以换 —— 和【间合】不同；暗置牌不能换）"""
@@ -12503,9 +12537,9 @@ class Game:
         """换牌面（和间合同一套 swap_hand_river）：换的谁的牌就进谁的牌河，换进来的进我手里。"""
         s = int(seat)
         if not self.c27s1_can(s):
-            raise RuleError("调包：要刚摸完牌、而且本小局还没用过")
+            raise RuleError("瞄准：要刚摸完牌、而且本小局还没用过")
         if int(river_seq) not in self.c27s1_targets(s):
-            raise RuleError("调包：只能换别人牌河里的明牌")
+            raise RuleError("瞄准：只能换别人牌河里的明牌")
         self._assert_hand_mutable(s)
         row = self.db._row(
             "SELECT seat, wall_seq, tile FROM round_discards WHERE round_id=? AND seq=?",
@@ -12520,7 +12554,7 @@ class Game:
             raise RuleError(f"手里没有 {hand_tile}")
         hseq = int(hrow["wall_seq"])
         got = str(row["tile"])
-        self.do_swap("hand_river", s, "调包", hand_seq=hseq,
+        self.do_swap("hand_river", s, "瞄准", hand_seq=hseq,
                      river_seq=int(river_seq), face_down=None)
         with self.db.tx():
             # 换进来的那张算「刚摸到的」

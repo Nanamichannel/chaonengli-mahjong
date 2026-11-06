@@ -76,7 +76,7 @@ REGISTRY: dict[tuple[int, int], dict] = {
     (25, 2): {"name": "宝牌的集合", "kind": "dora_luck2", "timing": "deal"},
     (26, 1): {"name": "云外镜", "kind": "c26_sight", "timing": "deal"},
     (26, 2): {"name": "天梯", "kind": "c26_streak", "timing": "deal"},
-    (27, 1): {"name": "调包", "kind": "c27_swap", "timing": "draw"},
+    (27, 1): {"name": "瞄准", "kind": "c27_swap", "timing": "draw"},
     (27, 2): {"name": "命中", "kind": "c27_bomb", "timing": "draw"},
     (28, 1): {"name": "满贯", "kind": "c28_gate", "timing": "deal"},
     (28, 2): {"name": "蜕变", "kind": "c28_step", "timing": "settle"},

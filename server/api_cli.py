@@ -1399,7 +1399,7 @@ _SKILL_OP_PAIRS = {
     "xianfu_swap": (22, 1),       # 先负
     "c24_declare": (24, 1),       # 一发（24S1）：选一张打出去立直
     "future_arm": (24, 2),        # 未来（24S2）：点技能 = 直接发动（可被看破）
-    "c27s1_swap": (27, 1),        # 调包（27S1）：手牌 ⇄ 别人牌河
+    "c27s1_swap": (27, 1),        # 瞄准（27S1）：手牌 ⇄ 别人牌河
     "c27s2_declare": (27, 2),     # 伏兵（27S2）：暗置打出
     "c25s2_arm": (25, 2),         # 宝牌的集合（25S2）：配牌紧随宝牌运自动发动
     "youyin_take": (22, 2),       # 友引段2：与牌河互换
@@ -2540,7 +2540,7 @@ def op_c26_set(db: DB, req: dict) -> dict:
 
 
 def op_c27s1_swap(db: DB, req: dict) -> dict:
-    """Card27 Skill1「调包」：一张手牌 ⇄ 别人牌河的一张明牌，并标记那一家。"""
+    """Card27 Skill1「瞄准」：一张手牌 ⇄ 别人牌河的一张明牌，并标记那一家。"""
     rid = req.get("round_id") or _get_round_id(db)
     g = _game(db, rid)
     seat = int(req.get("seat", 0))

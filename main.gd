@@ -16114,14 +16114,21 @@ func _result_seats(win: Dictionary) -> Array:
 	var order := [3, 0, 2, 1]        # 相对自己的座位偏移：+3=上家 · 0=我 · +2=対家 · +1=下家
 	for k in range(4):
 		var sid := (my_seat + int(order[k])) % 4
-		var after := -1
+		# ★ 负分是合法的（点炮到 -2 万很正常）：以前这里用 -1 当"没有数据"的哨兵，
+		#   后面又 maxi(after, 0) → 结算面板的计数器到 0 就停住（用户口径 2026-11-06）。
+		var after := 0
+		var has_after := false
 		if typeof(sc) == TYPE_DICTIONARY:
 			if (sc as Dictionary).has(str(sid)):
 				after = int((sc as Dictionary)[str(sid)])
+				has_after = true
 			elif (sc as Dictionary).has(sid):
 				after = int((sc as Dictionary)[sid])
-		if after < 0:
-			after = _score_now(sid)
+				has_after = true
+		if not has_after:
+			after = _score_now(sid)          # 兜底：读场上分数（-1 = 真没有）
+			if after < 0:
+				after = 0
 		var delta := 0
 		if typeof(dl) == TYPE_DICTIONARY:
 			if (dl as Dictionary).has(str(sid)):
@@ -16131,8 +16138,8 @@ func _result_seats(win: Dictionary) -> Array:
 		out.append({
 			"slot": k,
 			"nick": srv_nick_of(sid),
-			"before": maxi(after - delta, 0) if after >= 0 else 0,
-			"after": maxi(after, 0),
+			"before": after - delta,          # 允许负分（不再 maxi(…, 0)）
+			"after": after,
 		})
 	return out
 

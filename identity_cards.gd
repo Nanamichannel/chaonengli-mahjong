@@ -500,8 +500,12 @@ func _apply_char_cards() -> bool:
 		var ms := int(MAIN_SLOTS[g])
 		var ss := int(SUPPORT_SLOTS[g])
 		var mb := _slots.get(ms, null) as TextureButton
-		if int(_slot_card.get(ms, -1)) != main_card \
+		if main_card <= 0:
+			# 服务端没给卡号 = 这一家没发动过 → 保持遮罩，别去 load card_00.png
+			_force_mask[ms] = true
+		elif int(_slot_card.get(ms, -1)) != main_card \
 				or (mb != null and mb.texture_normal == null):
+			_force_mask.erase(ms)
 			_set_card(ms, main_card)
 			changed = true
 		var sb2 := _slots.get(ss, null) as TextureButton
@@ -562,7 +566,9 @@ func _char_masked(slot: int) -> bool:
 	# 按「位子上实际摆的那张卡」去 char_states 里找它的状态（A 案：按卡算）
 	var shown := int(_slot_card.get(slot, -1))
 	if shown <= 0:
-		return false                    # 位子上还没摆卡
+		# 位子上没有卡号（服务端对"别人没发动过"的卡不再下发真实卡号）
+		# → 一律盖住，别把桌布露出来（用户口径 2026-11-06）
+		return true
 	var d := {}
 	for kind2 in ["main", "support"]:
 		var cand: Dictionary = st.get(kind2, {}) if typeof(st.get(kind2)) == TYPE_DICTIONARY else {}

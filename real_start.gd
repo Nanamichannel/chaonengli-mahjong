@@ -14,6 +14,7 @@ const GALLERY_SCENE := "res://鉴赏.tscn"
 const TRANS_MASK_PATH := "只差遮罩/Masks/鉴赏蒙版"
 const TRANS_SEQ_PATH := "只差遮罩/转场_[00000-00025]"
 const Wipe := preload("res://transition_wipe.gd")
+const UiSfx := preload("res://ui_sfx.gd")     # UI 音效（静态，不用 autoload）
 # 2026-11-11：效果根节点在编辑器里被改名（背景 2 → 背景和人物，合成 1 → 搜索框），
 # 这里用候选名单 + 特征兜底找，避免再改名就整套播放/交互失效。
 const STAGE_CANDIDATES := ["背景和人物", "背景 2"]     # 一级动画场景实例
@@ -103,6 +104,8 @@ var _going := false
 
 
 func _ready() -> void:
+	# 音效预热：播放器先挂好、音频先解码 —— 点【确认】创建账号那一刻才没有读盘延迟
+	UiSfx.warm()
 	_setup_level1()
 	_setup_level2()
 	_setup_settings()
@@ -951,6 +954,8 @@ func _cc_confirm() -> void:
 		_hint("创建失败：%s" % (String(r.get("error", "连不上服务端")) if not r.is_empty()
 				else "连不上服务端"))
 	else:
+		# 真的创建成功这一刻才响（失败不播，免得报错却说「成功」）
+		UiSfx.play("create")
 		_hint("已创建账号「%s」——再点一次【登入】" % nm)
 	# 回到设置面板定格（输入框里名字还在，D1：不自动登入）
 	if _state == 4:

@@ -5,6 +5,7 @@ extends Node
 ##   "hover"  鼠标悬浮到手牌上、牌刚往上抬的那一下        ← tile_piece.gd:_on_hover_enter
 ##   "button" 吃/碰/杠/立直/自摸/荣 按钮出现的那一下      ← main.gd:srv_layout_buttons
 ##   "plate"  结算播报「底座底座」横向拉开的那一下        ← 和牌播报.gd:_reveal_plate
+##   "create" 账号创建成功的那一下                        ← real_start.gd:_cc_confirm
 ##   "strips" 番种条从上往下扫开的那一下                  ← 和牌播报.gd:_reveal_strips
 ##
 ## 用法（**不用 autoload、不用 class_name**，preload 后直接调静态方法）：
@@ -19,6 +20,7 @@ const FILES := {
 	"button": "出现按钮.wav",           # 0.20s
 	"plate": "底座底座拉开.wav",        # 0.75s
 	"strips": "番种条.wav",             # 0.63s
+	"create": "创建成功.mp3",          # 账号创建成功（用户 2026-11-15）
 }
 const DEFAULT_DB := -6.0
 

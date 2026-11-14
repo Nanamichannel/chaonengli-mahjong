@@ -96,6 +96,25 @@ def swap_hand_wall(db: DB, rid: int, hand_seq: int, wall_seq: int) -> dict:
             "wall_seq": int(wall_seq)}
 
 
+def swap_wall_river(db: DB, rid: int, river_seq: int, wall_seq: int,
+                    face_down: bool | None = True) -> dict:
+    """牌河一张 ⇄ 牌山一张（牌面对调），并可设定牌河那格的明暗。
+
+    快手（11-2）：把「我马上要摸的那张」暗置塞进牌河，牌河那张换到我要摸的位置。
+    """
+    rseq = river_wall_seq(db, rid, int(river_seq))
+    got = tile_of(db, rid, rseq)                 # 牌河那张 → 会变成我摸到的
+    gave = tile_of(db, rid, int(wall_seq))       # 本来要摸的 → 暗置进牌河
+    seqs = swap_faces(db, rid, rseq, int(wall_seq))
+    if face_down is not None:
+        with db.tx():
+            db.conn.execute(
+                "UPDATE round_discards SET face_down=? WHERE round_id=? AND seq=?",
+                (1 if face_down else 0, int(rid), int(river_seq)))
+    return {"got": got, "gave": gave, "seqs": seqs,
+            "river_seq": int(river_seq), "wall_seq": int(wall_seq)}
+
+
 def swap_wall_wall(db: DB, rid: int, seq_a: int, seq_b: int) -> dict:
     got = tile_of(db, rid, int(seq_b))
     gave = tile_of(db, rid, int(seq_a))

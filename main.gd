@@ -60,6 +60,7 @@ const WinConfirmButton := preload("res://win_confirm_button.gd")
 const HandPick := preload("res://hand_pick.gd")   # 统一「选手牌」界面
 const SkillPanel := preload("res://skill_panel.gd")  # 统一「技能选牌面板」
 const C30Panel := preload("res://c30_panel.gd")      # Card30 S1「向听」专用面板
+const UiSfx := preload("res://ui_sfx.gd")         # UI 音效（出现按钮 / 悬浮手牌）
 
 var hand_pick := HandPick.new()
 
@@ -520,6 +521,8 @@ func _ui_mark_ready() -> void:
 	_ui_ready = true
 	_round_hud_ensure()
 	_round_info_hot_ensure()
+	_bs_load()
+	_bs_build()
 
 
 func _round_hud_sync(st: Dictionary) -> void:
@@ -549,12 +552,27 @@ func _round_hud_sync(st: Dictionary) -> void:
 				continue
 			var d: Dictionary = it
 			var nm := String(d.get("name", ""))
-			if nm == "":
+			# ★ 2026-11-07：带 detail 的条目（要了哪张牌 / 获得了什么 / 掷出几点）
+			#   显示整句，别再只写「发动了【技能】」。
+			var tx := String(d.get("text", ""))
+			if nm == "" and tx == "":
 				continue
 			var who := srv_nick_of(int(d.get("seat", -1)))
 			if who == "":
 				who = "%d 号位" % int(d.get("seat", 0))
-			rows.append("【%s】发动了【%s】" % [who, nm])
+			if tx != "":
+				# 整句里已经点了名（昵称 / 东南西北）→ 原样显示，别「【P1】【东】…」
+				var head := ""
+				if tx.begins_with("【"):
+					var e := tx.find("】")
+					if e > 1:
+						head = tx.substr(1, e - 1)
+				if head == who or head in ["东", "南", "西", "北"]:
+					rows.append(tx)
+				else:
+					rows.append("【%s】%s" % [who, tx])
+			else:
+				rows.append("【%s】发动了【%s】" % [who, nm])
 		if not rows.is_empty():
 			txt += "\n" + "\n".join(rows)
 	if _round_hud.text != txt:
@@ -593,6 +611,107 @@ func _round_hud_ensure() -> void:
 		layer.layer = 40               # 压过人物卡 20 / 播报 31、32
 		host.add_child(layer)
 	layer.add_child(_round_hud)
+
+
+# ── 枷锁（18S1）：发动后右上角显示里宝**指示牌** ──────────────────
+#   位置：右上角信息栏（RoundHud）左边一排，和它同一行顶对齐。
+#   只画服务端给的 state.ura_peek —— 没发动枷锁 / 不是我就不会下发。
+var _ura_peek_root: Control = null
+var _ura_peek_key := ""
+var _ura_peek_w := 0.0
+const URA_TILE_W := 46.0
+
+
+func _ura_peek_sync(st: Dictionary) -> void:
+	var arr: Array = []
+	if typeof(st.get("ura_peek")) == TYPE_ARRAY:
+		arr = st.get("ura_peek")
+	if arr.is_empty():
+		if _ura_peek_root != null and is_instance_valid(_ura_peek_root):
+			_ura_peek_root.visible = false
+		return
+	if _ura_peek_root == null or not is_instance_valid(_ura_peek_root) \
+			or not _ura_peek_root.is_inside_tree():
+		if _ura_peek_root != null and is_instance_valid(_ura_peek_root):
+			_ura_peek_root.queue_free()      # 建出来了没挂上（_ready 期间被引擎拒）→ 重建
+		_ura_peek_root = null
+		_ura_peek_make()
+	if _ura_peek_root == null or not _ura_peek_root.is_inside_tree():
+		return                               # 还没建好：下一次状态同步再来
+	var parts := PackedStringArray()
+	for x in arr:
+		parts.append(String(x))
+	var key := "|".join(parts)
+	if key != _ura_peek_key:
+		_ura_peek_key = key
+		_ura_peek_fill(arr)
+	_ura_peek_root.visible = true
+	_ura_peek_place()
+
+
+func _ura_peek_make() -> void:
+	if not _ui_ready:
+		return                               # _ready 还没跑完：下一帧状态同步再来
+	_ura_peek_root = Control.new()
+	_ura_peek_root.name = "UraPeek"
+	_ura_peek_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ura_peek_root.z_index = 400
+	var host: Node = get_parent() if get_parent() != null else self
+	var layer := host.get_node_or_null("RoundHudLayer") as CanvasLayer
+	if layer == null:
+		layer = CanvasLayer.new()
+		layer.name = "RoundHudLayer"
+		layer.layer = 40
+		host.add_child(layer)
+	layer.add_child(_ura_peek_root)
+
+
+func _ura_peek_fill(arr: Array) -> void:
+	for c in _ura_peek_root.get_children():
+		c.queue_free()
+	var lbl := Label.new()
+	lbl.text = "里宝"
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.add_theme_color_override("font_color", Color(1, 0.94, 0.7, 0.95))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	lbl.add_theme_constant_override("outline_size", 4)
+	lbl.size = Vector2(52, 30)
+	lbl.position = Vector2(0, 4)
+	_ura_peek_root.add_child(lbl)
+	var h := URA_TILE_W * 1.42
+	for i in range(arr.size()):
+		var kind := String(arr[i])
+		var tex := load(TileBank.VERT_DIR + TileBank.face_file(kind) + ".png") \
+			as Texture2D
+		var tr := TextureRect.new()
+		tr.texture = tex
+		tr.ignore_texture_size = true
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tr.size = Vector2(URA_TILE_W, h)
+		tr.position = Vector2(54.0 + float(i) * (URA_TILE_W + 6.0), 0.0)
+		_ura_peek_root.add_child(tr)
+	_ura_peek_w = 54.0 + float(arr.size()) * (URA_TILE_W + 6.0)
+
+
+func _ura_peek_place() -> void:
+	if _ura_peek_root == null or not is_instance_valid(_ura_peek_root):
+		return
+	var vp := get_viewport_rect().size
+	# 贴在**右上角那块白字**的正上方（同一个右边距、右对齐），文字由 _round_hud_tick 让下来
+	var x := vp.x - round_hud_margin.x - _ura_peek_w
+	_ura_peek_root.global_position = Vector2(maxf(8.0, x), round_hud_margin.y)
+
+
+# 里宝那一排占的高度（没显示 = 0）：白字整体要往下让这么多
+func _ura_peek_h() -> float:
+	if _ura_peek_root == null or not is_instance_valid(_ura_peek_root):
+		return 0.0
+	if not _ura_peek_root.visible:
+		return 0.0
+	return URA_TILE_W * 1.42 + 8.0
 
 
 # 右上角「四行信息」的开关按钮：节点由用户在场景里放好（Main/UI/按钮）
@@ -790,9 +909,157 @@ func _round_hud_tick() -> void:
 	if _round_hud == null or not is_instance_valid(_round_hud):
 		return
 	var vp := get_viewport_rect().size
-	var want := Vector2(vp.x - ROUND_HUD_W - round_hud_margin.x, round_hud_margin.y)
+	# 枷锁的里宝指示牌压在这块白字的**顶上**（同一个右上角），有它就把文字整体往下让
+	var want := Vector2(vp.x - ROUND_HUD_W - round_hud_margin.x,
+		round_hud_margin.y + _ura_peek_h())
 	if _round_hud.global_position.distance_to(want) > 0.5:
 		_round_hud.global_position = want   # 全局坐标：Main 自己有偏移，用 position 会顶出屏幕右边
+
+
+# ── 人机出牌速度面板（用户口径 2026-11-08：游戏内随时可调）──────────────
+#   bot_speed 是一个倍率（0.25 ~ 4.0，默认 1.0），把三处节奏一起缩放：
+#     · OPP_DRAW_DELAY  推进一步的延迟
+#     · POLL_SEC        等别人时的轮询间隔（服务端每次 poll 最多替人机走 2 步）
+#     · DEAL_STEP_WAIT  配牌每一步（配牌也是人机在走）
+#   入口：F8，或左下角那个「速度」按钮。存 user://bot_speed.cfg，重启还在。
+const BS_CFG := "user://bot_speed.cfg"
+const BS_MIN := 0.25
+const BS_MAX := 4.0
+var bot_speed := 1.0
+var _bs_layer: CanvasLayer = null
+var _bs_panel: Panel = null
+var _bs_slider: HSlider = null
+var _bs_value: Label = null
+var _bs_button: Button = null
+var _bs_open := false
+
+
+## 倍率 → 实际间隔（越大越快）
+func _bs_delay(base: float) -> float:
+	return maxf(base / maxf(bot_speed, 0.05), 0.0)
+
+
+func _bs_load() -> void:
+	if not FileAccess.file_exists(BS_CFG):
+		return
+	var f := FileAccess.open(BS_CFG, FileAccess.READ)
+	if f == null:
+		return
+	var txt := f.get_as_text()
+	f.close()
+	var d = JSON.parse_string(txt)
+	if typeof(d) == TYPE_DICTIONARY:
+		bot_speed = clampf(float((d as Dictionary).get("speed", 1.0)), BS_MIN, BS_MAX)
+
+
+func _bs_save() -> void:
+	var f := FileAccess.open(BS_CFG, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify({"speed": bot_speed}))
+	f.close()
+
+
+func _bs_apply(v: float, save := true) -> void:
+	bot_speed = clampf(v, BS_MIN, BS_MAX)
+	if _bs_value != null and is_instance_valid(_bs_value):
+		_bs_value.text = "×%.2f" % bot_speed
+	if _bs_slider != null and is_instance_valid(_bs_slider) \
+			and absf(float(_bs_slider.value) - bot_speed) > 0.001:
+		_bs_slider.set_value_no_signal(bot_speed)
+	if save:
+		_bs_save()
+
+
+func _bs_toggle() -> void:
+	_bs_build()
+	if _bs_panel == null or not is_instance_valid(_bs_panel):
+		return
+	_bs_open = not _bs_open
+	_bs_panel.visible = _bs_open
+	if _bs_open:
+		_bs_place()
+		_bs_apply(bot_speed, false)
+
+
+func _bs_place() -> void:
+	var vp := get_viewport_rect().size
+	if _bs_button != null and is_instance_valid(_bs_button):
+		_bs_button.position = Vector2(18.0, vp.y - 54.0)
+	if _bs_panel != null and is_instance_valid(_bs_panel):
+		_bs_panel.position = Vector2(18.0, vp.y - 54.0 - _bs_panel.size.y - 8.0)
+
+
+func _bs_build() -> void:
+	if not _ui_ready:
+		return                                  # _ready 期间 add_child 会被引擎拒
+	if _bs_layer != null and is_instance_valid(_bs_layer) and _bs_layer.is_inside_tree():
+		return
+	var host: Node = get_parent() if get_parent() != null else self
+	_bs_layer = CanvasLayer.new()
+	_bs_layer.name = "BotSpeedLayer"
+	_bs_layer.layer = 46                    # 压在播报(31)/右上角信息(40)之上
+	host.add_child(_bs_layer)
+	# 左下角常驻按钮
+	_bs_button = Button.new()
+	_bs_button.name = "BotSpeedButton"
+	_bs_button.text = "速度"
+	_bs_button.focus_mode = Control.FOCUS_NONE
+	_bs_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	_bs_button.size = Vector2(76, 34)
+	_bs_button.add_theme_font_size_override("font_size", 16)
+	_bs_button.pressed.connect(_bs_toggle)
+	_bs_layer.add_child(_bs_button)
+	# 面板
+	_bs_panel = Panel.new()
+	_bs_panel.name = "BotSpeedPanel"
+	_bs_panel.size = Vector2(300, 150)
+	_bs_panel.visible = false
+	_bs_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_bs_layer.add_child(_bs_panel)
+	var box := VBoxContainer.new()
+	box.name = "Box"
+	box.position = Vector2(14, 10)
+	box.size = Vector2(272, 130)
+	box.add_theme_constant_override("separation", 6)
+	_bs_panel.add_child(box)
+	var title := Label.new()
+	title.name = "Title"
+	title.text = "人机出牌速度"
+	title.add_theme_font_size_override("font_size", 17)
+	box.add_child(title)
+	_bs_slider = HSlider.new()
+	_bs_slider.name = "Slider"
+	_bs_slider.min_value = BS_MIN
+	_bs_slider.max_value = BS_MAX
+	_bs_slider.step = 0.05
+	_bs_slider.value = bot_speed
+	_bs_slider.custom_minimum_size = Vector2(0, 24)
+	_bs_slider.value_changed.connect(_bs_apply)
+	box.add_child(_bs_slider)
+	_bs_value = Label.new()
+	_bs_value.name = "Value"
+	_bs_value.text = "×%.2f" % bot_speed
+	_bs_value.add_theme_font_size_override("font_size", 15)
+	box.add_child(_bs_value)
+	var row := HBoxContainer.new()
+	row.name = "Presets"
+	row.add_theme_constant_override("separation", 6)
+	for pr in [["0.5x", 0.5], ["1x", 1.0], ["2x", 2.0], ["4x", 4.0]]:
+		var b := Button.new()
+		b.text = String(pr[0])
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(58, 28)
+		b.pressed.connect(_bs_apply.bind(float(pr[1])))
+		row.add_child(b)
+	box.add_child(row)
+	var tip := Label.new()
+	tip.name = "Tip"
+	tip.text = "越大越快 · F8 开关本面板"
+	tip.add_theme_font_size_override("font_size", 12)
+	box.add_child(tip)
+	_bs_place()
+
 
 
 func _hud_tick(delta: float) -> void:
@@ -1166,6 +1433,164 @@ func _fit_background() -> void:
 const SkinPatch := preload("res://skin.gd")   # 外部皮肤（exe 同目录 skin\）
 
 
+# UI 音效预热（延后一帧：_ready 里 root 还在 setup，直接 add_child 会被拒）
+# 启动时把音频后端信息打一行：驱动/设备/缓冲/混音率。# 延迟排查先看这里 —— 若系统默认输出是 Voicemeeter 这类虚拟混音器，
+# 真正的延迟在系统那条链上（本工程自己的缓冲只有 output_latency 那么大）。
+func _audio_log() -> void:
+	print("[audio] 设备=%s 缓冲=%.1fms 混音率=%d 设备数=%d" % [
+		AudioServer.get_output_device(), AudioServer.get_output_latency() * 1000.0,
+		AudioServer.get_mix_rate(), AudioServer.get_output_device_list().size()])
+	# ★ 2026-11-14 实测（_tmp/audio_sweep.ps1 / audio_endpoints.ps1）：
+	#   这台机器**所有**输出端点的 WASAPI shared 缓冲都被 Windows 夹到 1056 帧 = 22.0ms，
+	#   项目里写 driver/output_latency=5 其实无效（get_output_latency 只是回显设置值）。
+	#   默认输出还是 Voicemeeter Input（VB-Audio VAIO）→ 声音还要再过一遍 Voicemeeter 的
+	#   引擎缓冲 + 它 A1 的输出缓冲 —— 这才是「脚本侧已经压到 0、耳朵却明显拖」的那一段。
+	#   F9 = 在「默认 / 物理设备」之间轮换输出（跳掉 Voicemeeter 那一层）。
+	var _dev := AudioServer.get_output_device()
+	if _dev == "Default" or _dev.to_lower().contains("voicemeeter") \
+			or _dev.to_lower().contains("vb-audio"):
+		print("[audio] 提示：当前走 Voicemeeter 虚拟声卡（多一层引擎缓冲）。按 F9 可切到直连设备。")
+
+
+# ── 音频输出设备（2026-11-14）：F9 轮换，跳过 Voicemeeter 那一层 ─────────────
+const AUDIO_OUT_CFG := "user://audio_out.txt"
+var _audio_dev_want := ""       # 正在切换的目标设备名（空 = 没在切）
+var _audio_dev_wait := 0.0      # 切换看门狗（秒）
+
+
+# 启动时套用上次 F9 选过的设备（删掉 user://audio_out.txt 就回到「默认」）
+func _audio_dev_load() -> void:
+	if not FileAccess.file_exists(AUDIO_OUT_CFG):
+		return
+	var f := FileAccess.open(AUDIO_OUT_CFG, FileAccess.READ)
+	if f == null:
+		return
+	var want := f.get_as_text().strip_edges()
+	f.close()
+	if want == "" or want == "Default":
+		return
+	if not AudioServer.get_output_device_list().has(want):
+		return
+	_audio_dev_apply(want, false)
+
+
+func _audio_dev_apply(name: String, tell := true) -> void:
+	# set_output_device 是「交给音频线程去改」：当帧读回来还是旧值 → 交给 _audio_dev_tick 收尾
+	AudioServer.set_output_device(name)
+	_audio_dev_want = name
+	_audio_dev_wait = 2.0
+	if tell:
+		_toast("音频输出 → %s" % name)
+
+
+func _audio_dev_tick(delta: float) -> void:
+	if _audio_dev_want == "":
+		return
+	_audio_dev_wait -= delta
+	var now := AudioServer.get_output_device()
+	if now == _audio_dev_want:
+		_audio_dev_want = ""
+		_audio_dev_save(now)
+		return
+	if _audio_dev_wait <= 0.0:
+		_audio_dev_want = ""
+		_toast("切不过去，还是：%s" % now)
+
+
+func _audio_dev_save(name: String) -> void:
+	var f := FileAccess.open(AUDIO_OUT_CFG, FileAccess.WRITE)
+	if f != null:
+		f.store_string(name)
+		f.close()
+
+
+# F9：默认 → 各物理设备 → 各虚拟设备，循环。物理设备排前面（延迟最低的那一类）
+# ── F10：音频延迟自测（白闪 + 同帧「咔」×8）────────────────────────────
+# 为什么要它：22ms 是 Windows 给的 shared 缓冲下限，之外还有 Voicemeeter 那一层，
+# 这两段在代码里都看不见。闪白和「咔」是**同一帧**发出的 → 眼睛看到闪白、
+# 耳朵听到「咔」，两者的先后差就是「听到声音」比「脚本发出声音」多出来的全部延迟。
+var _lat_rect: ColorRect = null
+var _lat_step := 0              # 0 = 没在跑；1..8 = 第几下
+var _lat_t := 0.0               # 下一次闪白还要等多久
+var _lat_off_frame := 0         # 白闪关掉的帧号
+
+
+func _lat_flash_rect() -> ColorRect:
+	if _lat_rect != null and is_instance_valid(_lat_rect):
+		return _lat_rect
+	var r := ColorRect.new()
+	r.name = "LatTestFlash"
+	r.color = Color(1, 1, 1, 1)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.z_index = 900
+	r.set_anchors_preset(Control.PRESET_FULL_RECT)
+	r.modulate.a = 0.0
+	add_child(r)
+	_lat_rect = r
+	return r
+
+
+func _lat_test_start() -> void:
+	if _lat_step != 0:
+		return
+	_lat_flash_rect().modulate.a = 0.0
+	_lat_step = 1
+	_lat_t = 0.8
+	_toast("延迟自测：盯住白闪、听「咔」——共 8 下")
+
+
+# 每帧推一下（不看 delta 也不 await：暂停/掉帧都不会把流程挂死）
+func _lat_test_tick() -> void:
+	if _lat_step == 0:
+		return
+	var r := _lat_flash_rect()
+	if _lat_off_frame != 0 and Engine.get_process_frames() >= _lat_off_frame:
+		r.modulate.a = 0.0
+		_lat_off_frame = 0
+	_lat_t -= get_process_delta_time()
+	if _lat_t > 0.0:
+		return
+	if _lat_step > 8:
+		_lat_step = 0
+		r.modulate.a = 0.0
+		_toast("自测完：闪白和「咔」差了多少？「几乎同时 / 差一丁点 / 差一大截」就够")
+		return
+	# ★ 同一帧：先闪白，再出声（差的就是「听到」比「发出」多出来的全部延迟）
+	r.modulate.a = 1.0
+	_lat_off_frame = Engine.get_process_frames() + 2
+	print("[LAT] #%d t=%dus" % [_lat_step, Time.get_ticks_usec()])
+	UiSfx.play("hover", 0.0)                    # 悬浮音起振 1.2ms，最干脆
+	_lat_step += 1
+	_lat_t = 0.55
+
+
+func _audio_dev_cycle() -> void:
+	var list := AudioServer.get_output_device_list()
+	var cur := AudioServer.get_output_device()
+	var phys: Array[String] = []
+	var virt: Array[String] = []
+	for i in range(list.size()):
+		var n := String(list[i])
+		if n == "Default":
+			continue
+		var low := n.to_lower()
+		if low.contains("voicemeeter") or low.contains("vb-audio") or low.contains("steam") \
+				or low.contains("oculus") or low.contains("virtual") or low.contains("远程"):
+			virt.append(n)
+		else:
+			phys.append(n)
+	var cand: Array[String] = ["Default"]
+	cand.append_array(phys)
+	cand.append_array(virt)
+	var idx := cand.find(cur)
+	var nxt: String = cand[(idx + 1) % cand.size()] if idx >= 0 else cand[0]
+	_audio_dev_apply(nxt)
+
+
+func _ui_sfx_warm() -> void:
+	UiSfx.warm()
+
+
 func _ready() -> void:
 	Engine.max_fps = int(ProjectSettings.get_setting("application/run/max_fps", 90))   # 跟着 项目设置→运行→最大FPS（现在 90）
 	TilePiece.anim_scale = maxf(tile_fly_speed, 0.0)   # 牌飞行速度倍率（0 = 瞬移）
@@ -1175,6 +1600,9 @@ func _ready() -> void:
 	call_deferred("_round_info_icon_place")
 	call_deferred("_round_info_hot_ensure")
 	_perf_init()
+	call_deferred("_ui_sfx_warm")     # UI 音效预热（延后到 root 不再 setup：见 ui_sfx._ensure_host）
+	call_deferred("_audio_log")          # 启动时打一行音频信息（排查「延迟/没声音」用）
+	call_deferred("_audio_dev_load")   # 套用上次 F9 选过的输出设备
 	# 播报场景在这里先实例化一次（贴图/字体预热的开销挪到开局），避免第一次和牌卡一下
 	call_deferred("_win_scene_get")
 	get_tree().auto_accept_quit = false     # 关窗口要先清记录再退
@@ -1835,7 +2263,9 @@ func _clear_card_files() -> void:
 
 
 func _reset_view_for_new_round() -> void:
+	_haidi_clear()
 	game_over = false
+	_cg_shackle_done = false
 	_skill2_close(false)
 	_board_close()
 	_press_close()
@@ -1869,7 +2299,19 @@ func _reset_view_for_new_round() -> void:
 	hs_ask_key = ""
 	hs_swap_key = ""
 	hs_swap_ask_key = ""
-	_last_broadcast_id = 0
+	# ★ 摸牌前询问的「这一巡问过」指纹都是 (live_left, turn)：
+	#   新一局首巡和上一局首巡完全一样 → 不清就会把询问静默吞掉一次（海神当年踩过）。
+	oracle_skip_ask = ""
+	c09_hint_key = ""
+	zl_ask_key = ""
+	c11s2_ask_key = ""
+	c45_key = ""
+	future_ask_key = ""
+	c26_key = ""
+	_pda_skip_key = ""
+	c35_mark = -1                   # 流势：新一局要能重新弹
+	c35_wait = -1
+	_last_broadcast_id = 0           # 新一局：服务端 id 从 1 重新开始（0=已对齐，见 _apply_broadcast）
 	_voice_last_id = 0
 	_voice_sent_seat = -99          # 新一局：语音包要重新上报
 	var idn0 := get_node_or_null("Identity")
@@ -1989,6 +2431,40 @@ func _update_seat_label() -> void:
 
 func _num_cn(n: int) -> String:
 	return ["一", "二", "三", "四"][clampi(n, 1, 4) - 1]
+
+
+# 牌 id → 中文（播报 / toast 用）："3m" → 三万 · "0p" → 赤五筒 · "nan" → 南
+# 以前深山/宝牌集合这类提示直接贴 "3m"、"nan"，玩家看不出是哪张。
+const TILE_CN_HONOR := {"dong": "东", "nan": "南", "xi": "西", "bei": "北",
+	"bai": "白", "fa": "发", "zhong": "中"}
+
+
+func tile_cn_of(t: String) -> String:
+	var s := String(t)
+	if s == "":
+		return "?"
+	if TILE_CN_HONOR.has(s):
+		return String(TILE_CN_HONOR[s])
+	if s.length() < 2:
+		return s
+	var d := s.substr(0, 1)
+	var suit := s.substr(1, 1)
+	var num := int(d)
+	var aka := (d == "0")
+	if aka:
+		num = 5
+	var cn := String({"m": "万", "p": "筒", "s": "条"}.get(suit, ""))
+	if cn == "":
+		return s
+	var ntxt := _cn_num(num)
+	return ("赤" if aka else "") + ntxt + cn
+
+
+func _cn_num(n: int) -> String:
+	const NUMS := ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"]
+	if n >= 1 and n <= 9:
+		return String(NUMS[n])
+	return str(n)
 
 
 # 场风 id → 中文（dong → 东）
@@ -2446,7 +2922,7 @@ func _deal_step() -> void:
 		print("[配牌] 配牌结束，我手上 %d 张（台上 %d 张）"
 			% [display_tiles().size(), opp_hands.get("B", []).size()])
 		return
-	get_tree().create_timer(DEAL_STEP_WAIT).timeout.connect(_deal_step)
+	get_tree().create_timer(_bs_delay(DEAL_STEP_WAIT)).timeout.connect(_deal_step)
 
 
 # 摸到的那张：单独摆在手牌右边（和手牌隔一个空隙）
@@ -2527,17 +3003,28 @@ var _predraw_tries := 0              # 同一次「该我摸牌」里最多补�
 # 摸牌前的几个询问：**按我这家的卡序遍历**（主战卡先、协战卡后），
 # 不再写死「降神→炸裂→海神→间合→未来」这个顺序。
 const PRE_DRAW_KIND := {
-	7: "oracle", 9: "card09", 12: "haishin_swap",
+	7: "oracle", 9: "card09", 11: "c11s2", 12: "haishin_swap",
 	14: "zhalie", 24: "future", 26: "c26", 45: "c45",
+	37: "c37s2",                                # Card37 S2 强运（用户口径 2026-11-11：摸牌前）
+	27: "c27s1",                                # Card27 S1 瞄准（用户口径 2026-11-14：摸牌前）
+}
+# 一张卡两个「摸牌前」技能（Card02）：按这个顺序问 —— 换牌(S2) 先、画板(S1) 后
+const PRE_DRAW_CARD_KINDS := {
+	2: ["c02s2", "c02s1"],
 }
 const PRE_DRAW_GATES := {
-	7: "_oracle_gate_before_draw",       # Card07 S1 降神
-	9: "_card09_gate_before_draw",       # Card09 间合（守 / 攻 同一张卡）
-	12: "_hs_gate_before_draw",          # Card12 S1 海神（借牌面板还开着就先别摸）
-	14: "_zl_gate_before_draw",          # Card14 S2 炸裂
-	24: "_future_gate_before_draw",      # Card24 S2 未来
-	26: "_c26_gate_before_draw",         # Card26 S2 天梯（排牌山）
-	45: "_c45_gate_before_draw",         # Card45 S1 神境（手牌+牌河挑 13 张）
+	"oracle": "_oracle_gate_before_draw",       # Card07 S1 降神
+	"card09": "_card09_gate_before_draw",       # Card09 间合（守 / 攻 同一张卡）
+	"c11s2": "_c11s2_gate_before_draw",         # Card11 S2 快手（摸牌前换牌河第 1/6 列）
+	"haishin_swap": "_hs_gate_before_draw",     # Card12 S1 海神（借牌面板还开着就先别摸）
+	"zhalie": "_zl_gate_before_draw",           # Card14 S2 炸裂
+	"future": "_future_gate_before_draw",       # Card24 S2 未来
+	"c26": "_c26_gate_before_draw",             # Card26 S2 天梯（排牌山）
+	"c45": "_c45_gate_before_draw",             # Card45 S1 神境（手牌+牌河挑 13 张）
+	"c02s2": "_c02s2_gate_before_draw",         # Card02 S2 换牌（第十三巡摸牌前那一次）
+	"c02s1": "_c02s1_gate_before_draw",         # Card02 S1 画板（摸牌前）
+	"c37s2": "_c37s2_gate_before_draw",         # Card37 S2 强运（摸牌前问一次）
+	"c27s1": "_c27s1_gate_before_draw",         # Card27 S1 瞄准（摸牌前换牌，之后再摸）
 }
 
 
@@ -2806,7 +3293,7 @@ func _pre_draw_resume() -> void:
 func _pre_draw_panel_open() -> bool:
 	if oracle_ui != null and is_instance_valid(oracle_ui):
 		return true
-	if c09_active or zl_active or c26_active:
+	if c09_active or zl_active or c26_active or c11s2_active:
 		return true
 	if hs_active and hs_mode == "swap":
 		return true
@@ -2816,6 +3303,10 @@ func _pre_draw_panel_open() -> bool:
 		return true
 	if c45_panel.active:
 		return true
+	if board_ui != null and is_instance_valid(board_ui):
+		return true                   # 画板（摸牌前询问）开着
+	if swap_panel.active:
+		return true                   # 换牌（摸牌前询问）开着
 	return false
 
 
@@ -2874,7 +3365,7 @@ func _srv_step_once(pre_ok := false) -> void:
 				return
 	if typeof(evs) == TYPE_ARRAY and not (evs as Array).is_empty():
 		_busy_set("_srv_step_once")
-		get_tree().create_timer(OPP_DRAW_DELAY).timeout.connect(_srv_step_once)
+		get_tree().create_timer(_bs_delay(OPP_DRAW_DELAY)).timeout.connect(_srv_step_once)
 	else:
 		_busy_clear()
 		srv_yield_to_me()
@@ -2887,11 +3378,14 @@ func _srv_kick() -> void:
 	if not is_inside_tree():
 		return
 	_busy_set("_srv_kick")
-	get_tree().create_timer(OPP_DRAW_DELAY).timeout.connect(_srv_step_once)
+	get_tree().create_timer(_bs_delay(OPP_DRAW_DELAY)).timeout.connect(_srv_step_once)
 
 
 # 我做一个动作，然后把服务端状态画出来，接着继续推进
 func srv_act(action: String, extra: Dictionary = {}) -> Dictionary:
+	if action == "tsumo" or action == "skill_tsumo":
+		# 【海底】收尾**不在这里**播：要等 result 到了才播（四家一致，见 srv_show_result）
+		pass
 	srv_layout_buttons([])               # 先收起按钮，动作做完再按新状态摆
 	var req := {"op": "act", "seat": my_seat, "action": action}
 	for k in extra:
@@ -2909,7 +3403,7 @@ func srv_act(action: String, extra: Dictionary = {}) -> Dictionary:
 	_ensure_result()                     # 服务端说 ended 但没带 result → 重拉一次
 	if not game_over and not srv_busy:
 		_busy_set("srv_act")
-		get_tree().create_timer(OPP_DRAW_DELAY).timeout.connect(_srv_step_once)
+		get_tree().create_timer(_bs_delay(OPP_DRAW_DELAY)).timeout.connect(_srv_step_once)
 	return r
 
 
@@ -2989,6 +3483,8 @@ func _setup_action_buttons() -> void:
 
 
 func _on_action_button(kind: String) -> void:
+	if kind == "tsumo":
+		pass                              # 【海底】收尾等 result（srv_show_result 里统一播）
 	if game_over:
 		return
 	if kind == "riichi":
@@ -3214,10 +3710,12 @@ func _skill_cancel_if_busy(card_no: int, index: int) -> bool:
 		return true
 	if c == 2 and i == 0 and board_ui != null:
 		_board_close()
+		_pre_draw_resume()
 		_toast("已取消「画板」")
 		return true
 	if c == 2 and i == 1 and swap_panel.active:
 		_swap_close()
+		_pre_draw_resume()
 		_toast("已取消「换牌」")
 		return true
 	if c == 3 and i == 1 and press_panel.active:
@@ -3334,12 +3832,24 @@ var oracle_pick := ""
 var oracle_start_btn: TextureButton = null
 var hand_show := HandShow.new()           # 通用手牌展示（翻面 / 贴明牌）
 var oracle_frames := {}                  # kind -> 彩框 Sprite2D
-var oracle_skip_next := false            # 选完/跳过之后放行这一次摸牌
+# 已经处理过的那一笔降神询问（ask_id）：只压这一笔，**不会残留到下一巡**
+# （以前是个布尔，只有 gate 会清 —— 选完/跳过后询问已经关掉了，flag 就永远留着，
+#   下一巡直接把询问吞掉 + 自动摸牌，2026-11-07 实机报）
+var oracle_skip_ask := ""
 
 
 func _oracle_on_clicked() -> void:
-	if typeof(srv_state.get("oracle")) == TYPE_DICTIONARY:
-		_oracle_toggle()                     # 已经掷过 → 开 / 关
+	var o = srv_state.get("oracle")
+	if typeof(o) == TYPE_DICTIONARY:
+		# ★ 2026-11-07：摸牌前（该我摸、还没摸）点图标 = **用这一次**（开选牌盘），
+		#   不再当「开/关」—— 以前玩家想用它反而把降神关掉了，之后永远不询问。
+		if String(srv_state.get("phase", "")) == "draw" \
+				and int(srv_state.get("turn", -1)) == my_seat \
+				and drawn_tile == "" and bool((o as Dictionary).get("on", false)):
+			if oracle_ui == null:
+				_oracle_open(String((o as Dictionary).get("suit", "m")))
+			return
+		_oracle_toggle()                     # 其它时候：开 / 关
 		return
 	if String(srv_state.get("phase", "")) != "deal_skill":
 		_toast("「降神」只能在配牌阶段发动（掷一次骰子定花色）")
@@ -3410,10 +3920,26 @@ func _hand_locked() -> bool:
 	return riichi_declared or riichi_selecting
 
 
-func _oracle_gate_before_draw() -> bool:
-	if oracle_skip_next:
-		oracle_skip_next = false
+# 这一笔降神询问玩家已经答过了（选完 / 跳过）→ 别再弹回来（按 ask_id 去重）
+func _oracle_handled_now() -> bool:
+	if oracle_skip_ask == "":
 		return false
+	var a = _hs_ask_of("oracle")
+	if a == null:
+		return false
+	return String((a as Dictionary).get("ask_id", "")) == oracle_skip_ask
+
+
+func _oracle_ask_id() -> String:
+	var a = _hs_ask_of("oracle")
+	return "" if a == null else String((a as Dictionary).get("ask_id", ""))
+
+
+func _oracle_gate_before_draw() -> bool:
+	if _oracle_handled_now():
+		return false
+	if is_skill_muted(7, 1):
+		return false                    # 图标盖了遮罩 → 不再自动询问
 	if _srv_kangpo_wait():
 		return false                    # 有人正在决定是否看破：先别开面板
 	if oracle_ui != null:
@@ -3525,14 +4051,16 @@ func _oracle_confirm() -> void:
 	if oracle_pick == "":
 		return
 	var tile := oracle_pick
+	var _aid := _oracle_ask_id()
 	_oracle_close()
-	oracle_skip_next = true            # 这次已经选过了：别再弹（draw_tile 会消耗掉）
+	oracle_skip_ask = _aid             # 只压这一笔（按 ask_id，不会残留）
 	_busy_set("_oracle_confirm")          # 挡住 srv_apply_state 里的自动摸牌，下面自己摸
 	var r := srv_request({"op": "oracle_pick", "seat": my_seat, "tile": tile})
 	if r.is_empty():
 		_toast(_srv_err("「降神」指定失败：服务端没有回应"))
 	elif bool(r.get("need_kangpo", false)):
 		# 看破：对方还没决定 → 这次交换先不结算，也别摸牌（放行后服务端会照原样执行）
+		oracle_skip_ask = ""            # 还没定：被看破作废时还能重新选
 		_toast("「降神」已确认：等对方决定是否看破…")
 		_busy_clear()
 		return
@@ -3555,8 +4083,9 @@ func _oracle_confirm() -> void:
 
 
 func _oracle_skip() -> void:
+	var _aid := _oracle_ask_id()
 	_oracle_close()
-	oracle_skip_next = true
+	oracle_skip_ask = _aid
 	draw_tile()
 
 
@@ -3693,13 +4222,12 @@ func _pre_draw_asks_sync(st: Dictionary) -> void:
 	var cards := srv_my_cards()
 	if cards.is_empty():
 		return
-	for c in cards:
-		var kind := String(PRE_DRAW_KIND.get(int(c), ""))
-		if kind == "" or kind == "haishin_swap":
+	for kind in _pre_draw_kind_order(cards):
+		if kind == "haishin_swap":
 			continue                          # 海神在 _hs_sync 里处理
 		if _hs_ask_of(kind, st) == null:
 			continue
-		var m := String(PRE_DRAW_GATES.get(int(c), ""))
+		var m := String(PRE_DRAW_GATES.get(kind, ""))
 		if m == "":
 			continue
 		if bool(call(m)):
@@ -3707,6 +4235,46 @@ func _pre_draw_asks_sync(st: Dictionary) -> void:
 		if not _srv_kangpo_wait():
 			_pda_skip_once(kind)              # 遮罩 / 条件不满足 → 这次不发动
 		return
+
+
+# 我这家的「摸牌前询问」顺序（按卡序；同一张卡两个技能按 PRE_DRAW_CARD_KINDS）
+func _pre_draw_kind_order(cards: Array) -> Array:
+	var out: Array = []
+	for c in cards:
+		var ks = PRE_DRAW_CARD_KINDS.get(int(c))
+		if typeof(ks) == TYPE_ARRAY:
+			for k in (ks as Array):
+				if not out.has(String(k)):
+					out.append(String(k))
+			continue
+		var kind := String(PRE_DRAW_KIND.get(int(c), ""))
+		if kind != "" and not out.has(kind):
+			out.append(kind)
+	return out
+
+
+# Card02 S2「换牌」：只在第十三巡摸牌前问一次
+func _c02s2_gate_before_draw() -> bool:
+	if swap_panel.active:
+		return true                       # 面板开着：先别摸牌
+	if _srv_kangpo_wait():
+		return false
+	if is_skill_muted(2, 2) or not bool(srv_state.get("c02s2_can", false)):
+		return false
+	_swap_start()
+	return swap_panel.active
+
+
+# Card02 S1「画板」：摸牌前问一次
+func _c02s1_gate_before_draw() -> bool:
+	if board_ui != null and is_instance_valid(board_ui):
+		return true                       # 面板开着：先别摸牌
+	if _srv_kangpo_wait():
+		return false
+	if is_skill_muted(2, 1) or not bool(srv_state.get("c02s1_can", false)):
+		return false
+	_board_open()
+	return board_ui != null and is_instance_valid(board_ui)
 
 
 # 这一笔询问跳过一次（按 ask_id 去重，别刷请求）
@@ -3871,9 +4439,14 @@ func _card09_confirm() -> void:
 		_toast("这一手已经过了（间合只能在自己摸牌前发动）")
 		_card09_close()
 		return
-	if c09_picks.is_empty() or c09_seq < 0:
-		_card09_close()                      # 没选牌 = 跳过这次
+	if c09_picks.is_empty() and c09_seq < 0:
+		_card09_close()                      # 什么都没选 = 跳过这次（取消：再点一次图标）
 		draw_tile()
+		return
+	if c09_picks.is_empty() or c09_seq < 0:
+		# ★ 2026-11-09：只选了一半不能静默当「跳过」——玩家会以为「选完了怎么没换」。
+		_toast("还差%s" % ("一张手牌" if c09_picks.is_empty()
+			else "牌河里的一张明牌"))
 		return
 	var tiles := display_tiles()
 	var idx := int(c09_picks[0])
@@ -4528,6 +5101,28 @@ func _card11_close() -> void:
 
 
 # ─── 快手（Card11 Skill2）：摸的牌暗置换进别家牌河第 1 / 6 列 ─────────
+var c11s2_ask_key := ""        # 快手：这一巡已经问过（避免反复弹）
+
+
+# 摸牌前自动问一次「要不要用快手」（和间合同款：面板开着就先别摸）
+func _c11s2_gate_before_draw() -> bool:
+	if c11s2_active:
+		return true
+	if _hand_locked():
+		return false
+	if _srv_kangpo_wait():
+		return false
+	if is_skill_muted(11, 2) or not bool(srv_state.get("card11s2_can", false)):
+		return false
+	var key := "%d-%d" % [int(srv_state.get("live_left", 0)),
+		int(srv_state.get("turn", 0))]
+	if key == c11s2_ask_key:
+		return false
+	c11s2_ask_key = key
+	_card11s2_on_clicked()
+	return c11s2_active
+
+
 func _card11s2_on_clicked() -> void:
 	if c11s2_active:
 		_card11s2_close()
@@ -4541,7 +5136,7 @@ func _card11s2_on_clicked() -> void:
 		elif _skill_voided(11):
 			_toast("「快手」本小局被【看破/封堵】剔除了")
 		else:
-			_toast("「快手」要摸牌后、打牌前发动；别家牌河要还有空位")
+			_toast("「快手」要摸牌之前发动；别家牌河第一列/第六列要还有明牌")
 		return
 	c11s2_active = true
 	c11s2_seq = -1
@@ -4636,8 +5231,8 @@ func _card11s2_confirm() -> void:
 
 	srv_apply_state(r.get("state"), r.get("events"))
 	var d: Dictionary = r.get("card11s2", {})
-	_toast("快手：摸到的【%s】暗置进了牌河，换回【%s】"
-		% [String(d.get("gave", "")), String(d.get("got", ""))])
+	_toast("快手：拿走牌河的【%s】，本来要摸的【%s】暗置过去了"
+		% [String(d.get("got", "")), String(d.get("gave", ""))])
 	refresh_hand()
 
 
@@ -5121,13 +5716,18 @@ func _sf_confirm() -> void:
 				_toast("深山：跳过这次")
 			else:
 				_toast("深山：用【%s】换了 %s 的【%s】"
-					% [String(d.get("gave", "")), srv_name_of(int(d.get("from", 0))),
-					   String(d.get("got", ""))])
+					% [tile_cn_of(String(d.get("gave", ""))), srv_name_of(int(d.get("from", 0))),
+					   tile_cn_of(String(d.get("got", "")))])
 		"xianfu":
 			# 手牌变了：立直按钮由 state 里的 legal 决定，这里只提示
 			_toast("先负：换好了，现在去立直（不能振听）")
 		"gift":
-			_toast("馈赠2：换好了")
+			var dg: Dictionary = r.get("gift", {})
+			if bool(dg.get("skipped", false)):
+				_toast("馈赠2：跳过这次（下次摸牌前还会问）")
+			else:
+				_toast("馈赠2：用【%s】换了牌河的【%s】"
+					% [String(dg.get("gave", "")), String(dg.get("got", ""))])
 		"youyin":
 			var d2: Dictionary = r.get("youyin", {})
 			_toast("友引：%s" % ("跳过" if bool(d2.get("skipped", false))
@@ -5181,7 +5781,7 @@ func _sf_sync(st: Dictionary) -> void:
 			return                       # 深山图标盖着遮罩 → 不再自动询问
 		_sf_open("shenshan")
 		_toast("深山：%s 摸到【%s】" % [srv_name_of(int(so.get("from", 0))),
-			String(so.get("tile", ""))])
+			tile_cn_of(String(so.get("tile", "")))])
 		return
 	if typeof(go) == TYPE_DICTIONARY and not sf_active:
 		if is_skill_muted(21, 2):
@@ -5668,6 +6268,7 @@ func _cg_close() -> void:
 	cg_qianlu = false
 	cg_pick_cb = Callable()
 	cg_ok_cb = Callable()
+	cg_skip_cb = Callable()
 	if cg_ui != null and is_instance_valid(cg_ui):
 		cg_ui.queue_free()
 	cg_ui = null
@@ -5792,6 +6393,7 @@ func _cg_show_cards(title: String, lst: Array, cb: Callable) -> void:
 # 34 张牌种网格：多选，选中的加彩框 + 黄色序号（前路用）
 var cg_pick_cb: Callable = Callable()      # 点牌种时干什么（空 = 前路）
 var cg_ok_cb: Callable = Callable()        # 点「开始」时干什么（空 = 前路）
+var cg_skip_cb: Callable = Callable()      # 点「跳过」时干什么（强运：告诉服务端 pre_draw_skip）
 
 
 func _cg_pick_kind(kind: String) -> void:
@@ -5808,10 +6410,13 @@ func _cg_ok_pressed() -> void:
 		_sf_pick_kind_next()
 
 
-func _cg_show_kind_grid(title: String, on_pick: Callable = Callable(), on_ok: Callable = Callable()) -> void:
+func _cg_show_kind_grid(title: String, on_pick: Callable = Callable(),
+		on_ok: Callable = Callable(), allow: Array = [],
+		on_skip: Callable = Callable()) -> void:
 	_cg_close()
 	cg_pick_cb = on_pick                    # 必须在 _cg_close() 之后再赋：
 	cg_ok_cb = on_ok                        # _cg_close() 会把这两个 Callable 清掉
+	cg_skip_cb = on_skip
 	cg_active = true
 	var vp := get_viewport_rect().size
 	var host: Node = get_parent()
@@ -5847,6 +6452,10 @@ func _cg_show_kind_grid(title: String, on_pick: Callable = Callable(), on_ok: Ca
 		b.focus_mode = Control.FOCUS_NONE
 		b.position = Vector2(40.0 + float(col) * (tw + gap), 100.0 + float(row) * (th + 30.0))
 		b.size = Vector2(tw, th)
+		# allow 非空 → 只让这几张能点，其它置灰（国标：和到凑不出番种的牌种不给选）
+		if not allow.is_empty() and not (kind in allow):
+			b.disabled = true
+			b.modulate = Color(1, 1, 1, 0.22)
 		b.pressed.connect(_cg_pick_kind.bind(kind))
 		cg_ui.add_child(b)
 		var f := SelFrame.attach(b, b.size)
@@ -5877,11 +6486,20 @@ func _cg_show_kind_grid(title: String, on_pick: Callable = Callable(), on_ok: Ca
 	ok.pressed.connect(_cg_ok_pressed)
 	cg_ui.add_child(ok)
 	var cl := ui_btn("pass", 150.0)
-	cl.pressed.connect(_cg_kind_close)
+	cl.pressed.connect(_cg_skip_pressed)
 	cg_ui.add_child(cl)
 	# 两个按钮作为整体居中（这一行在「已选的牌」下方）
 	_place_btn_pair(ok, cl, vp.x * 0.5, CG_PICK_ROW_Y + th + 30.0 + 62.0)
 
+
+# 「跳过」：关掉网格；有 skip 回调的（强运）顺手把这次询问「真的跳过」
+#   —— 以前只 _cg_close()，服务端那笔询问还挂着 → 下一次 state 回来又会弹一次，
+#      玩家看到的就是「一询问就难以取消」（用户 2026-11-14）。
+func _cg_skip_pressed() -> void:
+	var cb := cg_skip_cb
+	_cg_kind_close()
+	if cb.is_valid():
+		cb.call()
 
 # 关掉牌种网格（顺手把前路 / 强运的临时选择清掉）
 func _cg_kind_close() -> void:
@@ -6065,9 +6683,34 @@ func _cg_sight_use(target: int, card: int, sk: int, nm: String) -> void:
 		% [srv_name_of(target), nm])
 
 
+# 枷锁（18S1）：**第一步 = 点图标发动**（看破点在这一步）。
+# 发动之后才看得到里宝指示牌（服务端 state.ura_peek），然后才定番数。
+var _cg_shackle_done := false          # 这一局「定番数」这一步处理过了（开过盘 / 点了跳过）
+
+
 func _cg_shackle() -> void:
+	# 已经发动、还没定番数 → 再点一次只是把数字盘打开（数字盘被别的面板顶掉时也能找回）
+	if bool(srv_state.get("jiasuo_pick", false)):
+		_cg_shackle_grid()
+		return
 	if not bool(srv_state.get("jiasuo_can", false)):
-		_toast("枷锁：配牌时才能定，一局只能定一次")
+		_toast("枷锁：配牌时才能发动，一局只能一次")
+		return
+	var r := srv_request({"op": "jiasuo_apply", "seat": my_seat})
+	if r.is_empty():
+		_toast(_srv_err("枷锁失败：服务端没有回应"))
+		return
+	if srv_kangpo_blocked(r):
+		return                          # 有人要看破：等结果，_cg_shackle_sync 会补开数字盘
+	srv_apply_state(r.get("state"), r.get("events"))
+	_cg_shackle_grid()
+
+
+# 发动完了但还没定番数 → 自动把数字盘摆出来（看破被重放时也能补上）
+func _cg_shackle_sync(st: Dictionary) -> void:
+	if not bool(st.get("jiasuo_pick", false)):
+		return
+	if cg_active or _cg_shackle_done:
 		return
 	_cg_shackle_grid()
 
@@ -6104,6 +6747,7 @@ func _cg_shackle_grid() -> void:
 	host.add_child(cg_ui)
 	cg_ui.position = Vector2.ZERO
 	cg_active = true
+	_cg_shackle_done = true
 	var n := 1
 	for ri in range(rows.size()):
 		var cnt := int(rows[ri])
@@ -6124,8 +6768,19 @@ func _cg_shackle_grid() -> void:
 			n += 1
 	var sk := ui_btn("pass", cell.x)               # 跳过（不定番）
 	sk.position = Vector2(x + w + gap, y + 2.0 * (cell.y + gap))
-	sk.pressed.connect(_cg_close)
+	sk.pressed.connect(_cg_shackle_skip)
 	cg_ui.add_child(sk)
+
+
+func _cg_shackle_skip() -> void:
+	_cg_close()
+	# ★ 用户口径 2026-11-07：选完（或放弃）番数才算这一家配牌结完 → 要告诉服务端
+	var r := srv_request({"op": "jiasuo", "seat": my_seat, "han": 0})
+	if r.is_empty():
+		_toast(_srv_err("枷锁失败：服务端没有回应"))
+		return
+	srv_apply_state(r.get("state"), r.get("events"))
+	_toast("枷锁：这次不定番数（本局不会翻倍，里宝照看）")
 
 
 func _cg_shackle_pick(n: int) -> void:
@@ -6282,7 +6937,7 @@ func _zl_confirm() -> void:
 		zl_ask_key = ""
 		draw_tile()
 		return
-	_toast("炸裂：用【%s】换了【%s】" % [hand, String(z.get("got", ""))])
+	_toast("炸裂：换走了【%s】" % String(z.get("got", "")))
 	draw_tile()
 
 
@@ -6837,7 +7492,8 @@ func _drop_pre_draw_ask() -> bool:
 	# （以前 draw_tile 在 state 同步末尾被调到时会把刚弹出来的询问当场关掉）
 	if _pre_draw_panel_open() or hs_active:
 		return false
-	var kinds := ["haishin_swap", "oracle", "card09", "zhalie", "future", "c26", "c45"]
+	var kinds := ["haishin_swap", "oracle", "card09", "zhalie", "future", "c26", "c45",
+		"c02s2", "c02s1"]
 	for kind in kinds:
 		if _hs_ask_of(kind) == null:
 			continue
@@ -6860,7 +7516,7 @@ func _hs_sync(st: Dictionary) -> void:
 	var gv = _hs_ask_of("haishin", st)
 	if gv != null:
 		var key := "give-%d" % int((gv as Dictionary).get("ask_id", 0))
-		if key != hs_ask_key:
+		if key != hs_ask_key or not hs_active:
 			hs_ask_key = key
 			_hs_open("give")                     # 一笔 ask 只弹一次（不再闪烁）
 		return
@@ -6950,6 +7606,8 @@ const _MUTE_CAN := {
 	#   · 摸牌前 / 配牌前发动的
 	# （看破这类**即时响应**技能不在这张表里，图标点击 = 遮罩开关，见 _on_identity_skill）
 	# 摸牌之后才发动的技能不遮（它们不会被自动询问）
+	# Card02 画板 / 换牌 现在也是「摸牌前」技能：摸完牌点图标 = 不在时机（会屏蔽自动询问，
+	# 再点一次恢复）—— 和炸裂 / 未来 一个待遇。
 	Vector2i(7, 1): "oracle_timing",   # 降神：配牌阶段
 	Vector2i(9, 1): "card09_can",      # 间合守：摸牌前
 	Vector2i(9, 2): "card09_can",      # 间合攻：摸牌前
@@ -6961,6 +7619,14 @@ const _MUTE_CAN := {
 	# 这种状态（`kangpo_can` 整局几乎恒为 true）。它的图标点击 = 遮罩开关，
 	# 在 _on_identity_skill 里特判。
 	Vector2i(24, 2): "future_can",     # 未来：每巡摸牌前会自己弹询问
+	Vector2i(2, 1): "c02s1_can",       # 画板：摸牌前问一次
+	Vector2i(2, 2): "c02s2_can",       # 换牌：只在第十三巡摸牌前问一次
+	# ★ 2026-11-14：下面几个也是「摸牌前会自己弹询问」的，以前漏了 → 非发动时间点图标
+	#   既不盖遮罩也不屏蔽自动询问（用户报「强运这招的遮罩呢」）。
+	Vector2i(37, 2): "c37s2_can",      # 强运：每巡摸牌前问一次
+	Vector2i(11, 2): "card11s2_can",   # 快手：摸牌前换牌河
+	Vector2i(26, 2): "c26_can",        # 天梯：摸牌前排牌山
+	Vector2i(45, 1): "c45_can",        # 神境：摸牌前挑 13 张（实际取值走下面的特判）
 }
 
 
@@ -6974,6 +7640,11 @@ func is_skill_muted(card: int, skill: int) -> bool:
 
 # 现在这个技能「不能发动」吗？（用来决定点击时是否盖遮罩）
 func _skill_out_of_window(card: int, skill: int) -> bool:
+	# 神境（45-1）：能不能发动在 state.c45.can 里（不是顶层的 c45_can）
+	if int(card) == 45 and int(skill) == 1:
+		var _c45 = srv_state.get("c45")
+		return not (typeof(_c45) == TYPE_DICTIONARY
+			and bool((_c45 as Dictionary).get("can", false)))
 	if int(card) == 21 and int(skill) == 2:
 		# 馈赠：换牌 或 一定和牌，任一可用就不算「不在时机」
 		return not (bool(srv_state.get("gift_swap_can", false))
@@ -7020,7 +7691,24 @@ func _skill_mute_apply() -> void:
 			if cn == 12 and i == 0:
 				c.call("set_skill_muted", i, false)
 				continue
-			c.call("set_skill_muted", i, muted_skills.has(_skill_key(cn, i + 1)))
+			# 【理论战】(42-1)：本局所有技能封死 → 图标一起压暗（42-1 自己除外）
+			var _c42on := false
+			var _c42s = srv_state.get("c42")
+			if typeof(_c42s) == TYPE_DICTIONARY:
+				_c42on = bool((_c42s as Dictionary).get("on", false))
+			if _c42on and not (cn == 42 and i == 0):
+				c.call("set_skill_muted", i, true)
+				continue
+			var _mk1 := _skill_key(cn, i + 1)
+			var _mk2 := _mk1
+			if c.has_method("effective_skill"):
+				var _es: Array = c.call("effective_skill", i)
+				_mk2 = _skill_key(int(_es[0]), int(_es[1]))
+			# ★ 2026-11-09：传承换过的图标，掩罩 key 要认「复制来的那个技能」
+			#   （点图标时记的就是它），两边都认。
+			c.call("set_skill_muted", i,
+				muted_skills.has(_mk1) or muted_skills.has(_mk2))
+	_copied_icons_mute_apply()          # 复制品 / 传承品那一排图标也要盖遮罩
 
 
 # 被动技能：没有「发动」这个动作，点图标只给一句说明（用户口径 2026-11-06）
@@ -7059,6 +7747,13 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 	var _c34 = srv_state.get("c34")
 	if typeof(_c34) == TYPE_DICTIONARY and bool((_c34 as Dictionary).get("muted", false)):
 		_toast("【厄运】期间不能使用技能")
+		return
+	# 【理论战】(42-1)：本局所有技能封死（42-1 自己除外）→ 直接拒，
+	#   别等服务端回绝（客户端的图标本来也该压暗，见 _skill_mute_apply）
+	var _c42 = srv_state.get("c42")
+	if typeof(_c42) == TYPE_DICTIONARY and bool((_c42 as Dictionary).get("on", false)) \
+			and not (int(card_no) == 42 and int(index) == 0):
+		_toast("【理论战】：本局谁都不能发动技能")
 		return
 	# 【海底】(34-2) 是**自动**技能，没有「手动发动」这一步 ——
 	# 点图标 = 问服务端「现在为什么没发动」（只读诊断，不改状态）。
@@ -7210,10 +7905,15 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_future_on_clicked()               # Card24 S2「未来」
 		return
 	if int(card_no) == 16 and int(index) == 0:
-		# 传承发动过 → 这张卡「就是」复制来的那个技能，直接转发
+		# 传承发动过 → 这张卡「就是」复制来的那个技能，直接转发。
+		# ★ 2026-11-13：cp["skill"] 是 **1 起**（服务端 skills.info / skill_log 口径），
+		#   这里第三参是 0 起 index → 必须 -1；而且这一下花的是「复制品那本账」，
+		#   要带 is_copy=true（否则 copy=true 永远发不出去，全靠 note_use 兜底）。
+		#   以前少这两笔：复制到 S1 会派发成隔壁的 S2（复制 24-1 却弹出「未来」），
+		#   复制到 S2 直接一句「还没有专属的发动界面」——看着就是「传承来的技能用不了」。
 		var cp := _cc_copy(srv_state)
 		if not cp.is_empty():
-			_on_identity_skill(seat, int(cp.get("card", 0)), int(cp.get("skill", 0)))
+			_on_identity_skill(seat, int(cp.get("card", 0)), int(cp.get("skill", 1)) - 1, true)
 			return
 		_cg_inherit()                      # Card16 S1「传承」
 		return
@@ -7367,6 +8067,9 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		return
 	if int(card_no) == 30 and int(index) == 1:
 		_w30s2_tip()                       # Card30 S2「W立」：被动，只提示
+		return
+	if int(card_no) == 35 and int(index) == 0:
+		_c35_manual()                      # 流势：副露后自己排牌山
 		return
 	# 被动技能：给一句说明，而不是"没有专属界面"（那看起来像 bug）
 	var _pk := "%d-%d" % [int(card_no), int(index) + 1]
@@ -8449,6 +9152,7 @@ var flow_target := -1
 var flow_ui: Control = null
 var flow_start_btn: TextureButton = null
 var flow_kind := "fengshen"                  # 这套流程是哪个技能（风神 / 宝牌运）
+var flow_tiles: Array = []                    # 即将被换过来的那几张（风神=风牌 / 宝牌运=宝牌）
 
 # ── Card25 Skill1「宝牌运」：切宝牌二次确认 ──
 var c25_confirm_tile := ""
@@ -8645,6 +9349,14 @@ func _c30_sync(st: Dictionary) -> void:
 			int(d.get("min", 2)), int(d.get("max", 3)))
 		return
 	if role != "swap" or sub != "swap":
+		# ★ 2026-11-09：等对方交牌时以前是裸 return，发动者什么提示都看不到（像卡死）。
+		if role == "swap" and sub == "give" and c30_key != key:
+			c30_key = key
+			var _tgt := int(d.get("target", -1))
+			var _who := srv_nick_of(_tgt)
+			if _who == "":
+				_who = "%d 号位" % _tgt
+			_toast("向听：等待【%s】交牌…" % _who)
 		return                              # 我这边在等对方交牌
 	if c30_key == key and String(c30_panel.mode) == "swap":
 		return
@@ -8721,6 +9433,12 @@ func _c32_sync(st: Dictionary) -> void:
 		return
 	c32_key = key2
 	c32_panel.swap_begin(int(d.get("target", -1)), picked)
+	# 新玩家看不出来在等自己（实机卡死过）→ 说清楚要点什么
+	var _picked_cn: Array = []
+	for t in picked:
+		_picked_cn.append(tile_cn_of(String(t)))
+	_toast("新手运：%s 交了【%s】—— 点你自己的一张手牌，再点「确认」"
+		% [srv_name_of(int(d.get("target", -1))), "、".join(_picked_cn)])
 
 
 # ── Card33 S1【染手】─────────────────────────────────────────────────
@@ -8802,7 +9520,7 @@ func _c33_confirm(picks: Array, rivers: Array) -> void:
 
 
 # ── Card33 S2【记忆】─────────────────────────────────────────────────
-#   切牌状态点图标 → 弹输入框 → 输入上局的结算点数（东一第一局随便输）
+#   切牌状态点图标 → 弹输入框 → 输入上局的**和牌点数**（符×番，不含立直棒/本场；东一第一局随便输）
 #   对了：接下来打出的**一张**牌暗置；然后【记忆】整场永久关闭。
 func _c33s2_open() -> void:
 	if game_over:
@@ -8821,7 +9539,7 @@ func _c33s2_open() -> void:
 		_toast("【记忆】只能在自己的切牌状态发动")
 		return
 	var last = d.get("last", null)
-	var tip_txt := "输入上一局的结算点数"
+	var tip_txt := "输入上一局的和牌点数（满贯 8000 这种）"
 	if last == null:
 		tip_txt = "东一第一局：随便输一个数字就行"
 	_toast("记忆：" + tip_txt)
@@ -9254,11 +9972,14 @@ func _c42s2_sync(st: Dictionary) -> void:
 		return
 	_c42s2_ask_sig = sig
 	# 播报：让【夺目】的主人也知道这次是谁和了（谁铳的 / 谁自摸）
-	var who := srv_name_of(int(d.get("winner", -1)))
+	# ★ 名字用**各自的自风**（用户口径 2026-11-07）：「南家 铳给 东家」这种，
+	#   比 me / 上家 / 对家 更清楚；自风 = (座位 - 真庄家) % 4。
+	var _dl := _int_of(d, "dealer", int(srv_state.get("dealer", 0)))
+	var who := _feng_house_name(int(d.get("winner", -1)), _dl)
 	var loser := _int_of(d, "loser", -1)
 	var ev := "%s 自摸" % who
 	if String(d.get("result", "")) != "tsumo" and loser >= 0:
-		ev = "%s 铳给 %s" % [srv_name_of(loser), who]
+		ev = "%s 铳给 %s" % [_feng_house_name(loser, _dl), who]
 	_seat_pick_begin("c42s2_ask", "夺目：%s —— 这次按谁的庄家算点数？" % ev)
 
 
@@ -9671,8 +10392,8 @@ func _c43_start() -> void:
 
 
 func _c43_river_ok(seq: int, _seat: int, down: bool) -> bool:
-	if down:
-		return false
+	if down or int(_seat) != my_seat:
+		return false                     # NO MISS 只换自己牌河（2026-11-07 口径）
 	var st = srv_state.get("c43")
 	if typeof(st) != TYPE_DICTIONARY:
 		return false
@@ -9792,8 +10513,30 @@ func _copied_icons_refresh(st: Dictionary) -> void:
 			b.modulate = Color(0.42, 0.42, 0.42, 1.0)
 			b.tooltip_text += "（这一份已经用过了）"
 		b.pressed.connect(func(): _on_identity_skill(my_seat, card_no, sk - 1, true))
+		b.set_meta("mute_key", _skill_key(card_no, sk))
 		c41_layer.add_child(b)
 		c41_btns.append(b)
+	_copied_icons_mute_apply()
+
+
+## 复制品 / 传承品那一排图标的遮罩（它们不在 Identity 下，_skill_mute_apply 扫不到）
+func _copied_icons_mute_apply() -> void:
+	for b in c41_btns:
+		if b == null or not is_instance_valid(b):
+			continue
+		var k := String(b.get_meta("mute_key", ""))
+		var on := k != "" and muted_skills.has(k)
+		var ov: Node = (b as Node).get_node_or_null("Muted")
+		if on and ov == null:
+			var r := ColorRect.new()
+			r.name = "Muted"
+			r.color = Color(1, 1, 1, 0.5)          # 和人物卡上同款 50% 白遮罩
+			r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			r.size = (b as Control).size
+			r.position = Vector2.ZERO
+			(b as Node).add_child(r)
+		elif not on and ov != null:
+			ov.queue_free()
 
 
 # ── Card41 S1【复制】───────────────────────────────────────────────
@@ -10283,10 +11026,15 @@ func _c37s2_open() -> void:
 	if _skill_used_once(37, 2):
 		_toast("「强运」本小局已经发动过了")
 		return
-	if String(srv_state.get("phase", "")) != "discard" \
+	# ★ 2026-11-13：state 里的 drawn 在「还没摸牌」时是 **null**（服务端 drawn_tile → None），
+	#   以前这里写 String(srv_state.get("drawn", "")) → String(null) 直接抛错、
+	#   整个 _c37s2_open 中止 → 面板打不开 → 闸门返回 false → 客户端把这次询问当「不发动」
+	#   跳掉 → 实机表现就是「强运摸牌前根本不问」。null 和 "" 都要当成「还没摸」。
+	var _dr37 = srv_state.get("drawn")
+	if String(srv_state.get("phase", "")) != "draw" \
 			or int(srv_state.get("turn", -1)) != my_seat \
-			or String(srv_state.get("drawn", "")) == "":
-		_toast("【强运】只能在自己摸完牌之后（打牌前）发动")
+			or (_dr37 != null and String(_dr37) != ""):
+		_toast("【强运】只能在自己摸牌之前发动")
 		return
 	ql_picks.clear()
 	c37_kind = ""
@@ -10299,7 +11047,8 @@ func _c37s2_open() -> void:
 		if head != null:
 			head.text = "强运：已选中【%s】—— 点「开始」确认" % k
 	var on_ok: Callable = func(): _c37s2_confirm()
-	_cg_show_kind_grid("强运：选一种牌（所有种类都能选）", on_pick, on_ok)
+	_cg_show_kind_grid("强运：选一种牌（所有种类都能选）", on_pick, on_ok, [],
+		func(): _pda_skip_once("c37s2"))
 
 
 func _c37s2_confirm() -> void:
@@ -10324,8 +11073,20 @@ func _c37s2_confirm() -> void:
 	var d: Dictionary = r.get("c37s2", {})
 	_cg_close()
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("强运：【%s】换了 %d 张 → %s"
-		% [k, int(d.get("count", 0)), "、".join(d.get("tiles", []))])
+	_toast("强运：要了【%s】→ 下一张摸到【%s】"
+		% [k, "、".join(d.get("tiles", []))])
+
+
+# 摸牌前询问：网格开着 → 先别摸牌；否则问一次（用户口径 2026-11-11：主动弹面板）
+func _c37s2_gate_before_draw() -> bool:
+	if cg_active:
+		return true                       # 牌种网格开着：先别摸牌
+	if _srv_kangpo_wait():
+		return false
+	if is_skill_muted(37, 2) or not bool(srv_state.get("c37s2_can", false)):
+		return false
+	_c37s2_open()
+	return cg_active
 
 
 # 【强运】的牌种网格跟着服务端状态收：技能已经在服务端生效
@@ -10513,6 +11274,22 @@ func _c36_sync(st: Dictionary) -> void:
 	_toast("思路：看到 %s 的手牌（打出一张牌后失效）" % "、".join(names))
 
 
+func _c35_retry_tick() -> void:
+	if c35_wait < 0:
+		return
+	if _skill_panel_open() and not c26_active:
+		return                       # 还占着，继续等
+	var d = srv_state.get("c35")
+	if typeof(d) != TYPE_DICTIONARY:
+		c35_wait = -1
+		return
+	if not bool((d as Dictionary).get("can", false)) \
+			or int((d as Dictionary).get("mark", -1)) != c35_wait:
+		c35_wait = -1                # 这一手已经作废（打牌 / 超时 / 换人）
+		return
+	_c35_sync(srv_state)
+
+
 func _c35_sync(st: Dictionary) -> void:
 	var d = st.get("c35")
 	if typeof(d) != TYPE_DICTIONARY:
@@ -10531,12 +11308,39 @@ func _c35_sync(st: Dictionary) -> void:
 	if mark == c35_mark:
 		return                           # 这一次已经弹过
 	if _skill_panel_open() and not c26_active:
-		return                           # 别的选牌/发动面板还开着 → 等它关了再弹（下一帧重试）
+		# 别的选牌/发动面板还开着 → 记下来，_process 里等它关掉再弹。
+		# ★ 不能只 return：state 不变时 srv_apply_state 会被 hash 短路，
+		#   这个函数根本不会再被调用 → 流势面板永远弹不出来（只能等一局打完）。
+		c35_wait = mark
+		return
 	c35_mark = mark
+	c35_wait = -1
 	c26_op = "c35s1_set"
 	c26_res_key = "c35"
 	c26_title = "流势"
 	c26_after_draw = false
+	c26_skip_op = "c35_skip"
+	_c26_open_tiles(tiles)
+
+
+# 流势（35-1）：点图标。有排牌山的待办就直接开面板；没有就给一句说明。
+func _c35_manual() -> void:
+	var d = srv_state.get("c35")
+	var can := (typeof(d) == TYPE_DICTIONARY
+		and bool((d as Dictionary).get("can", false)))
+	if not can:
+		_toast("流势：吃/碰/杠之后自动弹「排接下来 4 张」；现在没有要排的牌山")
+		return
+	var tiles: Array = (d as Dictionary).get("tiles", [])
+	if (tiles as Array).is_empty():
+		_toast("流势：读不到牌山")
+		return
+	c35_mark = int((d as Dictionary).get("mark", c35_mark))
+	c26_op = "c35s1_set"
+	c26_res_key = "c35"
+	c26_title = "流势"
+	c26_after_draw = false
+	c26_skip_op = "c35_skip"          # 通用「跳过」按钮 → 不排了
 	_c26_open_tiles(tiles)
 
 
@@ -10589,6 +11393,52 @@ func _make_flow_ui() -> void:
 
 func _update_flow_view() -> void:
 	hand_pick.sync()                     # 手牌变暗统一由 hand_pick 负责
+	_refresh_flow_tiles()                # 把「即将被换的牌」画出来
+
+
+# 换牌时把对面的牌摆在屏幕中间偏上：风神=风牌 / 宝牌运=宝牌
+func _refresh_flow_tiles() -> void:
+	if flow_ui == null or not is_instance_valid(flow_ui):
+		return
+	var old := flow_ui.get_node_or_null("TargetTiles")
+	if old != null:
+		old.queue_free()
+	if flow_tiles.is_empty():
+		return
+	var vp := get_viewport_rect().size
+	var w := 76.0
+	var h := 107.0
+	var gap := 10.0
+	var n := flow_tiles.size()
+	var total := float(n) * w + float(maxi(0, n - 1)) * gap
+	var x0 := (vp.x - total) * 0.5
+	var y := vp.y * 0.34
+	var row := Control.new()
+	row.name = "TargetTiles"
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var head := Label.new()
+	head.text = ("对面的风牌（换给你）" if flow_kind == "fengshen" else "对面的宝牌")
+	head.add_theme_font_size_override("font_size", 24)
+	head.add_theme_color_override("font_color", Color(1.0, 0.96, 0.8))
+	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	head.add_theme_constant_override("outline_size", 6)
+	head.position = Vector2(0, y - 40.0)
+	head.size = Vector2(vp.x, 34)
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(head)
+	for i in range(n):
+		var tr := TextureRect.new()
+		var kk := String(flow_tiles[i])
+		var tex := load(TileBank.VERT_DIR + TileBank.face_file(kk) + ".png") as Texture2D
+		tr.texture = tex
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_SCALE
+		tr.size = Vector2(w, h)
+		tr.position = Vector2(x0 + float(i) * (w + gap), y)
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(tr)
+	flow_ui.add_child(row)
 
 
 func _toggle_flow_hand(index: int) -> void:
@@ -10626,6 +11476,10 @@ func _flow_sync(st: Dictionary) -> void:
 	flow_stage = stage
 	flow_target = int((f as Dictionary).get("target", -1))
 	flow_n = int((f as Dictionary).get("n", 0))
+	if typeof((f as Dictionary).get("tiles")) == TYPE_ARRAY:
+		flow_tiles = (((f as Dictionary).get("tiles") as Array) as Array).duplicate()
+	else:
+		flow_tiles = []
 	hand_pick.begin(flow_picks, flow_n, {"on_change": _refresh_flow_button})
 	_set_deal_skip_visible(false)
 	_make_flow_ui()
@@ -10676,6 +11530,7 @@ func _flow_close() -> void:
 	flow_stage = -1
 	flow_target = -1
 	flow_kind = "fengshen"
+	flow_tiles = []
 	if flow_start_btn != null and is_instance_valid(flow_start_btn):
 		flow_start_btn.visible = false
 	if flow_ui != null and is_instance_valid(flow_ui):
@@ -10764,7 +11619,8 @@ func _update_deal_window(st: Dictionary) -> void:
 	# 配牌换牌流程（风神 / 宝牌运 / 向听）进行中：先别给「开始（跳过）」，
 	# 它会把这个流程掐掉，而且和技能自己的确认按钮挤在同一个位置。
 	# 向听在「选两家」阶段还没有 deal_flow，所以面板开着也一起藏。
-	var hide_skip := typeof(st.get("deal_flow")) == TYPE_DICTIONARY or c30_panel.active
+	var hide_skip := typeof(st.get("deal_flow")) == TYPE_DICTIONARY or c30_panel.active \
+		or bool(st.get("jiasuo_pick", false))     # 枷锁还没定番数：这一家还没结完
 	_set_deal_skip_visible(not hide_skip)
 	if not deal_shown:
 		deal_shown = true
@@ -10795,7 +11651,7 @@ func _update_deal_window(st: Dictionary) -> void:
 const BROADCAST_FONT := "res://Cailiao/fonts/xingkai.ttf"
 var broadcast_label: Label = null
 var broadcast_tween: Tween = null
-var _last_broadcast_id := 0
+var _last_broadcast_id := -1        # -1 = 还没对齐过（不能用 0：0 是合法 id）
 
 
 func _show_broadcast(text: String) -> void:
@@ -10824,7 +11680,10 @@ func _show_broadcast(text: String) -> void:
 	if broadcast_tween != null and broadcast_tween.is_valid():
 		broadcast_tween.kill()
 	broadcast_tween = create_tween()
-	broadcast_tween.tween_interval(2.0)          # 先完整显示 2 秒
+	# 长播报多留一点时间：12 字内停 2 秒，之后每多 1 字 +0.08 秒，最多 4.5 秒
+	# （降神这种「掷出 N 点 → 降下 X 门」要让人看清）
+	var _hold := clampf(2.0 + float(maxi(0, text.length() - 12)) * 0.08, 2.0, 4.5)
+	broadcast_tween.tween_interval(_hold)
 	broadcast_tween.tween_property(broadcast_label, "modulate:a", 0.0, 1.0)
 	broadcast_tween.tween_callback(_hide_broadcast)
 
@@ -10863,6 +11722,7 @@ const OP_SKILL_CARD := {
 	"chuancheng": 16,
 	"yanjiu": 17,
 	"jiasuo": 18,
+	"jiasuo_apply": 18,
 	"link": 18,
 	"shenshan_toggle": 19,
 	"nongwu": 19,
@@ -10937,9 +11797,9 @@ func _apply_broadcast(st: Dictionary) -> void:
 		bid = int((b as Dictionary).get("id", 0))
 	# 服务端重开 / flags 重载后 id 可能变小 → 不纠的话后面所有播报都会被
 	# 「id 不比上次大」这条吞掉：技能不进特效、也不进右上角记录。
-	if bid > 0 and bid + 500 < _last_broadcast_id:
-		_last_broadcast_id = 0
-	if _last_broadcast_id == 0:
+	if bid > 0 and _last_broadcast_id >= 0 and bid + 500 < _last_broadcast_id:
+		_last_broadcast_id = -1
+	if _last_broadcast_id < 0:
 		# 第一次拿到状态（登录 / 刚换局）：只对齐 id，不把一串旧特效重放一遍
 		var top := bid
 		for e in log:
@@ -11177,15 +12037,27 @@ func srv_c27_cnt() -> int:
 	return int(srv_state.get("c27_cnt", 0))
 
 
+# 摸牌前询问（用户口径 2026-11-14）：面板开着 → 先别摸牌；能发动就问一次
+func _c27s1_gate_before_draw() -> bool:
+	if c27_panel.active and c27_mode == "s1":
+		return true                       # 选牌面板开着：先别摸牌
+	if _srv_kangpo_wait():
+		return false
+	if is_skill_muted(27, 1) or not srv_c27s1_can():
+		return false
+	_c27s1_open()
+	return c27_panel.active and c27_mode == "s1"
+
+
 func _c27s1_open() -> void:
 	if c27_panel.active:
-		c27_panel.close()
+		_c27_close()                      # 关面板 = 这次不发动（会顺带通知服务端放开摸牌）
 		_toast("瞄准：取消")
 		return
 	if game_over:
 		return
 	if not srv_c27s1_can():
-		_toast("瞄准：要刚摸完牌、而且本小局还没用过")
+		_toast("瞄准：要自己摸牌前、而且本小局还没用过")
 		return
 	if _skill_panel_open():
 		_toast("先把现在的选牌面板处理掉")
@@ -11289,8 +12161,12 @@ func _c27s2_confirm(picks: Array, _rivers: Array) -> void:
 
 
 func _c27_close() -> void:
+	var _was_s1 := (c27_mode == "s1")
 	c27_panel.close()
 	c27_mode = ""
+	# 摸牌前的询问：关掉面板 = 这次不发动 → 放开摸牌（没有挂着的询问时它是空操作）
+	if _was_s1:
+		_pda_skip_once("c27s1")
 	_apply_entity_states(srv_state)
 
 
@@ -11359,7 +12235,7 @@ func _c25b_open(tile: String, from_seat: int) -> void:
 		"on_confirm": _c25b_confirm,
 	})
 	_toast("宝牌的集合：%s摸到宝牌 %s —— 选一张非宝牌跟他换（不能跳过）"
-		% [_rel_seat_name(from_seat), tile])
+		% [_rel_seat_name(from_seat), tile_cn_of(tile)])
 
 
 func _c25b_confirm(picks: Array, _rivers: Array) -> void:
@@ -11378,7 +12254,7 @@ func _c25b_confirm(picks: Array, _rivers: Array) -> void:
 		return
 	var sw: Dictionary = r.get("c25s2_swap", {})
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("宝牌的集合：用 %s 换到宝牌 %s" % [hand, String(sw.get("got", ""))])
+	_toast("宝牌的集合：用 %s 换到宝牌 %s" % [tile_cn_of(hand), tile_cn_of(String(sw.get("got", "")))])
 
 
 # ── Card24 S2「未来」：摸牌前把接下来 5 张牌山重新排序 ────────────────
@@ -11716,7 +12592,10 @@ var c26_op := "c26_set"          # 确认时发哪个 op
 var c26_res_key := "c26"         # 回包里取结果的键
 var c26_title := "天梯"           # toast 用
 var c26_after_draw := true       # 确认完是否接着摸牌（流势=false：接着打牌）
+var c26_skip_btn: TextureButton = null
+var c26_skip_op := ""            # 非空 = 这块面板有「跳过」，点它发这个 op
 var c35_mark := -1               # 流势：已经弹过的 mark
+var c35_wait := -1               # 流势：被别的面板挡住、等着重试的 mark（-1 = 没有）
 
 
 func _c26_gate_before_draw() -> bool:
@@ -11823,6 +12702,24 @@ func _c26_make_ui() -> void:
 	c26_btn.visible = false
 	c26_btn.pressed.connect(_c26_confirm)
 	c26_ui.add_child(c26_btn)
+	# 「跳过」按钮（流势用；天梯/未来 没有 c26_skip_op → 不显示）
+	var stex := btn_tex("pass")
+	var saspect := aspect
+	if stex != null and stex.get_width() > 0:
+		saspect = float(stex.get_height()) / float(stex.get_width())
+	var src2 := prompt_btn_rect(saspect)
+	c26_skip_btn = TextureButton.new()
+	c26_skip_btn.name = "C26Skip"
+	c26_skip_btn.texture_normal = stex
+	c26_skip_btn.ignore_texture_size = true
+	c26_skip_btn.stretch_mode = TextureButton.STRETCH_SCALE
+	c26_skip_btn.focus_mode = Control.FOCUS_NONE
+	c26_skip_btn.size = src2.size
+	c26_skip_btn.position = Vector2(src2.position.x - src2.size.x - 18.0,
+		src2.position.y)
+	c26_skip_btn.visible = false
+	c26_skip_btn.pressed.connect(_c26_skip)
+	c26_ui.add_child(c26_skip_btn)
 	
 
 
@@ -11848,6 +12745,28 @@ func _c26_refresh() -> void:
 			btn.modulate = Color(1, 1, 1, 1) if at >= 0 else Color(0.62, 0.62, 0.62, 1)
 	if c26_btn != null and is_instance_valid(c26_btn):
 		c26_btn.visible = c26_order.size() == c26_tiles.size()
+	if c26_skip_btn != null and is_instance_valid(c26_skip_btn):
+		c26_skip_btn.visible = (c26_skip_op != "")
+
+
+# 通用「跳过」（流势）：不排了，牌山保持原样
+func _c26_skip() -> void:
+	if not c26_active or c26_skip_op == "":
+		return
+	var op := c26_skip_op
+	var title := c26_title
+	var r := srv_request({"op": op, "seat": my_seat})
+	_c26_close()
+	if r.is_empty():
+		_toast(_srv_err("%s：服务端没有回应" % title))
+		_pull_state()
+		return
+	if not bool(r.get("ok", false)):
+		_toast(String(r.get("error", "%s：跳过失败" % title)))
+		_pull_state()
+		return
+	srv_apply_state(r.get("state"), r.get("events"))
+	_toast("%s：跳过本次（牌山不动）" % title)
 
 
 func _c26_confirm() -> void:
@@ -11886,6 +12805,8 @@ func _c26_close() -> void:
 	c26_order.clear()
 	c26_slots.clear()
 	c26_btn = null
+	c26_skip_btn = null
+	c26_skip_op = ""
 	if c26_ui != null and is_instance_valid(c26_ui):
 		c26_ui.queue_free()
 	c26_ui = null
@@ -11932,25 +12853,31 @@ func _c24_confirm(picks: Array, rivers: Array) -> void:
 		_toast("一发：牌山/王牌里没有你的胡张 —— 立直了，但没有一发")
 
 
+# Card02 S1/S2 的发动窗口：**摸牌前**（2026-11-07 起只有这一个窗口）
+func _c02_window_now() -> bool:
+	if int(srv_state.get("turn", -1)) != my_seat:
+		return false
+	return String(srv_state.get("phase", "")) == "draw" and drawn_tile == ""
+
+
 func _swap_start() -> void:
 	if swap_panel.active or press_panel.active or ym_panel.active or c24_panel.active \
 			or game_over:
 		return                                  # 三个面板共用同一个 hand_pick，不能同时开
 	if (srv_state.get("used_skills", []) as Array).has("2-2-%d" % my_seat):
-		_toast("「换牌」本局已经用过了")
+		_toast("「想象」本局已经用过了")
 		return
-	if (String(srv_state.get("phase", "")) != "discard"
-			or int(srv_state.get("turn", -1)) != my_seat or drawn_tile == ""):
-		_toast("摸牌之后才能发动「换牌」")
+	if not bool(srv_state.get("c02s2_can", false)):
+		_toast("「想象」只能在第十三巡摸牌前发动（本局一次）")
 		return
 	swap_panel.begin({
-		"name": "换牌",
+		"name": "想象",
 		"want": 3, "min": 1,                 # 手牌 1~3 张
 		"river": true, "river_match": true,  # 牌河张数必须和手牌一样
 		"cancel": true,
 		"on_confirm": _swap_confirm,
 	})
-	_toast("换牌：选 1~3 张手牌 + 同样张数的牌河牌 → 点「开始」")
+	_toast("想象：选 1~3 张手牌 + 同样张数的牌河牌 → 点「开始」")
 
 
 func _on_card09_river_clicked(seq: int) -> void:
@@ -12029,15 +12956,17 @@ func _swap_confirm(picks: Array, rivers: Array) -> void:
 	if srv_kangpo_blocked(r):
 		return                               # 面板在 confirm 时已经关掉了
 	if not r.is_empty() and not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "换牌失败")))
+		_toast(String(r.get("error", "想象失败")))
 		return
 	if r.is_empty():
-		_toast(_srv_err("换牌失败：服务端没有回应"))
+		_toast(_srv_err("想象失败：服务端没有回应"))
 		return
 	var sw: Dictionary = r.get("swap", {})
 	var got: Array = sw.get("got", [])
+	_swap_close()                     # 摸牌前发动时 phase 还是 draw，不会自动收面板
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("换牌：%s → %s" % ["、".join(picked), "、".join(got)])
+	_toast("想象：%s → %s" % ["、".join(picked), "、".join(got)])
+	_pre_draw_resume()                # 摸牌前发动 → 接着摸牌 / 问下一个技能
 
 
 func _swap_close() -> void:
@@ -12261,9 +13190,8 @@ func _board_open() -> void:
 	if (srv_state.get("used_skills", []) as Array).has("2-1-%d" % my_seat):
 		_toast("「画板」本局已经用过了")
 		return
-	if (String(srv_state.get("phase", "")) != "discard"
-			or int(srv_state.get("turn", -1)) != my_seat or drawn_tile == ""):
-		_toast("摸牌之后才能发动「画板」")
+	if not bool(srv_state.get("c02s1_can", false)):
+		_toast("摸牌前才能发动「画板」（本局一次）")
 		return
 	# 画板列的是「所有牌种」（1m..9m / 1p..9p / 1s..9s / 东南西北白发中），
 	# 不局限于自己的手牌：指定的是牌种，别人摸到就送过来
@@ -12385,6 +13313,7 @@ func _board_confirm() -> void:
 		return
 	_board_close()
 	srv_apply_state(r.get("state"), r.get("events"))
+	_pre_draw_resume()                # 摸牌前发动 → 接着摸牌 / 问下一个技能
 	_toast("画板：已指定 %s" % "、".join(picked))
 
 
@@ -12410,6 +13339,17 @@ func _cc_copy(st) -> Dictionary:
 	return cp
 
 
+# 这个技能的「一定和牌」权限还在手上吗？（服务端 state.yiding_src = [卡号, 技能号]）
+func _yiding_from(st: Dictionary, card: int, skill: int) -> bool:
+	if not bool(st.get("yiding", false)):
+		return false
+	var src = st.get("yiding_src")
+	if typeof(src) == TYPE_ARRAY and (src as Array).size() >= 2:
+		if int((src as Array)[0]) == int(card) and int((src as Array)[1]) == int(skill):
+			return true
+	return false
+
+
 # 本小局用过的一次性技能 → 图标变灰、点不动
 func _apply_used_skills(st: Dictionary) -> void:
 	var idn := get_node_or_null("Identity")
@@ -12419,6 +13359,12 @@ func _apply_used_skills(st: Dictionary) -> void:
 	for u in (st.get("used_skills", []) as Array):
 		var parts := String(u).split("-")
 		if parts.size() != 3 or int(parts[2]) != my_seat:
+			continue
+		# ★ 2026-11-14（用户反馈：前路三张全中后图标还是灰的）：
+		#   **一定和牌的权限还在、来源就是这条技能** → 图标不能灰。
+		#   前路 20-1 / 上钩 15-2 都是「技能本身用掉了，但玩家还要点同一个图标去宣言」，
+		#   走同一个判据（来源由服务端 state.yiding_src 给出），不再按卡号各写一行。
+		if _yiding_from(st, int(parts[0]), int(parts[1])):
 			continue
 		# 馈赠（21S2）：换牌用掉了，但「一定和牌」那条链路还在 → 不能锁死
 		if int(parts[0]) == 21 and int(parts[1]) == 2:
@@ -12430,7 +13376,20 @@ func _apply_used_skills(st: Dictionary) -> void:
 		# 友引（22S2）：段1 摊完面子后，段2（四副露换牌河那张）还要能用
 		if int(parts[0]) == 22 and int(parts[1]) == 2:
 			continue
+		# 传承（16S1）：**发动传承本身**不算「这一格用完了」——
+		# 16 号卡的 0 号格现在显示的是「复制来的那个技能」（set_skill_icon 换过图标），
+		# 灰不灰要按复制品那本（copy_used）判，见下面那段。以前这里直接置灰，
+		# 于是「传承来的技能」图标是灰的、点不动（用户 2026-11-13 报的就是这个）。
+		if int(parts[0]) == 16 and int(parts[1]) == 1:
+			continue
 		idn.call("set_skill_disabled", int(parts[0]), int(parts[1]) - 1, true)
+	# 16 号卡 0 号格 = 复制来的技能 → 复制品那份额度用掉了才灰
+	var _cp1 := _cc_copy(st)
+	if not _cp1.is_empty():
+		var _ck := "%d-%d-%d" % [int(_cp1.get("card", 0)),
+			int(_cp1.get("skill", 0)), my_seat]
+		if (st.get("copy_used", []) as Array).has(_ck):
+			idn.call("set_skill_disabled", 16, 0, true)
 	# 钓鱼（15S1）：本小局被锁住时图标要变灰（它能多次发动，不在 used_skills 里）
 	if bool(st.get("diaoyu_locked", false)):
 		idn.call("set_skill_disabled", 15, 0, true)
@@ -12486,6 +13445,8 @@ func _update_board_tile(st: Dictionary) -> void:
 #   选满两张再点 Skill2：问服务端这两张里有没有他的铳张，有就在那张牌上闪两次红光
 #   确认之后 Skill2 / 东南西北一起消失
 var skill2_card := 0                  # 正在用哪张卡的 Skill2（0 = 没在用）
+var skill2_ui: Control = null         # 「避开」确认按钮的宿主层
+var skill2_start_btn: TextureButton = null   # 「避开」确认按钮
 var skill2_target := -1               # 选中的对象座位
 var skill2_picks: Array[int] = []     # 选中的手牌下标（display_tiles 顺序）
 
@@ -12773,13 +13734,51 @@ func _skill2_on_clicked() -> void:
 		skill2_picks.clear()
 		_seat_pick_begin("skill2", "避开：选一名玩家")
 		return
-	if skill2_target < 0:
-		_toast("先点东南西北选一名玩家")
+	# ★ 2026-11-09：第二次点图标 = **取消**（由 `_skill_cancel_if_busy()` 先一步处理）。
+	#   以前这里有一条「第三次点 = 确认」的分支，是死代码。
+	#   现在确认走面板上的「确认」按钮（_skill2_refresh_confirm）。
+	return
+
+
+func _skill2_ui_ensure() -> void:
+	if skill2_ui != null and is_instance_valid(skill2_ui):
 		return
-	if skill2_picks.size() < 2:
-		_toast("先选两张手牌（点一下选中，再点一下取消）")
+	var host: Node = get_parent()
+	if host == null:
+		host = self
+	skill2_ui = Control.new()
+	skill2_ui.name = "Skill2ConfirmUI"
+	skill2_ui.z_index = 262             # 和 sw_ui / oracle_ui 同层，压过人物卡(20)
+	host.add_child(skill2_ui)
+	var tex := btn_tex("ok")
+	var bw := 220.0
+	var bh := 70.0
+	if tex != null and tex.get_width() > 0:
+		bh = bw * float(tex.get_height()) / float(tex.get_width())
+	skill2_start_btn = TextureButton.new()
+	skill2_start_btn.name = "Skill2Start"
+	skill2_start_btn.texture_normal = tex
+	skill2_start_btn.ignore_texture_size = true
+	skill2_start_btn.stretch_mode = TextureButton.STRETCH_SCALE
+	skill2_start_btn.focus_mode = Control.FOCUS_NONE
+	skill2_start_btn.size = Vector2(bw, bh)
+	skill2_start_btn.position = prompt_btn_pos(bw, bh)
+	skill2_start_btn.visible = false
+	skill2_start_btn.pressed.connect(_skill2_confirm)
+	skill2_ui.add_child(skill2_start_btn)
+
+
+## 选了两张才出现「确认」（用户口径 2026-11-09：不要再叫人重点图标）
+func _skill2_refresh_confirm() -> void:
+	if skill2_card == 0:
+		if skill2_start_btn != null and is_instance_valid(skill2_start_btn):
+			skill2_start_btn.visible = false
 		return
-	_skill2_confirm()
+	_skill2_ui_ensure()
+	if skill2_start_btn == null or not is_instance_valid(skill2_start_btn):
+		return
+	skill2_start_btn.visible = (skill2_target >= 0 and skill2_picks.size() == 2)
+	set_start_btn_kind(skill2_start_btn, true)
 
 
 func _skill2_confirm() -> void:
@@ -12813,6 +13812,8 @@ func _skill2_close(collapse: bool) -> void:
 	skill2_picks.clear()
 	hand_pick.end()
 	_update_skill2_dim()
+	if skill2_start_btn != null and is_instance_valid(skill2_start_btn):
+		skill2_start_btn.visible = false
 	var idn := get_node_or_null("Identity")
 	if idn == null:
 		return
@@ -12832,8 +13833,9 @@ func _toggle_skill2_pick(index: int) -> void:
 		_toast("最多选两张")
 		return
 	_update_skill2_dim()
+	_skill2_refresh_confirm()
 	if skill2_picks.size() == 2:
-		_toast("已选两张 — 再点一次 Skill2 确认")
+		_toast("已选两张 — 点「确认」发动")
 
 
 # 手牌亮度：选了对象之后全部 50%，选中的恢复原样
@@ -12953,6 +13955,7 @@ func srv_layout_buttons(opts: Array) -> void:
 			# 顺手把入场/消散的半透明状态复位：否则下次显示时可能停在 alpha<1
 			if hide_b.has_method("reset_anim"):
 				hide_b.call("reset_anim")
+	var _appeared := false
 	for kind in slot_of:
 		var b: TextureButton = btn_nodes.get(kind, null)
 		if b == null:
@@ -12967,6 +13970,10 @@ func srv_layout_buttons(opts: Array) -> void:
 		if not b.visible:
 			b.visible = true
 			b.call("play_appear")
+			if not _appeared:
+				_appeared = true
+				# 按钮一冒头就响（不等这一轮布局走完，免得被后面的排版拖出延迟）
+				UiSfx.play("button")
 		elif b.has_method("ensure_shown") and float(b.modulate.a) < 0.999:
 			# 正在淡出（上一次按下的消失动画还没走完）→ 拉回来，别让按钮凭空消失
 			b.call("ensure_shown")
@@ -13546,6 +14553,8 @@ func srv_apply_state(st, events = null) -> void:
 	var rid := int(st2.get("round_id", -1))
 	_update_fengpan_image()
 	_round_hud_sync(st2)
+	_ura_peek_sync(st2)                 # 枷锁：发动后右上角显示里宝指示牌
+	_cg_shackle_sync(st2)               # 枷锁：发动完了 → 补开数字盘
 	if rid != srv_round_id or _dealer_side() != srv_dealer_side:
 		srv_round_id = rid
 		srv_dealer_side = _dealer_side()
@@ -13671,6 +14680,7 @@ func srv_apply_state(st, events = null) -> void:
 	_c30_sync(st2)                      # 向听：交牌 / 挑牌互换
 	_c32_sync(st2)                      # 新手运：要幺九牌 / 换牌（对方有配牌技能就先让路）
 	_c34_why_sync(st2)                  # 厄运/海底：剩 12 张没触发时给一句原因
+	_haidi_sync(st2)                    # 【海底】发动 → 技能特效
 	_c35_sync(st2)                      # 流势：副露后自动弹「排接下来 4 张」
 	_c36_sync(st2)                      # 思路：别人宣告技能 → 看到他的手牌
 	_c41_sync(st2)                      # 复制：别人宣告技能 → 问我要不要复制
@@ -13694,8 +14704,13 @@ func srv_apply_state(st, events = null) -> void:
 			if bool((ev as Dictionary).get("c25", false)):
 				_toast("宝牌运：切出宝牌，支付三家各 3000 点，本局不能胡牌")
 			elif String((ev as Dictionary).get("event", "")) == "c34_last":
+				_haidi_play_in()                # 【海底】技能发动 → 0..671 帧，播完进循环
 				_toast("海底：把「%s」换进手里了 —— 点【自摸】结算"
 					% String((ev as Dictionary).get("tile", "")))
+			elif String((ev as Dictionary).get("event", "")) == "qianlu_done":
+				_toast("前路：三张全中！已获得【一定和牌】（听牌后点同一张 20-1 技能按钮宣言）")
+			elif String((ev as Dictionary).get("event", "")) == "qianlu_fail":
+				_toast("前路：预言没对上（顺序或牌种不符），本次落空")
 	# 其他家摸到的牌：显示成一个牌背，打完就收起
 	if typeof(events) == TYPE_ARRAY:
 		for ev in (events as Array):
@@ -13860,7 +14875,103 @@ func srv_name_of(seat: int) -> String:
 	return who_of_seat(seat)
 
 
+func _feng_house_name(seat: int, dealer: int) -> String:
+	# 座位号 → **自风**称呼（「东家 / 南家 / 西家 / 北家」），按真庄家算。
+	# 用户口径 2026-11-07：【夺目】那问「谁铳了谁」不要用 me / 上家 这种相对叫法。
+	if int(seat) < 0:
+		return "别家"
+	var w := (int(seat) - int(dealer) + 4) % 4
+	return "%s家" % String(FENGPAN_IMG_SUF[clampi(w, 0, 3)])
+
+
+# ── 【海底】(34-2) 技能特效（haidi_fx.gd）────────────
+#   4 层合成好的 3 段 60fps 视频：发动(in) → 循环(loop) → 点自摸(out，完了冻结最后一帧)
+#   层级 30：牌桌之上、和牌播报(31) 之下 → 进场动画自然盖住它。
+var haidi_fx: CanvasLayer = null
+var _haidi_pending_result: Dictionary = {}
+var _haidi_fired_seen := false
+
+
+func _haidi_sync(st: Dictionary) -> void:
+	# 【海底】发动的那一瞬：`c34.fired` 由 false 变 true → 播特效。
+	# 服务端不发 `c34_last` 事件（参数在 state 里），所以用上升沿判。
+	var d = st.get("c34")
+	var fired := false
+	if typeof(d) == TYPE_DICTIONARY:
+		fired = bool((d as Dictionary).get("fired", false))
+	if fired and not _haidi_fired_seen:
+		_haidi_fired_seen = true
+		_haidi_play_in()
+	elif not fired:
+		_haidi_fired_seen = false
+
+
+func _haidi_node() -> CanvasLayer:
+	if haidi_fx != null and is_instance_valid(haidi_fx):
+		return haidi_fx
+	var scr := load("res://haidi_fx.gd")
+	if scr == null:
+		return null
+	haidi_fx = scr.new()
+	haidi_fx.name = "HaidiFx"
+	var host: Node = get_parent()
+	if host == null:
+		host = self
+	host.add_child(haidi_fx)
+	haidi_fx.connect("out_finished", Callable(self, "_haidi_out_done"))
+	return haidi_fx
+
+
+func _haidi_play_in() -> void:
+	var f := _haidi_node()
+	if f != null and f.has_method("play_in"):
+		f.call("play_in")
+
+
+func _haidi_play_out() -> void:
+	var f := _haidi_node()
+	if f != null and f.has_method("play_out"):
+		f.call("play_out")
+
+
+func _haidi_clear() -> void:
+	_haidi_fired_seen = false
+	_haidi_pending_result = {}
+	if haidi_fx != null and is_instance_valid(haidi_fx):
+		haidi_fx.call("clear")
+
+
+func _haidi_out_done() -> void:
+	# 特效收尾播完（最后一帧已冻结当牌桌图像）→ 这时才进结算播报
+	if _haidi_pending_result.is_empty():
+		return
+	var res := _haidi_pending_result
+	_haidi_pending_result = {}
+	_win_skip_intro = true               # 用户口径：海底收尾后不要和牌进场动画
+	srv_show_result(res)
+	_win_skip_intro = false
+
+
 func srv_show_result(res: Dictionary) -> void:
+	# 【海底】(34-2) 的长段演出**只属于「海底发动者自己自摸和」这一种**（用户口径 2026-11-09）。
+	#   触发点从「谁点了自摸按钮」改成「result 一到」→ 四家看到的东西完全一样。
+	var _w0: Dictionary = res
+	if typeof(res.get("win")) == TYPE_DICTIONARY:
+		_w0 = res["win"]
+	if bool(_w0.get("haidi", false)):
+		if haidi_fx != null and is_instance_valid(haidi_fx) \
+				and bool(haidi_fx.call("is_active")):
+			_haidi_pending_result = res      # 四家都挂：out 播完再进结算播报
+			_haidi_play_out()
+			return
+	elif haidi_fx != null and is_instance_valid(haidi_fx) \
+			and bool(haidi_fx.call("is_active")):
+		_haidi_clear()                       # 别的时候（别人和 / 流局）把特效收掉
+	# ★ 【海底】特效还在收尾 → 先挂起来，等它把最后一帧冻结成「牌桌图像」再弹播报
+	if haidi_fx != null and is_instance_valid(haidi_fx) \
+			and bool(haidi_fx.call("is_running_out")):
+		_haidi_pending_result = res
+		return
 	var w: Dictionary = res
 	if typeof(res.get("win")) == TYPE_DICTIONARY:
 		w = res["win"]
@@ -13968,7 +15079,7 @@ func _back_to_lobby() -> void:
 	_match_returned = true
 	print("[终局] 四家都已确认 → 回大厅")
 	await get_tree().create_timer(0.9).timeout
-	get_tree().change_scene_to_file("res://初始菜单.tscn")
+	get_tree().change_scene_to_file("res://真初始场景.tscn")
 
 
 # 点过确认后每 1.5 秒问一次「别人点了没」，全齐就回大厅
@@ -14068,6 +15179,12 @@ func _result_confirm_poll() -> void:
 			_apply_round_start(r)
 			get_tree().create_timer(DEAL_FIRST_WAIT).timeout.connect(_deal_step)
 			return
+	# ★ 2026-11-08：半庄打完后 state 冻结、ver 不变 →
+	#   不是「最后点确认那一家」的窗口一直等不到终局名次面板。
+	#   op=state 每次都带 match_finished → 这里直接弹。
+	if bool(r.get("match_finished", false)) and not match_active:
+		_show_match_final(r.get("final_rank", []), r.get("confirmed", []))
+		return
 	var rc = r.get("result_confirm")
 	if typeof(rc) == TYPE_DICTIONARY:
 		_result_confirm_apply(rc)
@@ -14269,9 +15386,9 @@ func discard_tile(index: int) -> void:
 
 # 一定和牌：宣言 → 把选好的那张打出去 → 服务端立刻结算（不进鸣牌窗口）
 # 选牌面板由 _yd_confirm 先关掉（亮度交回 hand_pick / 立直规则）
-func _declare_yiding(tile: String) -> void:
+func _declare_yiding(kind: String) -> void:
 	hovered_index = -1
-	var r := srv_request({"op": "yiding", "seat": my_seat, "tile": tile})
+	var r := srv_request({"op": "yiding", "seat": my_seat, "kind": kind})
 	if srv_kangpo_blocked(r):
 		# 等对方决定是否看破：放行后服务端自己重放这条 op
 		_apply_entity_states(srv_state)
@@ -14284,15 +15401,7 @@ func _declare_yiding(tile: String) -> void:
 		_toast(String(r.get("error", "一定和牌：发动失败")))
 		_pull_state()
 		return
-	var yd_ev: Dictionary = {}
-	if typeof(r.get("event")) == TYPE_DICTIONARY:
-		yd_ev = r.get("event")
-	if String(yd_ev.get("event", "")) == "yiding_void":
-		# 恶灵堵荣和 + 浓雾封自摸 → 一定和牌作废，这一局接着打
-		_toast("一定和牌作废：%s（游戏继续）"
-			% String(yd_ev.get("reason", "两条路都被堵住")))
-	else:
-		_toast("一定和牌：宣言！")
+	_toast("一定和牌：听牌【%s】，结算中…" % kind)
 	srv_apply_state(r.get("state"), r.get("events"))
 	_ensure_result()
 
@@ -15430,15 +16539,25 @@ func _after_draw() -> void:
 		return
 	var tiles := display_tiles()
 	# ① 摸到的这张能不能和 —— 问服务端（连不上才用本地兜底）
+	# ★ 【海底】(34-2)：特效还活着（in / loop / out）时**先不弹预告版播报** ——
+	#   用户口径 2026-11-08：点【自摸】→ 特效 out 播到最后一帧冻结 → 这时才播
+	#   「长条+人物」的进场动画（盖在冻结帧上）。预告提前把动画播掉的话，
+	#   真正的结算只剩文字刷新，看起来就是「海底之后没有和牌特效」。
+	var haidi_waiting := (haidi_fx != null and is_instance_valid(haidi_fx)
+		and bool(haidi_fx.call("is_active")))
 	var report := srv_tenpai()
 	if not report.is_empty():
 		var detail: Dictionary = report.get("detail", {})
 		var one = detail.get(drawn_tile, null)
 		var w = one.get("tsumo", null) if typeof(one) == TYPE_DICTIONARY else null
 		if typeof(w) == TYPE_DICTIONARY:
+			if haidi_waiting:
+				return                             # 海底：等自摸 → out 播完再进场动画
 			show_hupai(w)
 			return
 	elif is_winning_hand(tiles, meld_count):          # 服务端连不上 → 本地兜底
+		if haidi_waiting:
+			return
 		show_hupai({})
 		return
 	riichi_selecting = false
@@ -15450,24 +16569,67 @@ func _after_draw() -> void:
 # 手牌全变暗（亮度只归 hand_pick 管）→ 只能点能听的牌 → 选满 1 张出「开始」
 # → 点「开始」才发 op=guobiao（打出去后服务端立刻结算）。
 # 再点一次技能图标 = 取消；服务端拒绝 / 被看破拦下 → 自动回正常态。
+var gb_kind_pick := ""          # 国标：选中的听牌张
+var yd_kind_pick := ""          # 一定和牌：选中的听牌张
+
+
+func _gb_kind_head() -> void:
+	if cg_ui == null or not is_instance_valid(cg_ui):
+		return
+	var head := cg_ui.get_node_or_null("Head") as Label
+	if head != null and gb_kind_pick != "":
+		head.text = "国标：已选【%s】—— 点「开始」确认" % gb_kind_pick
+
+
+func _gb_declare_kind() -> void:
+	if gb_kind_pick == "":
+		_toast("国标：先选一张听牌张")
+		return
+	var k := gb_kind_pick
+	_cg_close()
+	guobiao_selecting = false
+	_declare_guobiao(k)
+
+
+func _yd_kind_head() -> void:
+	if cg_ui == null or not is_instance_valid(cg_ui):
+		return
+	var head := cg_ui.get_node_or_null("Head") as Label
+	if head != null and yd_kind_pick != "":
+		head.text = "一定和牌：已选【%s】—— 点「开始」确认" % yd_kind_pick
+
+
+func _yd_declare_kind() -> void:
+	if yd_kind_pick == "":
+		_toast("一定和牌：先选一张听牌张")
+		return
+	var k := yd_kind_pick
+	_cg_close()
+	yiding_selecting = false
+	_declare_yiding(k)
+
+
 func _cg_guobiao() -> void:
 	if guobiao_selecting:
-		_gb_close()
+		_cg_close()
+		guobiao_selecting = false
 		_toast("国标：取消")
 		return
 	if not bool(srv_state.get("guobiao_can", false)):
-		_toast("国标：要刚摸完牌、且切出一张还能听牌（本小局一次）")
+		_toast("国标：切出去也凑不出五门齐 / 花龙 / 三色三步高（或本小局已用过）")
 		return
 	if yiding_selecting:
 		_yd_close()
 	guobiao_selecting = true
 	yiding_selecting = false
 	riichi_selecting = false
-	_make_gb_ui()
-	hand_pick.begin(gb_picks, 1, {"on_change": _refresh_gb_btn})
+	gb_kind_pick = ""
 	_apply_entity_states(srv_state)
-	_refresh_gb_btn()
-	_toast("国标：选一张能听牌的牌 → 点「开始」")
+	_cg_show_kind_grid("国标：选一张要听的牌（必须能和成五门齐/花龙/三色三步高）",
+		func(k): gb_kind_pick = String(k); _gb_kind_head(),
+		func(): _gb_declare_kind(),
+		srv_state.get("guobiao_kinds", []))
+	_toast("国标：选一张听牌张 → 点「开始」")
 
 
 func _make_gb_ui() -> void:
@@ -15554,9 +16716,9 @@ func srv_can_guobiao_with(tile_id: String) -> bool:
 
 # 宣言：把选好的那张打出去 → 服务端立刻结算
 # 按 下家 → 对家 → 上家 找手里有我铳张的人（有就他放铳，多张取最高点数），都没有就自摸
-func _declare_guobiao(tile: String) -> void:
+func _declare_guobiao(kind: String) -> void:
 	hovered_index = -1
-	var r := srv_request({"op": "guobiao", "seat": my_seat, "tile": tile})
+	var r := srv_request({"op": "guobiao", "seat": my_seat, "kind": kind})
 	if srv_kangpo_blocked(r):
 		# 等对方决定是否看破：放行后服务端会自己重放这条 op，不用再点
 		_apply_entity_states(srv_state)
@@ -15569,7 +16731,7 @@ func _declare_guobiao(tile: String) -> void:
 		_toast(String(r.get("error", "国标：发动失败")))
 		_pull_state()
 		return
-	_toast("国标：宣言！")
+	_toast("国标：宣言！听牌【%s】" % kind)
 	srv_apply_state(r.get("state"), r.get("events"))
 	_ensure_result()
 
@@ -15618,7 +16780,8 @@ func _ensure_result() -> void:
 # ── 一定和牌（21S2 馈赠 / 15S2 上钩 / 20S1 前路）：同一套选牌界面 ──────
 func _yiding_on_clicked() -> void:
 	if yiding_selecting:
-		_yd_close()
+		_cg_close()
+		yiding_selecting = false
 		_toast("一定和牌：取消")
 		return
 	if not bool(srv_state.get("yiding_can", false)):
@@ -15629,11 +16792,12 @@ func _yiding_on_clicked() -> void:
 	guobiao_selecting = false
 	yiding_selecting = true
 	riichi_selecting = false
-	_make_yd_ui()
-	hand_pick.begin(yd_picks, 1, {"on_change": _refresh_yd_btn})
+	yd_kind_pick = ""
 	_apply_entity_states(srv_state)
-	_refresh_yd_btn()
-	_toast("一定和牌：选一张能听牌的牌 → 点「开始」")
+	_cg_show_kind_grid("一定和牌：选一张要听的牌（必须是听牌张）",
+		func(k): yd_kind_pick = String(k); _yd_kind_head(),
+		func(): _yd_declare_kind())
+	_toast("一定和牌：选一张听牌张 → 点「开始」")
 
 
 func _make_yd_ui() -> void:
@@ -15778,6 +16942,7 @@ func srv_dora_detail(yaku_list: Array) -> String:
 const WIN_SCENE_PATH := "res://和牌播报.tscn"
 var win_scene: Node2D = null            # 和牌播报场景（截图背景 + 进场动画 + 结算面板）
 var _win_intro_running := false         # 进场动画正在播
+var _win_skip_intro := false           # 这一次结算不要进场动画（海底收尾用）
 var _win_intro_ms := 0                  # 上次播报开始时刻（ms）：flag 自愈用
 
 
@@ -15943,19 +17108,80 @@ func _win_hand_show(seat: int, win: Dictionary) -> void:
 	sc.call("set_hand", root)
 
 
+# 流局：把**听牌家的手牌**摆进播报面板（四家小面板 980 宽居中 → 左右各 470px 是空的）
+#   每家一行：「N 号位 听牌」+ 暗手 + 副露；左列最多 2 行，第 3 家放右列。
+func _draw_tenpai_hand_rack(win: Dictionary) -> Node2D:
+	var th = win.get("tenpai_hands")
+	if typeof(th) != TYPE_DICTIONARY or (th as Dictionary).is_empty():
+		return null
+	var tm = win.get("tenpai_melds")
+	var uw := 33.0
+	var uh := uw * 86.0 / 60.0
+	var vp := get_viewport_rect().size
+	var root := Node2D.new()
+	root.name = "TenpaiHands"
+	var seats: Array = []
+	for k in (th as Dictionary).keys():
+		seats.append(int(k))
+	seats.sort()
+	var i := 0
+	for sd in seats:
+		var col := 0 if i < 2 else 1
+		var row := i if i < 2 else 0
+		var row_node := Node2D.new()
+		var lbl := Label.new()
+		lbl.text = "%d 号位　听牌" % int(sd)
+		lbl.add_theme_color_override("font_color", Color(0.443, 0.871, 0.796, 1.0))
+		lbl.add_theme_font_size_override("font_size", 20)
+		lbl.position = Vector2(0.0, -22.0)
+		row_node.add_child(lbl)
+		var x := 0.0
+		var tiles: Array = (th as Dictionary).get(str(int(sd)), [])
+		for t in tiles:
+			var vis := _make_face_visual(String(t), uw)
+			if vis != null:
+				vis.position = Vector2(x + uw * 0.5, uh * 0.5)
+				row_node.add_child(vis)
+			x += uw + 2.0
+		var melds: Array = []
+		if typeof(tm) == TYPE_DICTIONARY:
+			melds = (tm as Dictionary).get(str(int(sd)), [])
+		for g in melds:
+			if typeof(g) != TYPE_DICTIONARY:
+				continue
+			var tt: Array = (g as Dictionary).get("tiles", [])
+			x += 10.0
+			for t2 in tt:
+				var v2 := _make_face_visual(String(t2), uw)
+				if v2 != null:
+					v2.position = Vector2(x + uw * 0.5, uh * 0.5)
+					row_node.add_child(v2)
+				x += uw + 2.0
+		var maxw := 452.0
+		if x > maxw:
+			row_node.scale = Vector2.ONE * (maxw / x)
+		var px := 18.0 if col == 0 else (vp.x - 470.0)
+		var py := 210.0 + float(row) * 96.0
+		row_node.position = Vector2(px, py)
+		root.add_child(row_node)
+		i += 1
+	return root
+
+
 # 流局等场合：不放长条进场动画，直接把结算面板贴出来（服务端给了 scores/deltas，面板一样有分数条）
-func _win_panel_show(content: Dictionary) -> void:
+func _win_panel_show(content: Dictionary, hand: Node2D = null) -> void:
 	var sc := _win_scene_get()
 	if sc == null:
 		return
-	sc.call("show_panel", content)
+	sc.call("show_panel", content, hand)
 	var cb := _result_confirm_button_get()
 	if cb != null:
 		cb.visible = true
 		cb.call("set_state", false, 0, 4)
 
 
-func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
+func _win_intro_start(win: Dictionary, content: Dictionary,
+		skip_intro: bool = false) -> void:
 	if _win_intro_running:
 		# 防御：上一次播报如果中途抛错，flag 会永远留在 true → 之后再也不会播报
 		if Time.get_ticks_msec() - _win_intro_ms < 20000:
@@ -16009,7 +17235,7 @@ func _win_intro_start(win: Dictionary, content: Dictionary) -> void:
 	if cb0 != null:
 		cb0.visible = true
 		cb0.call("set_state", false, 0, 4)
-	await sc.call("play", who, int(pick[0]), bool(pick[1]), shot, content)
+	await sc.call("play", who, int(pick[0]), bool(pick[1]), shot, content, skip_intro)
 	Engine.max_fps = int(_fps0)
 	if announce_max_fps <= 0:
 		DisplayServer.window_set_vsync_mode(_vs0)
@@ -16053,6 +17279,7 @@ func _win_card_pick(seat: int) -> Array:
 #   win.scores = {座位: 结算后分数}，win.deltas = {座位: 本局增减}（JSON 的 key 是字符串）
 # 结算播报的番种条：每个役一条（名字 + 番数）；宝牌一张都没中就不写；役满写役满
 # 番种播报的先后：0 = 局况/立直相关 → 1 = 决定符的基础门清役 → 2 = 手牌构成的手役 → 3 = 宝牌
+#   40 = 技能带来的番数（枷锁 / 馈赠 …）—— 用户口径 2026-11-07：放**最左边**（宝牌再往左一格）
 func _yaku_rank(nm: String) -> int:
 	if nm.contains("宝牌") or nm.contains("ドラ") or nm.contains("宝牌"):
 		return 30
@@ -16083,6 +17310,7 @@ func _result_yaku_rows(win: Dictionary) -> Array:
 			for k in (dt as Dictionary).keys():
 				dcount = maxi(dcount, int((dt as Dictionary)[k]))
 		var is_dora := nm.contains("宝牌") or nm.contains("ドラ")
+		var is_skill := bool((y as Dictionary).get("skill", false))
 		if is_dora and dcount <= 0:
 			continue                    # 没宝牌就不写宝牌
 		if hn <= 0 and ym <= 0:
@@ -16090,6 +17318,8 @@ func _result_yaku_rows(win: Dictionary) -> Array:
 		var ht := ""
 		if ym > 0:
 			ht = "役满" if ym < 2 else "双倍役满"
+		elif String((y as Dictionary).get("han_text", "")) != "":
+			ht = String((y as Dictionary).get("han_text", ""))   # 技能自带写法（枷锁 / 自信 = *2番）
 		else:
 			ht = "%d番" % hn
 		if ym > 0 and (is_dora or hn < 13):
@@ -16114,13 +17344,13 @@ func _result_yaku_rows(win: Dictionary) -> Array:
 					continue
 				_any = true
 				out.append({"name": _ks, "han_text": "%d番" % _n3,
-					"rank": _yaku_rank(_ks), "ord": ord})
+					"rank": 40, "ord": ord})       # 宝牌明细里的技能加成（宝牌的集合…）→ 最左
 				ord += 1
 			if _any:
 				continue
 		out.append({
 			"name": nm, "han_text": ht,
-			"rank": 0 if ym > 0 else _yaku_rank(nm),
+			"rank": 0 if ym > 0 else (40 if is_skill else _yaku_rank(nm)),
 			"ord": ord,
 		})
 		ord += 1
@@ -16308,6 +17538,8 @@ func show_hupai(win: Dictionary = {}) -> void:
 	"yaku_rows": _result_yaku_rows(win),
 	}
 	# 结算面板已经开着（真结算迟到 / 刷新）→ 只更新文字，不重播进场动画
+	var _skip_intro := _win_skip_intro
+	_win_skip_intro = false
 	if _win_panel_visible():
 		var ann := _win_announce_get()
 		if ann != null:
@@ -16316,9 +17548,11 @@ func show_hupai(win: Dictionary = {}) -> void:
 		result_confirmed = false
 		result_confirm_sig = ""
 		if is_draw:
-			_win_panel_show(_content)      # 流局：不放进场动画，直接把播报贴出来
+			_win_panel_show(_content, _draw_tenpai_hand_rack(win))   # 流局：贴播报 + 听牌家手牌
 		else:
-			_win_intro_start(win, _content)
+			# ★ 用户口径 2026-11-08：海底收尾之后**只跳进场动画**（长条+人物），
+			#   卷轴底座 / 番种长条 / 印章 / 四家面板这些结算演出照样全套播。
+			_win_intro_start(win, _content, _skip_intro)
 	# 旧 ResultPanel 仍填内容作为兼容，但不再显示
 	var panel := get_node_or_null("UI/ResultPanel") as Control
 	if panel == null:
@@ -16446,8 +17680,7 @@ func _skill_panel_stale_close() -> void:
 	if yiding_selecting and not bool(srv_state.get("yiding_can", false)):
 		_yd_close()
 	# 换牌面板：不是我的出牌回合了（被别的窗口推进 / 已经打完）就收起
-	if swap_panel.active and (String(srv_state.get("phase", "")) != "discard"
-			or int(srv_state.get("turn", -1)) != my_seat):
+	if swap_panel.active and not _c02_window_now():
 		_swap_close()
 	# 一发：已经打过了 / 不满足条件了 → 收起
 	if c24_panel.active and not bool(srv_state.get("c24_can", false)):
@@ -16677,6 +17910,8 @@ func _busy_clear() -> void:
 
 func _process(delta: float) -> void:
 	var _pf0 := Time.get_ticks_usec()
+	_audio_dev_tick(delta)      # F9 切输出设备的收尾（平时直接 return）
+	_lat_test_tick()            # F10 延迟自测的节拍（平时直接 return）
 	# ★ 诊断：srv_busy 超过 5 秒还没清 → 打印是谁置上的。
 	#   只报日志，**不自动复位**（自动复位是兜底，会把真 bug 藏起来）。
 	if srv_busy and not _busy_warned and Time.get_ticks_msec() - _busy_ms > 5000:
@@ -16695,6 +17930,7 @@ func _process(delta: float) -> void:
 	if game_over:
 		_result_confirm_tick(delta)
 	_match_tick(delta)
+	_c35_retry_tick()        # 流势：被别的面板挡下的那次，等它关掉补弹
 	_skill_panel_stale_close()
 	_cg_stale_close()
 	var _pf_ui0 := Time.get_ticks_usec()
@@ -16789,7 +18025,8 @@ func _process(delta: float) -> void:
 		return                                        # 我是推进者，正在一步步发牌，不用轮询
 	var others_here := srv_humans.size() > 1          # 这局还有别的窗口在操作
 	var deal_running := not bool(srv_state.get("deal_done", true))
-	var period := POLL_SEC if (waiting_for_others or deal_running or others_here) else POLL_IDLE_SEC
+	var period := (_bs_delay(POLL_SEC) if (waiting_for_others or deal_running or others_here)
+		else _bs_delay(POLL_IDLE_SEC))
 	# 推送长连接活着 → 轮询退化成「保险丝」，放慢到 2 秒（公网流量/手机电量都省）
 	if srv != null and srv.has_method("push_ok") and bool(srv.call("push_ok")):
 		period = maxf(period, 2.0)
@@ -16845,6 +18082,18 @@ func _input(event: InputEvent) -> void:
 	if _k != null and _k.pressed and not _k.echo:
 		if _k.keycode == KEY_F3:
 			_hud_show = not _hud_show
+			get_viewport().set_input_as_handled()
+			return
+		if _k.keycode == KEY_F8:
+			_bs_toggle()                        # 人机出牌速度面板
+			get_viewport().set_input_as_handled()
+			return
+		if _k.keycode == KEY_F9:
+			_audio_dev_cycle()                  # 轮换音频输出设备（跳过 Voicemeeter 那一层）
+			get_viewport().set_input_as_handled()
+			return
+		if _k.keycode == KEY_F10:
+			_lat_test_start()                   # 音频延迟自测（白闪 + 「咔」×8）
 			get_viewport().set_input_as_handled()
 			return
 		if _k.keycode == KEY_F11:
@@ -16914,7 +18163,8 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
 			if board_ui != null:
-				_board_close()                  # 画板开着：右键 = 取消
+				_board_close()
+				_pre_draw_resume()                  # 画板开着：右键 = 取消
 			elif sw_stage != "":
 				pass                            # 南风流程中：右键不做任何事
 			elif c05_active:
@@ -16932,7 +18182,8 @@ func _input(event: InputEvent) -> void:
 					_press_close()              # 压制进行中：右键 = 取消
 			elif swap_panel.active:
 				if swap_panel.allow_cancel:
-					_swap_close()               # 换牌进行中：右键 = 取消
+					_swap_close()
+					_pre_draw_resume()               # 换牌进行中：右键 = 取消
 			else:
 				quick_discard_drawn()
 			get_viewport().get_viewport().set_input_as_handled()
@@ -18059,7 +19310,7 @@ func do_opp_chow(who: String, discarder: String, tile_id: String) -> bool:
 
 
 func _schedule_opp_chow_discard(who: String) -> void:
-	get_tree().create_timer(OPP_DRAW_DELAY).timeout.connect(_opp_chow_discard.bind(who))
+	get_tree().create_timer(_bs_delay(OPP_DRAW_DELAY)).timeout.connect(_opp_chow_discard.bind(who))
 
 
 # 其他家吃完之后必须打一张（手牌 13 → 吃 2 张 → 再打 1 张）
@@ -18362,6 +19613,8 @@ func find_minkan_tiles(tile_id: String) -> Array:
 #  它只做四件事：摸牌 / 摸切 / 和牌 / 过，遇到技能选牌面板就停手并报出来
 # ══════════════════════════════════════════════════════════════════════════
 const AUTOPLAY_CFG := "res://autoplay.cfg"
+var _dev_haidi_mode := false
+var _dev_haidi_done := false
 
 var _dev_auto_on := false
 var _dev_auto_target := 2
@@ -18406,6 +19659,7 @@ func _dev_autoplay_maybe() -> void:
 	#   就当正常模式：F5 手动玩（选角由 test_seats.cfg 跳过，见下）。
 	#   以前这里是「文件存在就自动打 2 小局」→ autoplay.cfg 里写着 announce=1 时
 	#   F5 会直接跳到和牌播报调试界面，没法正常玩。
+	var haidi := false
 	var on := false
 	var announce := false
 	var hands := 2
@@ -18417,6 +19671,9 @@ func _dev_autoplay_maybe() -> void:
 			on = int(kv.substr(8)) != 0
 		elif kv.begins_with("announce="):
 			announce = int(kv.substr(9)) != 0
+		elif kv.begins_with("haidi="):
+			haidi = int(kv.substr(6)) != 0
+			on = true
 		elif kv.begins_with("hands="):
 			hands = maxi(1, int(kv.substr(6)))
 			on = true
@@ -18425,8 +19682,24 @@ func _dev_autoplay_maybe() -> void:
 	if announce:
 		call_deferred("_debug_announce")
 		return
+	if haidi:
+		_dev_haidi_mode = true
 	_dev_log("[AUTOPLAY] 启动：目标 %d 小局" % hands)
 	_dev_autoplay(hands)
+
+
+func _dev_haidi_setup_once() -> void:
+	# ★ 只有编辑器（F5）能走这条：导出的 exe / 正常联机客户端一律拒绝
+	if not OS.has_feature("editor"):
+		return
+	var r := srv_request({"op": "dev_haidi", "seat": my_seat, "dev": "editor",
+		"round_id": int(srv_state.get("round_id", 0))})
+	if r.is_empty():
+		_dev_log("[AUTOPLAY·海底] 服务端没回应")
+		return
+	_dev_log("[AUTOPLAY·海底] 已摆好：%s" % str(r.get("dev_haidi", {})))
+	_toast("海底调试：已摆成「剩 12 张 + 听牌 + 海底牌在牌山」，打一张就发动")
+	srv_apply_state(r.get("state"), r.get("events"))
 
 
 func _dev_autoplay(hands: int) -> void:
@@ -18443,6 +19716,11 @@ func _dev_autoplay(hands: int) -> void:
 
 
 func _dev_auto_tick() -> void:
+	if _dev_haidi_mode and not _dev_haidi_done and not dealing and not srv_busy \
+			and bool(srv_state.get("deal_done", false)):
+		_dev_haidi_done = true
+		_dev_haidi_setup_once()
+		return
 	_dev_auto_beats += 1
 	if _dev_autostart():
 		return

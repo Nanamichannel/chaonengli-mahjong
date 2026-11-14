@@ -138,6 +138,23 @@ def main() -> int:
     g8 = Game(db3, rid3)
     check("三张全中 → 一定和牌", 0 in g8.yiding, True)
 
+    # 赤五：预言 5m，实际打出 0m 也要算命中（2026-11-06 修：原来直接判落空）
+    db3b = tg.fresh_db("n20red")
+    rid3b = new_round(db3b, 2002, [[20, 1, 2, 3, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5]])
+    tg.set_hand(db3b, rid3b, 0, H, drawn="4s")
+    for i in range(3):
+        add_discard(db3b, rid3b, 0, 2020 + i, "1m", tsumogiri=1)
+    gb = Game(db3b, rid3b)
+    gb.phase, gb.turn = "discard", 0
+    gb.save_flags()
+    gb = Game(db3b, rid3b)
+    gb.phase, gb.turn = "discard", 0
+    gb.qianlu_set(0, ["5m", "2p", "3s"])
+    for t in ["0m", "2p", "3s"]:
+        gb._after_discard_hooks(0, t)
+    gb = Game(db3b, rid3b)
+    check("打赤五 0m 也算命中 5m", 0 in gb.yiding, True)
+
     print("\n◆ 感知 / 迷途之家 / 加热")
     db4 = tg.fresh_db("n21")
     rid4 = new_round(db4, 2101, [[21, 1, 2, 3, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5]])

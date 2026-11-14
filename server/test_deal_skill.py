@@ -209,6 +209,29 @@ def main() -> int:
         except Exception:
             pass
 
+    print("\n⑨ 降神播报带上「降的哪一门」（2026-11-07）")
+    dbx = tg.fresh_db("dsoracle")
+    ridx = new_round(dbx, 901)
+    seats = [{"ready": False, "hand": [], "picks": [], "order": [7, 1, 2, 3, 5]} for _ in range(4)]
+    with dbx.tx():
+        dbx.conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES('lobby_state', ?)",
+                         (json.dumps({"seats": seats, "phase": "playing"}, ensure_ascii=False),))
+    gx = Game(dbx, ridx)
+    gx.phase = "deal_skill"
+    gx.deal_wait = {0}
+    gx.save_flags()
+    gx = Game(dbx, ridx)
+    gx.phase = "deal_skill"
+    gx.deal_wait = {0}
+    gx._start_oracle(0, 7, 1)
+    _txt = str((gx.broadcast or {}).get("text", ""))
+    check("播报里有「点」和「门」", ("点" in _txt) and ("门" in _txt), True)
+    check("播报里有具体花色", any(k in _txt for k in ("万门", "筒门", "条门")), True)
+    _lgx = [e for e in (gx.broadcast_log or []) if int(e.get("card", 0)) == 7]
+    check("右上角记录里也有掷骰 + 降门",
+          ("门" in str((_lgx[-1] if _lgx else {}).get("text", ""))), True)
+    check("降神记录只多一条（合并进发动行）", len(_lgx), 1)
+
     print("\n" + "=" * 70)
     print(f" 通过 {PASS} 项，失败 {FAIL} 项")
     print("=" * 70)

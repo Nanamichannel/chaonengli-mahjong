@@ -1,0 +1,8 @@
+test_act_tree.py - ==============================================================================
+test_card10.py - ======================================================================
+test_card14.py - C:\Users\NananmiRainn\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'N:\\apps\\tianma\\server\\test_card14.py': [Errno 2] No such file or directory
+test_card35.py - game.RuleError: 【流势】：先把接下来 4 张牌山排好（或点「跳过」）再打牌
+    Traceback (most recent call last):
+    raise RuleError("【流势】：先把接下来 %d 张牌山排好（或点「跳过」）再打牌"
+    game.RuleError: 【流势】：先把接下来 4 张牌山排好（或点「跳过」）再打牌
+test_card46.py - ==============================================================================

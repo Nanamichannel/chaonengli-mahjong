@@ -107,20 +107,57 @@ def main() -> int:
     check("开启", bool(r.get("on")), True)
     g2 = Game(db, rid)
     check("落库", g2.c39s1_on, True)
+    check("落库：记下了是谁发动的", g2.c39s1_by, 0)
     check("一次", g2.c39s1_can(0), False)
 
-    print("\n③ 隐形之后：不能鸣 / 不能被荣 / 不造成振听")
+    print("\n③ 隐形之后：只锁**发动者自己打出的牌**（别人之间照常）")
     g3 = Game(db, rid)
     g3.phase = "discard"
     g3.turn = 3
-    check("加速闸门关掉", g3._c29s1_gate(900, "5s", 3), False)
-    check("暗置牌也不能荣", g3._open_facedown_claim(901, "5s", 3), False)
+    check("加速：吃不到发动者的舍牌", g3._c29s1_gate(900, "5s", 0), False)
+    check("暗置牌：发动者的不能被荣", g3._open_facedown_claim(902, "5s", 0), False)
     g4 = Game(db, rid)
     g4.phase = "discard"
-    g4.turn = 3
-    g4._open_claim_window(902, "5s", 3)      # 本来 0 号位能碰/荣
-    check("鸣牌窗口一个选项都没有", g4.pending, None)
-    check("振听表为空", g4.discards_for_furiten(1), [])
+    g4.turn = 0
+    g4._open_claim_window(903, "5s", 0)      # 发动者自己打出的 5s
+    check("发动者的舍牌：谁都不能吃碰杠荣", g4.pending, None)
+    g4b = Game(db, rid)
+    g4b.phase = "discard"
+    g4b.turn = 3
+    g4b._open_claim_window(904, "5s", 3)     # 别人打出的 5s
+    _o = ((g4b.pending or {}).get("options") or {}).get(0) or []
+    check("别人打的 5s 我照常能碰", [a.get("action") for a in _o], ["pon"])
+    # 振听：只免发动者自己，别人的照常算
+    with db.tx():
+        db.conn.execute(
+            "INSERT INTO round_discards(round_id, seq, seat, wall_seq, tile,"
+            " is_tsumogiri, is_riichi_tile, face_down, called)"
+            " VALUES(?,?,?,?,?,1,0,0,0)", (rid, 760, 1, 8760, "5s"))
+    g4c = Game(db, rid)
+    check("发动者自己的振听表为空", g4c.discards_for_furiten(0), [])
+    check("别人的振听还在", "5s" in g4c.discards_for_furiten(1), True)
+
+    print("\n③b 隐形开着：别人放铳我照样能荣（立直 / 无视当起和役）")
+    db7, rid7 = setup("c39g")
+    Game(db7, rid7).c39s1_apply(0)
+    tg.set_hand(db7, rid7, 0, parse_hand("123m456m789m234p5s"))   # 13 张单骑等 5s
+    tg.set_hand(db7, rid7, 3, parse_hand("123m456m789m234p5s"))
+    with db7.tx():
+        db7.conn.execute(
+            "INSERT OR REPLACE INTO round_riichi(round_id, seat, declared_seq, ippatsu)"
+            " VALUES(?,3,0,0)", (rid7,))
+    check("我听着 5s", "5s" in Game(db7, rid7).waits(0), True)
+    g8 = Game(db7, rid7)
+    g8.phase = "discard"
+    g8.turn = 3
+    g8._open_claim_window(905, "5s", 3)
+    _o8 = ((g8.pending or {}).get("options") or {}).get(0) or []
+    check("别人打的 5s 我能荣", [a.get("action") for a in _o8], ["ron"])
+    g9 = Game(db7, rid7)
+    g9.phase = "discard"
+    g9.turn = 0
+    g9._open_claim_window(906, "5s", 0)      # 我（发动者）打出的 5s
+    check("我打出的 5s 立直家也荣不了", g9.pending, None)
 
     print("\n④ 无视：门前清 + 持卡 → 当作立直（不动 is_riichi / 不锁手牌）")
     db2, rid2 = setup("c39c")

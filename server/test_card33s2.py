@@ -112,22 +112,39 @@ def main() -> int:
     rn = gn.c33s2_try(0, 3000)
     check("新的一局可以再发", bool(rn.get("armed")), True)
 
-    print("\n⑤ 有上一局：数字要对上（净得失点数）")
+    print("\n⑤ 有上一局：答案是「和牌点数」（符×番），不是结算得失")
     db2, rid0 = t30.setup("c33s2b", card=33)
     match = int(db2._one("SELECT match_id FROM rounds WHERE round_id=?", (rid0,)))
-    # 第一局结算：0 号位 +1000，1 号位 -1000
-    db2.finish_round(rid0, "ron", winner_seat=1, loser_seat=0, han=1, fu=30,
-                     points=1000, deltas={1: 1000, 0: -1000})
+    # 第一局：1 号位（子家）3 番 40 符荣和 = 5200；还收了 2 根立直棒 → 实际 +7200
+    db2.finish_round(rid0, "ron", winner_seat=1, loser_seat=0, han=3, fu=40,
+                     points=5200, deltas={1: 7200, 0: -5200, 2: -1000, 3: -1000})
     rid1 = db2.start_round(match, "dong", 2, honba=0, dealer_seat=1, seed=77)
     g4 = playable(db2, rid1, seat=0)
-    check("上一局我（放铳）-1000", g4.c33s2_last_points(0), -1000)
-    check("上一局对家 +1000", g4.c33s2_last_points(1), 1000)
-    check("上一局没参与的人 = 0", g4.c33s2_last_points(2), 0)
-    msg = err_of(lambda: g4.c33s2_try(0, 999))
-    check("输错 → 拒", "数字不对" in msg, True)
+    check("和牌点数 = 5200（不含立直棒 7200）", g4.c33s2_last_points(0), 5200)
+    check("和牌的人也拿 5200", g4.c33s2_last_points(1), 5200)
+    check("放铳的人也是 5200（只看和牌点数）", g4.c33s2_last_points(0), 5200)
+    check("没参与的人也是 5200", g4.c33s2_last_points(2), 5200)
+    msg = err_of(lambda: g4.c33s2_try(0, 7200))
+    check("输结算点数 7200 → 拒", "数字不对" in msg, True)
     check("输错不发动", int(Game(db2, rid1).c33s2_armed), -1)
-    r4 = g4.c33s2_try(0, 1000)
-    check("输对（负数取绝对值）→ 发动", bool(r4.get("armed")), True)
+    r4 = g4.c33s2_try(0, 5200)
+    check("输 5200 → 发动", bool(r4.get("armed")), True)
+    # 亲家 3 番 40 符荣和 = 7700
+    db2b, rid0b = t30.setup("c33s2b2", card=33)
+    m2b = int(db2b._one("SELECT match_id FROM rounds WHERE round_id=?", (rid0b,)))
+    db2b.finish_round(rid0b, "ron", winner_seat=0, loser_seat=1, han=3, fu=40,
+                      points=7700, deltas={0: 8700, 1: -7700, 2: -500, 3: -500})
+    rid1b = db2b.start_round(m2b, "dong", 2, honba=1, dealer_seat=0, seed=78)
+    g4b = playable(db2b, rid1b, seat=0)
+    check("亲家 3 番 40 符 = 7700", g4b.c33s2_last_points(0), 7700)
+    # 满贯 8000（子家荣和）
+    db2c, rid0c = t30.setup("c33s2b3", card=33)
+    m2c = int(db2c._one("SELECT match_id FROM rounds WHERE round_id=?", (rid0c,)))
+    db2c.finish_round(rid0c, "ron", winner_seat=2, loser_seat=3, han=5, fu=30,
+                      points=8000, deltas={2: 8000, 3: -8000, 0: 0, 1: 0})
+    rid1c = db2c.start_round(m2c, "dong", 2, honba=0, dealer_seat=0, seed=76)
+    g4c = playable(db2c, rid1c, seat=0)
+    check("子家满贯 = 8000", g4c.c33s2_last_points(0), 8000)
 
     print("\n⑥ API 入口")
     import api_cli
@@ -144,12 +161,13 @@ def main() -> int:
     print("\n⑦ state 里带上一局点数")
     db4, rid4 = t30.setup("c33s2d", card=33)
     m4 = int(db4._one("SELECT match_id FROM rounds WHERE round_id=?", (rid4,)))
-    db4.finish_round(rid4, "tsumo", winner_seat=0, han=2, fu=30, points=2000,
-                     deltas={0: 2000, 1: -700, 2: -700, 3: -600})
+    # 亲家自摸 2 番 30 符 = 1000 全付 → 和牌点数 3000（不是实际收的 3000 里被平分过的数）
+    db4.finish_round(rid4, "tsumo", winner_seat=0, han=2, fu=30, points=3000,
+                     deltas={0: 3000, 1: -1000, 2: -1000, 3: -1000})
     rid5 = db4.start_round(m4, "dong", 2, honba=0, dealer_seat=1, seed=79)
     g7 = playable(db4, rid5, seat=0)
     st5 = g7.state_for(0).get("c33s2") or {}
-    check("state.last = 2000", int(st5.get("last", 0)), 2000)
+    check("state.last = 3000（亲家自摸 2 番 30 符）", int(st5.get("last", 0)), 3000)
 
     print("\n⑦ 流局：答案固定 3000（所有人都一样）")
     db8, rid8 = t30.setup("c33s2e", card=33)

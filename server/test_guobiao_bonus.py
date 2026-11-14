@@ -161,4 +161,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    print("（旧流程用例已停用 2026-11-07：国标 = 一定和牌，改成「宣言听牌张 → 正常打牌 → 强制/摸牌前换牌」，新用例见 test_yiding.py）")
+    raise SystemExit(0)

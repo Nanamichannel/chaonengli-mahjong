@@ -15,6 +15,7 @@ extends Node2D
 # ─────────────────────────────────────────────────────────────────────────────
 
 const ANNOUNCE_SCRIPT := preload("res://win_announce.gd")
+const UiSfx := preload("res://ui_sfx.gd")          # UI 音效（底座底座 / 番种条）
 const CARD_DIR := "res://Cailiao/skill/cards/card_%02d.png"
 const MASK_PATH := "res://Cailiao/UI/睡2.png"
 const BASE_TEX_PATH := "res://Cailiao/UI/结算播报底座.png"
@@ -595,6 +596,8 @@ func _reveal_plate(gen: int) -> void:
 	if plate_clip == null:
 		return
 	plate_clip.visible = true
+	# 「底座底座」开始横向拉开的那一下（用户 2026-11-14 指定的音效时机）
+	UiSfx.play("plate")
 	var w := _plate_full.x
 	plate_clip.size = Vector2(0.01, _plate_full.y)
 	plate_clip.position.x = _plate_rect.x + w
@@ -688,6 +691,8 @@ func _reveal_strips(gen: int) -> void:
 		var full := float(st.get_meta("full_h", st.size.y))
 		st.visible = true
 		st.size = Vector2(st.size.x, 0.5)
+		# ★ 2026-11-14（用户反馈）：**每扫一条响一次**，不是整段只响一次
+		UiSfx.play("strips")
 		var tw := st.create_tween()
 		tw.tween_property(st, "size:y", full, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 		await tw.finished
@@ -786,9 +791,13 @@ func reset() -> void:
 
 
 # 流局：不播进场动画，直接贴「蒙版+横幅」→ 小面板
-func show_panel(data: Dictionary) -> void:
+func show_panel(data: Dictionary, hand: Node2D = null) -> void:
 	clear_hand()
 	_apply_layout()
+	if hand != null and hand_root != null:
+		hand_root.add_child(hand)
+		hand_root.visible = true
+		hand_root.modulate.a = 1.0
 	busy = true
 	_gen += 1
 	var gen := _gen
@@ -821,7 +830,7 @@ func show_panel(data: Dictionary) -> void:
 
 # 入口：who = "me"/"D"/"C"/"B"；data = 结算内容
 func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
-		data: Dictionary) -> void:
+		data: Dictionary, skip_intro: bool = false) -> void:
 	_apply_layout()
 	busy = true
 	var gen := _gen
@@ -836,34 +845,38 @@ func play(who: String, card_no: int, need_mask: bool, shot: Texture2D,
 	var ap := ap_left if use_left else ap_top
 	var anim := "new_animation" if use_left else "new_animation_2"
 
-	var vp := get_viewport_rect().size
-	intro.scale = Vector2(-1.0, 1.0) if mirror else Vector2.ONE
-	intro.position = Vector2(vp.x, 0.0) if mirror else Vector2.ZERO
+	# ★ skip_intro = 海底收尾后那条路：**只跳「长条+人物」的进场动画**，
+	#   蒙版 / 页眉手牌 / 卷轴底座 / 番种长条 / 印章 / 四家面板照旧全套播。
+	#   （用户口径 2026-11-08：不要进场动画，但结算播报必须有。）
+	if not skip_intro:
+		var vp := get_viewport_rect().size
+		intro.scale = Vector2(-1.0, 1.0) if mirror else Vector2.ONE
+		intro.position = Vector2(vp.x, 0.0) if mirror else Vector2.ZERO
 
-	intro.visible = true
-	bar.visible = true
-	_set_card(bar, card_no, need_mask)
+		intro.visible = true
+		bar.visible = true
+		_set_card(bar, card_no, need_mask)
 
-	ap.speed_scale = maxf(float(intro_speed), 0.05)
-	ap.play(anim)
-	await ap.animation_finished
-	ap.speed_scale = 1.0
-	if gen != _gen:
-		busy = false
-		return
+		ap.speed_scale = maxf(float(intro_speed), 0.05)
+		ap.play(anim)
+		await ap.animation_finished
+		ap.speed_scale = 1.0
+		if gen != _gen:
+			busy = false
+			return
 
-	# 进场动画播完：隐藏长条 + 卡，背景留着
-	intro.visible = false
-	intro.scale = Vector2.ONE
-	intro.position = Vector2.ZERO
-	card_root.visible = false
-	_follow = null
-	set_process(false)
+		# 进场动画播完：隐藏长条 + 卡，背景留着
+		intro.visible = false
+		intro.scale = Vector2.ONE
+		intro.position = Vector2.ZERO
+		card_root.visible = false
+		_follow = null
+		set_process(false)
 
-	await get_tree().create_timer(STEP_WAIT).timeout
-	if gen != _gen:
-		busy = false
-		return
+		await get_tree().create_timer(STEP_WAIT).timeout
+		if gen != _gen:
+			busy = false
+			return
 
 	# ④ 全屏蒙版 +「谁铳了谁」横幅（+ 页眉手牌）淡入
 	if head != null:

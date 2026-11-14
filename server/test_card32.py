@@ -203,6 +203,26 @@ def main() -> int:
     check("没有无知字样", any("无知" in n for n in names4b), False)
 
     print("\n⑨ 没这张卡的人不吃这套")
+    # ■ 播报闸门：只有真的把和牌升成役满才许弹「无知」（2026-11-06 修）
+    print("\n■ 普通和牌不许播报「无知」")
+    db6, rid6 = t30.setup("c32fx", card=32)
+    g6 = Game(db6, rid6)
+    tg.set_hand(db6, rid6, 0, parse_hand("123m456m789p123s55z"))
+    res_plain = {"yaku": [{"name": "立直", "han": 1}], "han": 1, "fu": 30,
+                 "yakuman": 0, "pays": {"total": 1000, "each": 0, "basic": 0}}
+    g6._settle_c32s2(res_plain, {"winner": 0, "tsumo": False, "result": "ron"})
+    check("普通和不加役满", int(res_plain.get("yakuman", 0)), 0)
+    check("普通和不播报无知", 32 in getattr(g6, "_fx_done", set()), False)
+
+    db7, rid7 = t30.setup("c32fx2", card=32)
+    g7 = Game(db7, rid7)
+    tg.set_hand(db7, rid7, 0, parse_hand("111m222m333p444s55z"))
+    res_toi = {"yaku": [{"name": "对对和", "han": 2}], "han": 2, "fu": 30,
+               "yakuman": 0, "pays": {"total": 1000, "each": 0, "basic": 0}}
+    g7._settle_c32s2(res_toi, {"winner": 0, "tsumo": False, "result": "ron"})
+    check("对对和 → 役满 +1", int(res_toi.get("yakuman", 0)), 1)
+    check("对对和要播报无知", 32 in getattr(g7, "_fx_done", set()), True)
+
     res5, _g = judge("c32g", "111m222m333p444s55z", "bai", card=6, pon="1m")
     names5 = [y["name"] for y in (res5 or {}).get("yaku", [])]
     check("没有无知升级", any("无知" in n for n in names5), False)

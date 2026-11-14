@@ -127,11 +127,17 @@ def main() -> int:
     check("mark 递增", int(g5.c35_mark) >= 2, True)
     check("没记成一次性技能", g5.skill_used(0, 35, 1) if hasattr(g5, "skill_used") else False, False)
 
-    print("\n⑤ 直接打牌 = 放弃这次调整（牌山不动）")
+    print("\n⑤ 没排就点「跳过」再打牌 = 放弃这次调整（牌山不动）")
     tiles_before = Game(db, rid)._c26_tiles(4)
     tg.set_hand(db, rid, 0, parse_hand("123m456m789m23p55s"), drawn="5s")
     g6 = Game(db, rid)
     g6.c35_start(0)
+    try:
+        g6._do_discard(0, tile="5s")
+        check("没排牌山就打牌 → 被拒", False, True)
+    except RuleError:
+        check("没排牌山就打牌 → 被拒", True, True)
+    g6.c35_skip(0)
     g6._do_discard(0, tile="5s")
     g7 = Game(db, rid)
     check("pending 清掉", int(g7.c35_pending), -1)

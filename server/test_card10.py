@@ -124,7 +124,7 @@ def main() -> int:
     row = g.db._row("SELECT tile, face_down FROM round_discards WHERE round_id=? AND seq=1",
                     (rid,))
     check("牌河那个位置变成我的手牌", row["tile"], "1m")
-    check("还是明置", int(row["face_down"]), 0)
+    check("换过去的是暗置", int(row["face_down"]), 1)
     check("state 里东已经用过", g.state_for(0)["card10_used"], ["dong"])
 
     # ── ④ 东不能再换，北还能换 ─────────────────────────────────
@@ -192,6 +192,37 @@ def main() -> int:
         check("不能跟自己换", False)
     except RuleError as e:
         check("不能跟自己换", "别家" in str(e))
+
+    # ── ⑦ 3 张同名手牌（重名牌）：要换满 3 张、手牌还是 13 张 ────
+    print("\n⑦ 3 张同名手牌不能被当成同一张（2026-11-06 实机）")
+    db3 = tg.fresh_db("c10_dup")
+    rid3 = new_round(db3, 953, ORD_10)
+    hdup = parse_hand("111m234p567p22s8s") + ["9s"]      # 12 张 + 摸 9s = 13
+    tg.set_hand(db3, rid3, 0, hdup, drawn="9s")
+    for i, sq in enumerate((21, 22, 23)):
+        add_river(db3, rid3, sq, 1, "bei")
+    g3 = to_discard(Game(db3, rid3), 0)
+    check("手里 3 张 1m", g3.hand(0).count("1m"), 3)
+    r3 = g3.card10_swap_hand(0, "bei", ["1m", "1m", "1m"], [21, 22, 23])
+    check("换成功", r3.get("kind"), "bei")
+    check("拿到 3 张北", r3.get("got"), ["bei", "bei", "bei"])
+    g3 = to_discard(Game(db3, rid3), 0)
+    check("3 张 1m 全换出去了", g3.hand(0).count("1m"), 0)
+    check("手里确实多了 3 张北", g3.hand(0).count("bei"), 3)
+    check("手牌张数没变（13）", len(g3.hand(0)), 13)
+    down = [int(r["face_down"]) for r in g3.db._rows(
+        "SELECT face_down FROM round_discards WHERE round_id=? AND seq IN (21,22,23)",
+        (rid3,))]
+    check("牌河三个位置都是暗置", down, [1, 1, 1])
+    tiles_in = [str(r["tile"]) for r in g3.db._rows(
+        "SELECT tile FROM round_discards WHERE round_id=? AND seq IN (21,22,23)", (rid3,))]
+    check("牌河三个位置都是 1m", tiles_in, ["1m", "1m", "1m"])
+    try:
+        g3_2 = to_discard(Game(db3, rid3), 0)
+        g3_2.card10_swap_hand(0, "dong", ["2s", "2s", "9s"], [21, 21, 22])
+        check("牌河重复选要拒绝", False)
+    except RuleError as e:
+        check("牌河重复选要拒绝", "重复" in str(e) or "3 张" in str(e))
 
     for d in tg._OPEN_DBS:
         try:

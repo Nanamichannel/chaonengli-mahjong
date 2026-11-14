@@ -91,6 +91,12 @@ def main():
     check(not skills.owns_card(db, FakeG("nan", 1), 0, 3, strict=True), "南一：3 号卡应该失效")
     check(skills.char_expired(db, FakeG("nan", 1), 0, 3), "南一：判过期")
 
+    print("\n⑥b 再用一次不刷新寿命（2026-11-07 修）")
+    db2b = setup_db("clife2b", [3, 3, 3, 3, 15], {"0:3": 0})
+    skills.set_char_use(db2b, 0, 3, 1)          # 东二又发动一次
+    check(skills._char_use(db2b)["0:3"] == 0, "记录仍是东一（不该被改成东二）")
+    check(skills.char_expired(db2b, FakeG("dong", 3), 0, 3), "东三仍然过期")
+
     print("\n⑥ 从没用过的卡不过期")
     db2 = setup_db("clife2", [3, 3, 3, 3, 15], {})
     check(not skills.char_expired(db2, FakeG("nan", 4), 0, 3), "南四：没用过就不过期")

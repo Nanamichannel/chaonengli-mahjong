@@ -47,6 +47,8 @@ var order: Array = []
 var order_inited := false
 var my_ready := false
 var entered := false
+var joined := false        # 只有玩家點「進入」才入房；啟動不再自動加房間
+var _need_manual_enter := false   # 剛加入時房間已在 play → 等玩家按「開始」才進牌桌        # 只有玩家点「進入」才入房；启动不再自动加房间
 
 var draft_round := -1
 var pick_animating := false
@@ -187,7 +189,7 @@ func _ready() -> void:
 	if start_btn != null and not start_btn.pressed.is_connected(_on_start_pressed):
 		start_btn.pressed.connect(_on_start_pressed)
 	_wipe_if_fresh()                    # 上一次记录没清干净 → 这里补一刀，从「准备」重新开始
-	_join_lobby()
+	_show_enter_hint()
 	var t := Timer.new()
 	t.name = "LobbyPoll"
 	t.wait_time = POLL_SEC
@@ -580,7 +582,7 @@ func _on_room_apply() -> void:
 	var want := room_edit.text.strip_edges()
 	if want == "":
 		want = "default"
-	if want == String(srv.net.room):
+	if want == String(srv.net.room) and joined:
 		_flash_room_btn("已在此房間")
 		return
 	if not srv.net.set_room(want):
@@ -603,6 +605,7 @@ func _on_room_apply() -> void:
 		cs.picks = []
 	_set_hint("正在進入房間「%s」…" % String(srv.net.room))
 	_flash_room_btn("進入中…")
+	joined = true
 	_join_lobby()
 	_refresh_seats()
 
@@ -692,6 +695,10 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+func _show_enter_hint() -> void:
+	_set_hint("請輸入房間號，按「進入」加入房間")
+
+
 func _join_lobby() -> void:
 	var _t0 := Time.get_ticks_msec()
 	var r: Dictionary = srv.request({"op": "lobby_join", "seat": -1})
@@ -714,7 +721,11 @@ func _join_lobby() -> void:
 	my_seat = clampi(int(r.get("seat", 0)), 0, 3)
 	if cs != null:
 		cs.seat = my_seat
-	_apply_lobby(r.get("lobby", {}))
+	# 剛加入時房間就已經在對局中（例如上一局打完還留在 play）
+	# → 不要自動把人拖進牌桌，等玩家自己按「開始」
+	var _lb: Dictionary = r.get("lobby", {})
+	_need_manual_enter = String(_lb.get("phase", "")) == "play"
+	_apply_lobby(_lb)
 
 
 var _bg_wait := false      # 有一个非阻塞的 lobby_state 请求在飞
@@ -741,13 +752,18 @@ func _poll() -> void:
 			_net_badge_show(_net_why(rb))
 		return
 	if my_seat < 0:
+		if not joined:
+			return
 		_join_lobby()               # 还没认领到座位（上次服务端忙）→ 一直重试到成功
 		return
-	if srv != null and srv.has_method("bg_send") \
-			and bool(srv.bg_send({"op": "lobby_state", "seat": my_seat})):
-		_bg_wait = true
+	if srv != null and srv.has_method("bg_send") and bool(srv.bg_ok()):
+		# ★ 联机：只走非阻塞。bg 正忙时**不能**掉到下面的同步兜底 ——
+		#   request() 会先把在飞的连接 drain 掉再阻塞发一次（公网 200~300ms），
+		#   每 0.35s 卡一次就是「点进入后非常卡」的原因。
+		if bool(srv.bg_send({"op": "lobby_state", "seat": my_seat})):
+			_bg_wait = true
 		return
-	# 兜底（单机 / 老路径）：同步
+	# 单机（本地 python 子进程）：没有网络延迟，同步即可
 	var r: Dictionary = srv.request({"op": "lobby_state", "seat": my_seat})
 	if bool(r.get("ok", false)):
 		_apply_lobby(r.get("lobby", {}))
@@ -790,6 +806,9 @@ func _apply_lobby(l) -> void:
 	_refresh_ready_frame()
 
 	if phase == "play" and not entered:
+		if _need_manual_enter:
+			_set_hint("該房間已有一局進行中，按「開始」進入牌桌")
+			return
 		entered = true
 		_enter_game()
 		return
@@ -868,9 +887,16 @@ func _send_rename() -> void:
 
 
 func _on_start_pressed() -> void:
-	if entered or my_seat < 0:
+	if entered:
+		return
+	if my_seat < 0:
+		_show_enter_hint()
 		return
 	match phase:
+		"play":
+			_need_manual_enter = false
+			entered = true
+			_enter_game()
 		"waiting":
 			var want := not my_ready
 			var r: Dictionary = srv.request({"op": "lobby_ready", "seat": my_seat, "value": want})

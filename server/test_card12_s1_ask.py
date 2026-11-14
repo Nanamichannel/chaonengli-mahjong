@@ -265,12 +265,35 @@ def main() -> int:
     check("顺手把失效询问清掉", g.cur_ask, None)
 
     g.phase, g.turn = "draw", 0
-    g.haishin_step = {0: 3}           # 三种都换完
+    # 三种都换完：step 由 haishin_done 推导（恢复 flags 时会按 done 重算），
+    # 只写 haishin_step 会被算回 0 —— 以前这里就是这么误报的（2026-11-06 修）
+    g.haishin_done = {0: [{"idx": 0}, {"idx": 1}, {"idx": 2}]}
+    g.haishin_step = {}
     g.save_flags()
     g = Game(db, rid)
     check("三种换完 → 不能再换", g.haishin_swap_can(0), False)
     check("三种换完 → 不再欠询问", g.pre_draw_pending(0), False)
     check("三种换完 → 挂不出询问", g.open_pre_draw_ask(0), False)
+
+    print("\n⑦ 海神借牌：客户端点「跳过」要真的放掉（2026-11-07 修）")
+    db, rid = setup("c12skip", 520, {0: {12}, 1: {1}})
+    g = Game(db, rid)
+    g._open_intercept(1, "5m", [[0, "haishin"]])
+    check("先挂上了", (g.haishin_offer or {}).get("owner"), 0)
+    r = g.pre_draw_skip(0)
+    check("跳过返回 skipped", bool(r.get("skipped")), True)
+    g = Game(db, rid)
+    check("跳过之后 offer 清掉", g.haishin_offer, None)
+    check("跳过之后不再挂着询问", g.cur_ask, None)
+
+    print("\n⑧ 海神换走「刚摸的牌」不算动了他的手牌（策略 5-1 不 +1，2026-11-07）")
+    db, rid = setup("c12drawn", 521, {0: {12}, 1: {5}})
+    g = Game(db, rid)
+    g._open_intercept(1, "5m", [[0, "haishin"]])
+    g.haishin_give(0, "5m")
+    g = Game(db, rid)
+    check("换走刚摸的牌 → 策略计数不涨", g.card05_counter.get(1, 0), 0)
+    check("也不给换牌机会", g.card05_offer.get(1), None)
 
     print("\n" + "=" * 70)
     print(f" 通过 {PASS} 项，失败 {FAIL} 项")

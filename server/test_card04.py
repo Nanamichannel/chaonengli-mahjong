@@ -101,6 +101,8 @@ def main() -> int:
     check("窗口还在等我（没做完）", sorted(g.deal_wait), [0])
     check("流程中不再给「开始」", g.state_for(0)["deal_skill"]["mine"], [])
     check("state 里有流程", g.state_for(0)["deal_flow"].get("n"), 3)
+    check("流程里带上「即将被换的牌」", [str(t) for t in (g.state_for(0)["deal_flow"].get("tiles") or [])],
+          ["dong", "nan", "xi"])
     check("别人看不到我的流程", g.state_for(1).get("deal_flow"), None)
 
     # 张数不对要拒绝

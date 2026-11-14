@@ -115,13 +115,17 @@ def main() -> int:
     r = g.card09_swap(0, 1, "dong", 1)
     check("换到的是牌河那张", r.get("got"), "3m")
     check("下一次只能用 Skill2", int(r.get("next", 0)), 2)
+    # ★ 2026-11-07：间合守/攻 要播报「换走了哪张牌」
+    _b09 = str((g.broadcast or {}).get("text", ""))
+    check("间合守播报了换走的牌", "【间合守】" in _b09 and "【三万】" in _b09, True)
+    check("播报里写了自己牌河", "自己牌河的【三万】" in _b09, True)
     g = to_draw(Game(db, rid), 0)
     check("王手里多了 3m", g.hand(0).count("3m"), 2)
     check("手里少了一张东", g.hand(0).count("dong"), 0)
     row = g.db._row("SELECT tile, face_down FROM round_discards WHERE round_id=? AND seq=?",
                     (rid, 1))
     check("牌河那个位置变成我的手牌", row["tile"], "dong")
-    check("还是明置", int(row["face_down"]), 0)
+    check("换过去的是暗置", int(row["face_down"]), 1)
     check("state 里 next=2", g.state_for(0)["card09_next"], 2)
 
     # ── ④ 轮换规则 ─────────────────────────────────────────────
@@ -138,6 +142,10 @@ def main() -> int:
     r2 = g.card09_swap(0, 2, "1m", 3)
     check("S2 可以换别家的牌", r2.get("got"), "7s")
     check("换完下一次回到 Skill1", int(r2.get("next", 0)), 1)
+    _b09b = str((g.broadcast or {}).get("text", ""))
+    check("间合攻播报了换走的牌 + 谁的牌河",
+          ("【间合攻】" in _b09b and "【七条】" in _b09b
+           and "牌河的【七条】" in _b09b and "自己牌河" not in _b09b), True)
     g = next_turn(g)
     try:
         g.card09_swap(0, 1, "2m", 2)          # 2 号 seq 是别家的河

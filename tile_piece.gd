@@ -2,6 +2,7 @@ class_name TilePiece
 extends Node2D
 
 const SelFrame := preload("res://sel_frame.gd")   # 统一彩框（图片）
+const UiSfx := preload("res://ui_sfx.gd")         # UI 音效（悬浮手牌等）
 
 # 一张牌的 7 种显示形式，每种对应一个子 Sprite2D
 const FORMS := ["face", "face_meld", "back", "back_meld", "river", "rot", "dora",
@@ -251,7 +252,12 @@ func _update_hit(enabled: bool, p_scale: Vector2) -> void:
 	# 牌河/牌山的点击框就会又小又偏。这里只按基准尺寸来。
 	var sz := _base_size
 	_hit.size = sz
-	_hit.position = -sz * 0.5
+	# ★ 2026-11-14（用户反馈）：判定框**始终留在牌的原始位置**。
+	#   以前它跟着牌一起上移 HOVER_RAISE → 鼠标停在牌的下半部时，牌一抬鼠标就出框 →
+	#   立刻落下 → 又进框 → 牌反复上下抖。
+	#   现在抬起只动画面，判定框往下补回同样的距离（手牌旋转恒为 0，直接用 y）。
+	var _comp := HOVER_RAISE if (_hovered and not is_flying()) else 0.0
+	_hit.position = -sz * 0.5 + Vector2(0.0, _comp)
 
 # 父节点 reset() 时调用：只隐藏，不动 _hovered（否则每次轮询都会把抬起状态清掉）
 func hide_piece() -> void:
@@ -276,11 +282,17 @@ func set_alpha(a: float) -> void:
 
 # ── 悬停抬起：动效完全由这张牌自己负责 ──
 func _on_hover_enter() -> void:
-	if not _hover_enabled or _hovered or is_flying():
+	if not _hover_enabled or _hovered:
+		return
+	# ★ 音效先响：以前 is_flying() 一起挡在开头 → 摸牌/理牌那 0.22s 里指上来的牌没声，
+	#   要等下一张才响，听起来就是「音效延迟/不跟手」（用户 2026-11-14 反馈）。
+	UiSfx.play("hover")
+	if is_flying():
 		return                                # 正在飞 → 先别抢位置，落地再说
 	_hovered = true
 	z_index = 1
 	position = _base_pos + Vector2(0.0, -HOVER_RAISE)
+	_update_hit(_hover_enabled and not is_flying(), scale)   # 判定框补回来，别再抖
 
 func _on_hover_exit() -> void:
 	if not _hovered:
@@ -290,6 +302,7 @@ func _on_hover_exit() -> void:
 		return                                # 位置归补间管
 	z_index = 0
 	position = _base_pos
+	_update_hit(_hover_enabled, scale)        # 判定框回原位（和牌一起回去）
 
 # 换牌技能：牌河里的牌临时变成可点
 func set_river_info(seq: int, down: bool, seat := -1) -> void:

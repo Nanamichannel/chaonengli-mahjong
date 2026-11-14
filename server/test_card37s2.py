@@ -23,7 +23,7 @@ from tiles import parse_hand                         # noqa: E402
 
 PASS = FAIL = 0
 
-H0 = "123m456m789m234p5z3s"                          # 14 张（刚摸 3s）
+H0 = "123m456m789m234p5z"                            # 13 张（摸牌前，用户口径 2026-11-11）
 H1 = "5p5p2p3p4p6p7p8p1s2s3s9s9s"                    # 两张 5p（下家）
 H2 = "5p6p7p8p9p1s2s3s4s7z7z1m2m"                    # 一张 5p（对家）
 H3 = "1s2s3s4s5s6s7s8s9s2z2z3z4z"                    # 没有 5p（上家）
@@ -42,7 +42,7 @@ def check(name, got, want=True):
 def setup(tag):
     db, rid = t30.setup(tag, card=37, mains=[37, 6, 7, 8])
     for s, h in enumerate((H0, H1, H2, H3)):
-        tg.set_hand(db, rid, s, parse_hand(h), drawn="3s" if s == 0 else None)
+        tg.set_hand(db, rid, s, parse_hand(h), drawn=None)   # 摸牌前：谁都没有「刚摸的牌」
     with db.tx():
         db.conn.execute("DELETE FROM round_dora WHERE round_id=?", (rid,))
         db.conn.execute("DELETE FROM round_discards WHERE round_id=?", (rid,))
@@ -51,7 +51,7 @@ def setup(tag):
     g = Game(db, rid)
     g.granted = {0: {37}}
     g.round_phase = "play"
-    g.phase = "discard"
+    g.phase = "draw"                      # 强运是摸牌前发动
     g.turn = 0
     g.deal_wait = set()
     g.deal_used = set()
@@ -70,9 +70,9 @@ def main() -> int:
 
     print("\n① 注册 / 时机")
     check("名字", skills.info(37, 2).get("name"), "强运")
-    check("时机 = 摸牌后", skills.timing(37, 2), "draw")
+    check("时机 = 摸牌阶段（摸牌前发动）", skills.timing(37, 2), "draw")
 
-    print("\n② 摸牌后能发动；没摸牌不能")
+    print("\n② 摸牌前能发动；不是我的回合不能")
     db, rid = setup("c37s2a")
     g = Game(db, rid)
     check("能发动", g.c37s2_can(0), True)
@@ -84,30 +84,28 @@ def main() -> int:
     g.save_flags()
     g = Game(db, rid)
 
-    print("\n③ 换牌：下家 2 张 + 对家 1 张 → 依次对 第 4/8/12 张")
+    print("\n③ 换牌：下家 2 张 + 对家 1 张 → 换到「我即将摸的那张」（第 1 张）")
     seqs = g._upcoming_wall_seqs(16)
-    picks = [int(seqs[i]) for i in (3, 7, 11)]
-    before_wall = [str(db.tile_at_seq(rid, s) or "") for s in picks]
+    picks = [int(seqs[0])]          # 2026-11-11：摸牌前发动 → 第 1 张就是我马上要摸的那张
+    before_wall = [str(db.tile_at_seq(rid, sc) or "") for sc in picks]
     rows1 = hand_rows(db, rid, 1)
-    rows2 = hand_rows(db, rid, 2)
     p1 = [r for r in rows1 if r["tile"] == "5p"]
-    p2 = [r for r in rows2 if r["tile"] == "5p"]
     check("下家两张 5p", len(p1), 2)
-    check("对家一张 5p", len(p2), 1)
-    before_hand = {}
-    for r in p1 + p2:
-        before_hand[int(r["wall_seq"])] = str(r["tile"])
 
     r = g.c37s2_apply(0, "5p")
-    check("换了 3 组", int(r.get("count", 0)), 3)
-    after_wall = [str(Game(db, rid).db.tile_at_seq(rid, s) or "") for s in picks]
-    check("牌山第 4/8/12 张都变成 5p", after_wall, ["5p", "5p", "5p"])
+    _bc = str((g.broadcast or {}).get("text", ""))
+    check("强运播报里说了运的是什么牌", "五筒" in _bc, True)
+    _lg = [e for e in (g.broadcast_log or []) if int(e.get("card", 0)) == 37]
+    check("右上角记录里也有「要了哪张牌」",
+          ("五筒" in str((_lg[-1] if _lg else {}).get("text", ""))), True)
+    check("记录没多出一条重复的「发动了」", len(_lg), 1)
+    check("只换 1 张", int(r.get("count", 0)), 1)
+    after_wall = [str(Game(db, rid).db.tile_at_seq(rid, sc) or "") for sc in picks]
+    check("我下一张摸牌变成 5p", after_wall, ["5p"])
     g2 = Game(db, rid)
-    got1 = [str(x["tile"]) for x in hand_rows(db, rid, 1) if int(x["wall_seq"]) in (int(p1[0]["wall_seq"]), int(p1[1]["wall_seq"]))]
-    got2 = [str(x["tile"]) for x in hand_rows(db, rid, 2) if int(x["wall_seq"]) == int(p2[0]["wall_seq"])]
-    check("下家那两张拿到牌山的牌",
-          sorted(got1), sorted([before_wall[0], before_wall[1]]))
-    check("对家那张拿到第 12 张", got2, [before_wall[2]])
+    got1 = [str(x["tile"]) for x in hand_rows(db, rid, 1)
+            if int(x["wall_seq"]) == int(p1[0]["wall_seq"])]
+    check("下家那一张拿到牌山原来的第 1 张", got1, [before_wall[0]])
     check("记了一次性", g2.skill_used(0, 37, 2), True)
     try:
         g2.c37s2_apply(0, "1m")
@@ -115,7 +113,7 @@ def main() -> int:
     except RuleError:
         check("不能发动第二次", True, True)
 
-    print("\n④ 三家都没有这种牌 → 报错（不消耗）")
+    print("\n④ 三家都没有这种牌 → 报错，但照样算用掉一次")
     db2, rid2 = setup("c37s2b")
     g3 = Game(db2, rid2)
     try:
@@ -123,7 +121,16 @@ def main() -> int:
         check("报错", False, True)
     except RuleError as e:
         check("报错：三家都没有", "都没有" in str(e), True)
-    check("没消耗", Game(db2, rid2).skill_used(0, 37, 2), False)
+    check("失败也计一次", Game(db2, rid2).skill_used(0, 37, 2), True)
+    _lg2 = [e for e in (Game(db2, rid2).broadcast_log or [])
+            if int(e.get("card", 0)) == 37]
+    check("播报写了发动失败",
+          "失败" in str((_lg2[-1] if _lg2 else {}).get("text", "")), True)
+    try:
+        Game(db2, rid2).c37s2_apply(0, "nan")
+        check("失败后本小局不能再发动", False, True)
+    except RuleError as e:
+        check("失败后本小局不能再发动", "一次" in str(e) or "不能" in str(e), True)
 
     print("\n⑤ 所有种类都能选（自风牌也行）")
     db3, rid3 = setup("c37s2c")
@@ -132,7 +139,7 @@ def main() -> int:
     check("state 里没限制牌种（客户端给 34 种）", True, True)
     r4 = g4.c37s2_apply(0, "zhong")            # 客户端传的是内部牌种名（7z = zhong）
     # 下家 2 张 + 对家 2 张（H2 里也有 7z7z）→ 正好 4 组（= 第 4/8/12/16 张）
-    check("换了 4 张（上限）", int(r4.get("count", 0)), 4)
+    check("只换 1 张", int(r4.get("count", 0)), 1)
 
     print("\n⑥ 交换不改摸牌顺序")
     db4, rid4 = setup("c37s2d")

@@ -120,7 +120,7 @@ REGISTRY: dict[tuple[int, int], dict] = {
     # 名字是空的（「玩家发动了【】」），客户端拿到的 skill_name 也是空串。
     (1, 2): {"name": "避开", "kind": "evade", "timing": "draw"},
     (2, 1): {"name": "画板", "kind": "board", "timing": "draw"},
-    (2, 2): {"name": "换牌", "kind": "swap3", "timing": "draw"},
+    (2, 2): {"name": "想象", "kind": "swap3", "timing": "draw"},
     (24, 1): {"name": "一发", "kind": "ippatsu", "timing": "draw"},
     (24, 2): {"name": "未来", "kind": "future", "timing": "draw"},
 }
@@ -345,8 +345,16 @@ def note_char_use(db, seat: int, card: int) -> None:
 
 
 def set_char_use(db, seat: int, card: int, ri: int) -> None:
+    """记「这张卡第一次发动是在第几局」—— 寿命起点。
+
+    ★ 只在第一次写：以前每发动一次就覆盖成本局，于是「东三用过 → 东四又用 →
+      记录变东四 → 南一还能用」，一直用一直续命，永远不过期。
+    """
     used = _char_use(db)
-    used[f"{int(seat)}:{int(card)}"] = int(ri)
+    key = f"{int(seat)}:{int(card)}"
+    if key in used:
+        return
+    used[key] = int(ri)
     with db.tx():
         db.conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES('char_use', ?)",
                         (json.dumps(used, ensure_ascii=False),))
@@ -558,6 +566,85 @@ def card01_s1_plan(g, seat: int) -> dict | None:
 def card01_s1_bonus_for(g, seat: int) -> int:
     """奖励番：门清 +2、副露 +1（播报用）。"""
     return 2 if agari.is_closed(g.melds(seat)) else 1
+
+
+# (round_id, 手牌, 副露) → {(切出去的牌种): {(和到的牌种): [番种…]}}
+# state_for 每推一次会问好几遍，必须记忆化，不然一次要跑 14×34 遍判定。
+_C01_PAT_CACHE: dict = {}
+
+
+def _c01_melds_sig(melds) -> tuple:
+    return tuple((str(m.get("kind", "")), tuple(str(x) for x in (m.get("tiles") or [])))
+                 for m in (melds or []))
+
+
+def card01_s1_pat_pairs(g, seat: int) -> dict:
+    """国标用：哪些「切 d + 和 w」的组合能凑出五门齐 / 花龙 / 三色三步高。
+
+    返回 {(切出去的牌种): {(和到的牌种): [番种…]}}；只收**有番种**的组合。
+    判法和结算完全一致（`_ctx` 里 `pattern_bonus=True`），所以「宣言时成立 = 结算时也成立」。
+    ★ 用户口径 2026-11-07：「已经凑齐番种 → 换任何待牌都保住 → 自动放开成任选胡张」
+      在这里是自然结果：那种切法下面 34 张待牌全都会进 row。
+    """
+    hand = list(g.hand(seat))
+    melds = g.melds(seat)
+    if len(hand) % 3 != 2:
+        return {}
+    counts = counts_of(hand)
+    if sum(counts) + 3 * len(melds) != 14:
+        return {}
+    key = (int(g.round_id), tuple(sorted(hand)), _c01_melds_sig(melds))
+    hit = _C01_PAT_CACHE.get(key)
+    if hit is not None:
+        return hit
+
+    c = list(counts)
+    out: dict = {}
+    for d in range(34):
+        if c[d] == 0:
+            continue
+        c[d] -= 1
+        row: dict = {}
+        for w in range(34):
+            if c[w] >= 4:
+                continue
+            c[w] += 1
+            if agari.is_winning(c, melds):
+                tiles14 = tiles_of(c)
+                try:
+                    res = yaku.judge(_ctx(g, seat, tiles14, melds, TILE_KINDS[w]))
+                except Exception:                       # noqa: BLE001
+                    res = None
+                pats = _patterns_of(res) if res else []
+                if pats:
+                    row[TILE_KINDS[w]] = pats
+            c[w] -= 1
+        c[d] += 1
+        if row:
+            out[TILE_KINDS[d]] = row
+
+    if len(_C01_PAT_CACHE) > 32:                        # 别无限长
+        _C01_PAT_CACHE.clear()
+    _C01_PAT_CACHE[key] = out
+    return out
+
+
+def card01_s1_patterns(g, seat: int, hand13: list, win: str) -> list:
+    """手牌 13 张 + 和到 win 之后能凑出哪些特殊番种（空 = 凑不出）。
+
+    用于「宣言的这张卡不卡得住」的切牌校验 / 摸牌前换牌。
+    """
+    melds = g.melds(seat)
+    tiles14 = [str(t) for t in hand13] + [str(win)]
+    if len(tiles14) % 3 != 2:
+        return []
+    try:
+        if not agari.is_winning(counts_of(tiles14), melds):
+            return []
+        res = yaku.judge(_ctx(g, seat, tiles14, melds, str(win)))
+    except Exception:                                   # noqa: BLE001
+        return []
+    return _patterns_of(res) if res else []
 
 
 # ────────────────────────── Card01 Skill2「避开」──────────────────────────

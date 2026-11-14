@@ -90,7 +90,7 @@ def main() -> int:
     check("能发动", g.c37s1_can(0), True)
     check("能开的杠有暗杠 1m", ("ankan", "1m") in g.c37s1_kans(0), True)
     r = g.c37s1_arm(0)
-    check("不再设置 ready（岭上牌已提前换位）", bool(r.get("ready")), False)
+    check("开杠后设置 ready（这一手自摸 ×2）", bool(r.get("ready")), True)
     check("不再返回 swapped（换的是牌山槽位）", str(r.get("swapped", "")), "")
     g2 = Game(db, rid)
     check("杠已经开出来", [m.get("kind") for m in g2.melds(0)], ["ankan"])
@@ -100,13 +100,17 @@ def main() -> int:
     check("出现自摸按钮", "tsumo" in la, True)
 
     print("\n③ 点自摸 → 岭上开花 + 得点 ×2")
+    _b0 = g2._judge_win(0, str(g2.drawn_tile(0)), tsumo=True)
+    _base = g2.settle_preview(0, None, "tsumo", dict(_b0), dry_run=True)
+    _base_total = int((_base.get("pays") or {}).get("total", 0))
     g2.act(0, "tsumo")
     g3 = Game(db, rid)
     res = g3.result or {}
     check("和了", res.get("result"), "tsumo")
     names = res.get("yaku_names") or []
     check("有岭上开花", "岭上开花" in names, True)
-    check("正常判定（不再强塞 ×2 标记）", True, True)
+    check("×2：结算得点是基准的两倍", int(res.get("points", 0)), _base_total * 2)
+    check("ready 已消费（不会留到下一手）", Game(db, rid).c37s1_ready, -1)
     dd = res.get("deltas") or {}
     check("赢家得点 = points",
           int(dd.get("0", dd.get(0, -1))), int(res.get("points", -2)))
@@ -120,7 +124,7 @@ def main() -> int:
     check("能发动（听牌 + 有杠）", g4.c37s1_can(0), True)
     r2 = g4.c37s1_arm(0)
     g5 = Game(db2, rid2)
-    check("同样不再设置 ready", bool(r2.get("ready")), False)
+    check("明杠路径同样设置 ready", bool(r2.get("ready")), True)
     check("不再给原因（换位失败就摸原牌）", True, True)
     check("杠还是开了", [m.get("kind") for m in g5.melds(0)], ["ankan"])
     check("没有结算", bool(g5.result), False)
@@ -145,7 +149,7 @@ def main() -> int:
     g8 = Game(db5, rid5)
     g8.c37s1_arm(0)
     g8 = Game(db5, rid5)
-    check("不再先确认 ready（改成提前换位）", int(g8.c37s1_ready), -1)
+    check("ready 指向发动者（×2 用）", int(g8.c37s1_ready), 0)
     g8._do_discard(0, tile="9s")
     check("打牌后 ready 清掉", int(Game(db5, rid5).c37s1_ready), -1)
 

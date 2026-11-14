@@ -523,10 +523,17 @@ def op_next(db: DB, req: dict) -> dict:
     # 整场已经打完了（比如东风战打满）→ 再按「下一局」就是开新的一场
     mrow = db._row("SELECT status, room_id FROM matches WHERE match_id=?", (row["match_id"],))
     if mrow and mrow["status"] != "playing":
-        started = op_start(db, req)
-        started["created"] = True
-        started["new_match"] = True
-        return started
+        # ★ 2026-11-08：半庄已经结束 → **不能**在这里悄悄开一场新的半庄。
+        #   以前这里直接 op_start：第二个点「下一局」的窗口会把整局拉起来，
+        #   别人还在终局确认面板上。现在只回「已经打完了」，
+        #   真要开新半庄走大厅 / new_hanchan。
+        _mid = int(row["match_id"])
+        _fin = _match_final(db, _mid)
+        return {"ok": True, "state": _state(db, rid, None if seat < 0 else seat),
+                "events": [], "result": None, "round_id": rid, "created": False,
+                "match_finished": True, "final": _fin, "final_rank": _final_rank(_fin),
+                "confirmed": sorted(_match_confirmed(db, _mid)), "match_id": _mid,
+                "humans": sorted(_human_seats(db))}
 
     sticks = int(row["riichi_sticks"] or 0)             # 上一局的立直供托（荒牌流局才留得下来）
     f2_skip = bool(req.get("f2")) and row["status"] == "playing"
@@ -653,6 +660,10 @@ def _match_finished_info(db: DB, rid) -> dict:
 def op_match_confirm(db: DB, req: dict) -> dict:
     """半庄终局确认：四家都点过确认 → 清房间数据，客户端各自回大厅。"""
     seat = int(req.get("seat", -1))
+    # ★ 2026-11-08：确认面板上的窗口也要续租（以前只有带座位的普通请求才续，
+    #   终局面板上只发 match_confirm → 12 秒后这家就不算「真人」了）。
+    if 0 <= seat <= 3:
+        _touch_lease(db, seat, req.get("pid"))
     mid = _match_id_of(db)
     if mid is None:
         # 数据已经被清掉了（有人先确认完）→ 直接告诉客户端「都结束了，可以退」
@@ -836,8 +847,13 @@ def op_poll(db: DB, req: dict) -> dict:
     ver = _state_ver(st)
     humans = sorted(_human_seats(db))
     if str(req.get("ver", "")) == ver:
-        return {"ok": True, "state": None, "events": [], "result": None,
-                "round_id": rid, "ver": ver, "same": True, "humans": humans}
+        # ★ 2026-11-08：半庄打完后 state 冻结 → ver 不变 → 一直走这一支。
+        #   以前这里不带 match_finished → 非「最后确认那一家」的窗口
+        #   永远等不到终局名次面板（实机：0/3 号位卡在和牌结算）。
+        _same = {"ok": True, "state": None, "events": [], "result": None,
+                 "round_id": rid, "ver": ver, "same": True, "humans": humans}
+        _same.update(_match_finished_info(db, rid))
+        return _same
     g = _game(db, rid)
     out = {"ok": True, "state": st, "events": [], "result": g.result,
            "round_id": rid, "ver": ver, "same": False, "humans": humans}
@@ -1224,12 +1240,14 @@ _RIICHI_BLOCK_OPS = {
 # 卡号/技能号在 _SKILL_OP_PAIRS 里给。import 时断言三张表正好覆盖 OPS 全集，
 # 以后新增 op 忘登记会直接抛错（历史 bug：白名单漏了 deal_skill 等 8 个发动点）。
 _NO_GATE_OPS = {
+    "dev_haidi",                  # 调试：摆海底场景（不问看破）
+    "c35_skip",                   # 流势：跳过（只是不排了，不算发动）
     # ── 非技能：流程 / 查询 / 游戏动作 ──
     "join", "result_confirm", "next", "new_hanchan", "match_confirm",
     "start", "deal_step", "state", "poll", "advance",
     "act", "wall", "step", "tenpai", "furiten", "ron", "judge",
     "wipe", "view_hand",
-    "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
+    "lobby_leave", "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
     "lobby_state", "lobby_unorder", "test_seats",
     "rename",                       # 本局昵称：不是技能，不问看破
     "voice_pack",                   # 角色语音包：不是技能，不问看破
@@ -1264,6 +1282,7 @@ _NO_GATE_OPS = {
     "c41_skip",                   # 复制：这次不复制
     "c45s2_pick",                 # 替身：第二位指定切哪张（效果执行，不是发动）
     "c40s2_pick",                 # 同盟：发动者挑一组搭子（效果执行）
+    "jiasuo",                     # 枷锁：定番数（发动那一步已经问过看破）
     "c43s2_answer",               # 免疫：回答要不要免疫（询问的答复）
     "c42s2_answer",               # 夺目：结算前那一问的答复（不是发动点）
     "support_mute",               # 协战卡遮罩：开关，不是技能发动
@@ -1331,6 +1350,7 @@ _GATE_PRECHECK = {
     "c45s1_apply": "c45s1_can",
     "c45s2_apply": "c45s2_can",
     "c46s1_apply": "c46s1_can",
+    "jiasuo_apply": "jiasuo_can",
     "qianlu": "qianlu_can",
 }
 
@@ -1388,7 +1408,7 @@ _SKILL_OP_PAIRS = {
     "diaoyu_force": (15, 1),      # 钓鱼
     "chuancheng": (16, 1),        # 传承
     "yanjiu": (17, 1),            # 研究
-    "jiasuo": (18, 1),            # 枷锁
+    "jiasuo_apply": (18, 1),      # 枷锁：点图标 = 发动（定番数是第二步，不再问看破）
     "link": (18, 2),              # 连接
     "shenshan_toggle": (19, 1),   # 深山（开/关那一步算发动）
     "nongwu": (19, 2),            # 浓雾
@@ -1645,7 +1665,8 @@ def op_card11s2_swap(db: DB, req: dict) -> dict:
     seat = int(req.get("seat", 0))
     r = g.card11s2_swap(seat, int(req.get("river", -1)),
                         int(req.get("ts", -1)), int(req.get("slot", -1)))
-    return {"ok": True, "card11s2": r, "state": g.state_for(seat), "events": [],
+    ev = list(r.pop("draw_events", None) or []) if isinstance(r, dict) else []
+    return {"ok": True, "card11s2": r, "state": g.state_for(seat), "events": ev,
             "result": g.result, "round_id": rid}
 
 
@@ -1705,13 +1726,14 @@ op_c32s1_swap = _simple("c32s1_swap", lambda g, s, r: g.c32s1_swap(
 
 # ── Card34 S1【厄运】：静默期内只有「非技能类」的 op 放行 ─────────────
 _C34_FREE_OPS = {
+    "dev_haidi",                  # 调试：摆海底场景
     # 基础：看状态 / 推进 / 打牌 / 荣和 / 见逃 / 纯判定
     "join", "state", "step", "advance", "act", "pass", "ron", "tenpai", "furiten",
     "match_confirm",
     "judge", "wall", "view_hand", "deal_step", "wipe", "next", "start",
     "new_hanchan", "test_seats",
     # 大厅
-    "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
+    "lobby_leave", "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
     "lobby_state", "lobby_unorder", "lobby_add_bot", "lobby_remove_bot",
     "rename",
     # 应答类（被别人问 / 取消 / 遮罩）：不是「自己发动技能」
@@ -2086,6 +2108,16 @@ def op_c36s2_arm(db: DB, req: dict) -> dict:
             "result": g.result, "round_id": rid}
 
 
+def op_c35_skip(db: DB, req: dict) -> dict:
+    """【流势】跳过：不排了，牌山保持原样（不计次数、不问看破）。"""
+    rid = req.get("round_id") or _get_round_id(db)
+    g = _game(db, rid)
+    seat = int(req.get("seat", 0))
+    g.c35_skip(seat)
+    return {"ok": True, "c35_skip": True, "state": g.state_for(seat),
+            "events": [], "result": g.result, "round_id": rid}
+
+
 def op_c35s1_set(db: DB, req: dict) -> dict:
     """Card35 S1【流势】：副露后自动弹面板，排接下来 4 张牌山（不限次数）。"""
     rid = req.get("round_id") or _get_round_id(db)
@@ -2102,6 +2134,20 @@ def op_c34s2_probe(db: DB, req: dict) -> dict:
     g = _game(db, rid)
     seat = int(req.get("seat", 0))
     return {"ok": True, "c34s2": g.c34s2_probe(seat), "round_id": rid}
+
+
+def op_dev_haidi(db: DB, req: dict) -> dict:
+    """调试：把局面摆成「再打一张就触发【海底】」（autoplay.cfg 里 haidi=1）。"""
+    # ★ 只给编辑器（F5）用：客户端只有编辑器构建才会带 dev=editor，
+    #   导出的 exe / 正常联机客户端一律拒绝（不能拿它来挡真正的对局）。
+    if str(req.get("dev", "")) != "editor":
+        raise RuleError("dev_haidi 只能在编辑器（F5）里用")
+    rid = req.get("round_id") or _get_round_id(db)
+    g = _game(db, rid)
+    seat = int(req.get("seat", 0))
+    r = g.dev_haidi_setup(seat)
+    return {"ok": True, "dev_haidi": r, "state": g.state_for(seat), "events": [],
+            "result": g.result, "round_id": rid}
 
 
 def op_c33s2_try(db: DB, req: dict) -> dict:
@@ -2238,8 +2284,21 @@ def op_kangpo(db: DB, req: dict) -> dict:
             "result": g.result, "round_id": rid}
 
 
+def op_jiasuo_apply(db: DB, req: dict) -> dict:
+    """Card18 S1 枷锁【第一步】：点技能图标 = 发动（看破点在这一步）
+
+    发动之后 state 才下发 ura_peek（里宝指示牌），玩家看完再 op=jiasuo 定番数。
+    """
+    rid = req.get("round_id") or _get_round_id(db)
+    g = _game(db, rid)
+    seat = int(req.get("seat", 0))
+    r = g.jiasuo_apply(seat)
+    return {"ok": True, "jiasuo_apply": r, "state": g.state_for(seat), "events": [],
+            "result": g.result, "round_id": rid}
+
+
 def op_jiasuo(db: DB, req: dict) -> dict:
-    """Card18 S1 枷锁：定本局期待的番数"""
+    """Card18 S1 枷锁【第二步】：定本局期待的番数（不重复问看破）"""
     rid = req.get("round_id") or _get_round_id(db)
     g = _game(db, rid)
     seat = int(req.get("seat", 0))
@@ -2384,14 +2443,20 @@ def op_pofa_pass(db: DB, req: dict) -> dict:
 
 
 _PRE_DRAW_KIND_SET = {"oracle", "card09", "haishin_swap", "zhalie",
-                      "future", "c26", "c45"}
+                      "future", "c26", "c45", "c02s2", "c02s1"}
 
 
 _PRE_DRAW_CONSUME_OPS = {
     "oracle_pick", "oracle_toggle", "card09_swap", "zhalie_swap",
     "future_set", "future_abort", "c26_set", "c26_skip",
     "c45s1_apply", "haishin_swap",
+    "board", "swap",                 # Card02 S1 画板 / S2 换牌（摸牌前发动）
+    "c37s2_apply",                   # Card37 S2 强运（摸牌前发动，用户口径 2026-11-11）
 }
+
+# 这些 op 只关「自己那一笔」询问（别把同时挂着的别的摸牌前询问吞掉）
+_PRE_DRAW_CONSUME_KIND = {"board": "c02s1", "swap": "c02s2",
+                           "c37s2_apply": "c37s2"}
 
 
 def op_pre_draw_skip(db: DB, req: dict) -> dict:
@@ -2422,6 +2487,19 @@ def op_haishin_start(db: DB, req: dict) -> dict:
     r = g.haishin_start(seat)
     return {"ok": True, "haishin": r, "state": g.state_for(seat), "events": [],
             "result": g.result, "round_id": rid}
+
+
+# 海神借牌询问的超时（秒）：超过这个时间没人答复就自动放掉，别把全桌挂死。
+HAISHIN_ASK_TIMEOUT = 60.0
+
+
+def _offer_stale(off: dict, limit: float) -> bool:
+    """这笔询问挂太久了？（off["ts"] 是挂上那一刻的 time.time()）"""
+    try:
+        ts = float((off or {}).get("ts") or 0)
+    except (TypeError, ValueError):
+        return False
+    return ts > 0 and (time.time() - ts) >= float(limit)
 
 
 def op_haishin_pass(db: DB, req: dict) -> dict:
@@ -2632,7 +2710,7 @@ def op_guobiao(db: DB, req: dict) -> dict:
     rid = req.get("round_id") or _get_round_id(db)
     g = _game(db, rid)
     seat = int(req.get("seat", 0))
-    ev = g.guobiao_declare(seat, str(req.get("tile", "")))
+    ev = g.guobiao_declare(seat, str(req.get("kind") or req.get("tile", "")))
     return {"ok": True, "event": ev, "state": g.state_for(seat), "events": [],
             "result": g.result, "round_id": rid}
 
@@ -2649,11 +2727,11 @@ def op_yiding(db: DB, req: dict) -> dict:
     src = g.yiding_src_of(seat) or [21, 2]
     if not req.get("_gate_ok"):
         if g.kangpo_gate(seat, int(src[0]), int(src[1]), op="yiding",
-                         payload={"tile": str(req.get("tile", "")),
+                         payload={"kind": str(req.get("kind") or req.get("tile", "")),
                                   "round_id": rid}):
             return {"ok": True, "need_kangpo": True, "state": g.state_for(seat),
                     "events": [], "result": g.result, "round_id": rid}
-    ev = g.yiding_declare(seat, str(req.get("tile", "")))
+    ev = g.yiding_declare(seat, str(req.get("kind") or req.get("tile", "")))
     return {"ok": True, "event": ev, "state": g.state_for(seat), "events": [],
             "result": g.result, "round_id": rid}
 
@@ -2791,7 +2869,14 @@ def op_step(db: DB, req: dict) -> dict:
                                      else g.youyin_offer)))) or {}
             who = int(off.get("owner", off.get("seat", -1)))
             if who == seat or who in humans:
-                ev = None                                    # 等他自己决定
+                # ★ 兜底（2026-11-06 实机卡桌）：客户端没弹窗 / 玩家挂机时，
+                #   一张借牌询问会把全桌挂在 phase="haishin" 上（实测卡了 2 分半）。
+                #   超过 HAISHIN_ASK_TIMEOUT 秒没人答复 → 自动放掉这次借牌。
+                if g.phase == "haishin" and _offer_stale(off, HAISHIN_ASK_TIMEOUT):
+                    print("[haishin] 借牌询问超时，自动跳过 seat=%d" % who)
+                    ev = g.haishin_pass(who)
+                else:
+                    ev = None                                    # 等他自己决定
             elif auto and who >= 0:
                 if g.phase == "haishin":
                     ev = g.haishin_pass(who)                 # 没人的座位 → 放弃借牌
@@ -2867,6 +2952,7 @@ OPS = {
     "lobby_join": lobby_mod.op_join,
     "lobby_add_bot": lobby_mod.op_add_bot,       # 放入人机（自动摸切 / 跳过技能）
     "lobby_remove_bot": lobby_mod.op_remove_bot,
+    "lobby_leave": lobby_mod.op_leave,       # 退出房间（清座位租约）
     "lobby_state": lobby_mod.op_state,
     "lobby_ready": lobby_mod.op_ready,
     "rename": lobby_mod.op_rename,          # 本局昵称
@@ -2926,7 +3012,9 @@ OPS = {
     "c33s2_try": op_c33s2_try,
     "c34s1_arm": op_c34s1_arm,
     "c34s2_probe": op_c34s2_probe,
+    "dev_haidi": op_dev_haidi,
     "c35s1_set": op_c35s1_set,
+    "c35_skip": op_c35_skip,
     "c36s2_arm": op_c36s2_arm,
     "c37s1_arm": op_c37s1_arm,
     "c37s2_apply": op_c37s2_apply,
@@ -2967,6 +3055,7 @@ OPS = {
     "ignite": op_ignite,
     "kangpo_answer": op_kangpo_answer,
     "kangpo_skip": op_kangpo_skip,
+    "jiasuo_apply": op_jiasuo_apply,
     "jiasuo": op_jiasuo,
     "link": op_link,
     "zhalie_swap": op_zhalie_swap,
@@ -3170,6 +3259,23 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                         _gx.c32s1_auto(_tgt_y)
                     except Exception:
                         pass
+                # ★ 2026-11-08：发动者「选自己一张牌去换」那一步也要兜底
+                _f32 = _gx.deal_flow or {}
+                _ow32 = int(_f32.get("seat", -1))
+                if (str(_f32.get("kind")) == "c32" and str(_f32.get("sub")) == "swap"
+                        and 0 <= _ow32 <= 3 and _ow32 not in _human_seats(db)):
+                    try:
+                        _gx.c32s1_auto_swap(_ow32)
+                    except Exception:
+                        pass
+                # ★ 2026-11-09【向听】宽松兜底（用户新口径）：
+                #   被问的那家 60 秒不交牌 → 替他交前两张；
+                #   发动者 60 秒不挑牌 → 直接放过这一步。
+                #   以前 deal_deadline=0.0「不做超时兜底」→ 一个人挂机就把整桌钉死。
+                try:
+                    _gx.c30s1_timeout()
+                except Exception:                            # noqa: BLE001
+                    pass
         # 看破挂起太久（持有者窗口关了 / 一直没回答）→ 自动放弃这一次，别把整局卡死
         # （c42s2_answer 自己也要排除：玩家卡着点答上来时别先被超时抢先结算掉）
         if op not in ("kangpo_answer", "kangpo_skip", "c42s2_answer"):
@@ -3357,7 +3463,8 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
             if _rid_pd and isinstance(_seat_pd, int) and 0 <= int(_seat_pd) <= 3:
                 try:
                     _gpd = _game(db, _rid_pd)
-                    if _gpd.close_pre_draw_ask(int(_seat_pd)):
+                    if _gpd.close_pre_draw_ask(
+                            int(_seat_pd), _PRE_DRAW_CONSUME_KIND.get(op, "")):
                         res["state"] = _gpd.state_for(int(_seat_pd))
                 except Exception:                        # noqa: BLE001
                     pass
@@ -3367,6 +3474,16 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
             res["ver"] = _state_ver(res["state"])
         return res
     except RuleError as e:
+        # ★ 2026-11-09：把「被拒绝」也记一笔 —— 否则线上问「为什么没生效」只能靠猜。
+        try:
+            _rid_rej = req.get("round_id") or _get_round_id(db)
+            if _rid_rej and isinstance(req.get("seat"), int) \
+                    and 0 <= int(req["seat"]) <= 3:
+                _game(db, _rid_rej).db._log(
+                    int(_rid_rej), int(req["seat"]), "op_rejected",
+                    {"op": str(req.get("op", "")), "error": str(e)})
+        except Exception:                                    # noqa: BLE001
+            pass
         return {"ok": False, "state": None, "events": [], "result": None, "error": str(e)}
     except Exception as e:                                    # noqa: BLE001
         return {"ok": False, "state": None, "events": [], "result": None,

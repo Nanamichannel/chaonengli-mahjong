@@ -76,23 +76,133 @@ static func _find_python() -> String:
 # ── 联机时的「非阻塞轮询」：发出去就返回，主线程每帧推一点（见 server_net.gd）──
 #   单机（本地 python 子进程）没有网络延迟，不需要这套 → 一律返回 false，调用方走同步。
 func bg_ok() -> bool:
-	return net != null and bool(net.enabled)
+	# 联机：HTTP 流式；单机：起 python 子进程 + 轮询输出文件（也不阻塞主线程）
+	return (net != null and bool(net.enabled)) or available
 
 
 func bg_busy() -> bool:
-	return bg_ok() and bool(net.bg_busy())
+	if net != null and bool(net.enabled):
+		return bool(net.bg_busy())
+	return _local_pid != 0
 
 
 func bg_send(req: Dictionary) -> bool:
-	if not bg_ok():
-		return false
-	return bool(net.bg_send(req))
+	if net != null and bool(net.enabled):
+		return bool(net.bg_send(req))
+	return _local_bg_send(req)
 
 
 func bg_poll() -> Dictionary:
-	if not bg_ok():
+	if net != null and bool(net.enabled):
+		return net.bg_poll()
+	return _local_bg_poll()
+
+
+# ── 单机非阻塞通道 ────────────────────────────────────────────────────
+# 主线程只做「写请求文件 / 起进程 / 每帧查输出文件」，python 跑在独立进程里。
+# 以前 _poll() 每 0.35s 同步 OS.execute 一次（实测 94~105ms），界面一顿一顿。
+var _local_pid := 0
+var _local_deadline := 0
+var _local_seq := 0
+var _local_req := ""
+var _local_res := ""
+
+
+# 房间号 → 单机数据库路径：data/rooms/<房间号>.db
+# （联机是服务端按 /rpc/<房间号> 分库；单机以前所有房间共用一个 mahjong.db，
+#   于是「换房间」其实还是同一张桌子，残留的人机/昵称都会跟着。）
+func _local_db_path() -> String:
+	var r := ""
+	if net != null:
+		r = String(net.room).strip_edges()
+	if r == "" or r == "default":
+		return ""
+	var safe := ""
+	for i in range(r.length()):
+		var ch := r.unicode_at(i)
+		var ok := (ch >= 48 and ch <= 57) or (ch >= 65 and ch <= 90) \
+			or (ch >= 97 and ch <= 122) or ch == 45 or ch == 95 \
+			or (ch >= 0x4E00 and ch <= 0x9FFF)
+		safe += (r[i] if ok else "_")
+	if safe == "":
+		return ""
+	var dir := _cli_path().get_base_dir().path_join("data").path_join("rooms")
+	DirAccess.make_dir_recursive_absolute(dir)
+	return dir.path_join(safe + ".db")
+
+
+func _local_bg_send(req: Dictionary) -> bool:
+	if not available or _local_pid != 0:
+		return false
+	if not req.has("pid"):
+		req = req.duplicate()
+		req["pid"] = OS.get_process_id()
+	_local_seq += 1
+	var tag := "%d_%d" % [OS.get_process_id(), _local_seq]
+	_local_req = "user://srv_bg_req_%s.json" % tag
+	_local_res = "user://srv_bg_res_%s.json" % tag
+	var req_abs := ProjectSettings.globalize_path(_local_req)
+	var res_abs := ProjectSettings.globalize_path(_local_res)
+	var f := FileAccess.open(_local_req, FileAccess.WRITE)
+	if f == null:
+		last_error = "请求文件写不了：" + req_abs
+		return false
+	f.store_string(JSON.stringify(req))
+	f.close()
+	if FileAccess.file_exists(_local_res):
+		DirAccess.remove_absolute(res_abs)
+	var args := PackedStringArray([_cli_path(), "--in", req_abs, "--out", res_abs])
+	var dbp := _local_db_path()
+	if dbp != "":
+		args.append_array(PackedStringArray(["--db", dbp]))
+	_local_pid = OS.create_process(python, args)
+	calls += 1
+	if _local_pid <= 0:
+		_local_pid = 0
+		last_error = "起不了 python 子进程"
+		return false
+	_local_deadline = Time.get_ticks_msec() + 5000
+	return true
+
+
+func _local_bg_poll() -> Dictionary:
+	if _local_pid == 0:
 		return {}
-	return net.bg_poll()
+	var timeout := Time.get_ticks_msec() > _local_deadline
+	var text := ""
+	if FileAccess.file_exists(_local_res):
+		var rf := FileAccess.open(_local_res, FileAccess.READ)
+		if rf != null:
+			text = rf.get_as_text()
+			rf.close()
+	if text.strip_edges() == "":
+		if not timeout:
+			return {}
+		if OS.is_process_running(_local_pid):
+			OS.kill(_local_pid)
+		_local_bg_reset()
+		last_error = "服务端没回话（单机）"
+		return {}
+	var data = JSON.parse_string(text)
+	if typeof(data) != TYPE_DICTIONARY:
+		if not timeout:
+			return {}                       # 文件可能还没写完
+		_local_bg_reset()
+		last_error = "返回的不是 JSON"
+		return {}
+	_local_bg_reset()
+	last_error = ""
+	return data
+
+
+func _local_bg_reset() -> void:
+	if _local_req != "" and FileAccess.file_exists(_local_req):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_local_req))
+	if _local_res != "" and FileAccess.file_exists(_local_res):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_local_res))
+	_local_pid = 0
+	_local_req = ""
+	_local_res = ""
 
 
 # ── 长连接推送（联机才有；单机返回 false / 空串）──
@@ -154,6 +264,9 @@ func _request_once(req: Dictionary) -> Dictionary:
 
 	var args := PackedStringArray([_cli_path(), "--in", req_abs,
 		"--out", res_abs])
+	var dbp2 := _local_db_path()
+	if dbp2 != "":
+		args.append_array(PackedStringArray(["--db", dbp2]))
 	var lines := PackedStringArray()
 	var code := OS.execute(python, args, lines, true)
 	calls += 1

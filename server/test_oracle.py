@@ -120,7 +120,9 @@ def main() -> int:
     check("窗口里不再等我（掷完就算决定完）", sorted(g2.deal_wait), [])
     check("阶段变切牌", g2.phase, "discard")
     b = g2.broadcast or {}
-    check("播报文字格式", b.get("text"), "【降神】：随机花色为【筒】")
+    check("播报文字格式：写了点数 + 降下哪门",
+          str(b.get("text", "")).startswith("【降神】掷出 ")
+          and "本局降下【筒门】" in str(b.get("text", "")), True)
     check("技能还在（不算一次性用掉）", 0 in g2.deal_used, False)
     check("state 里看得到花色", g2.state_for(0)["oracle"]["suit_cn"], "筒")
     check("别人看不到我的降神", g2.state_for(1).get("oracle"), None)

@@ -134,6 +134,14 @@ def main() -> int:
     rid5 = new_round(db5, 1801, ORD18)
     tg.set_hand(db5, rid5, 0, parse_hand("123m456p789s") + ["1p", "2p", "3s", "4s"], drawn="4s")
     g8 = Game(db5, rid5)
+    try:
+        g8.jiasuo_set(0, 3)
+        check("没发动就定番数要拒", False)
+    except RuleError as e:
+        check("没发动就定番数要拒", "先点技能图标发动" in str(e))
+    g8.round_phase = "deal"                  # 枷锁只能在配牌阶段发动
+    g8.save_flags()
+    g8.jiasuo_apply(0)
     r6 = g8.jiasuo_set(0, 3)
     check("枷锁定 3 番", r6.get("han"), 3)
     try:

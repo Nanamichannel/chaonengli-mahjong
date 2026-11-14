@@ -79,6 +79,15 @@ def deal_dora(g: Game, rid: int, ind: str = "1m") -> None:
     g.save_flags()
 
 
+def to_draw(g: Game, seat: int) -> Game:
+    """摸牌前：phase=draw，还没摸。"""
+    g.round_phase = "play"
+    g.turn = seat
+    g.phase = "draw"
+    g.save_flags()
+    return Game(g.db, g.round_id)
+
+
 def to_discard(g: Game, seat: int) -> Game:
     g.round_phase = "play"
     g.turn = seat
@@ -258,8 +267,8 @@ def main() -> int:
 
     db6 = tg.fresh_db("mg_fast")
     rid6 = new_round(db6, 976, ORD_11)
-    tg.set_hand(db6, rid6, 0, H13 + ["9s"], drawn="9s")
-    g8 = to_discard(Game(db6, rid6), 0)
+    tg.set_hand(db6, rid6, 0, H13)
+    g8 = to_draw(Game(db6, rid6), 0)
     check("牌河空 → 不能发动", g8.card11s2_can(0), False)
     for k, t in enumerate(["1p", "2p", "3p", "4p", "5p", "6p", "7p"]):
         add_discard(db6, rid6, 1, 101 + k, t)          # 下家 7 张：第 1/6/7 张可换
@@ -275,15 +284,17 @@ def main() -> int:
     except RuleError as e:
         check("第 2 列 → 拒绝", "第一列" in str(e))
 
+    _wanted = str(r2_want if False else "")
     r2 = g8.card11s2_swap(0, 101)
     check("换到的是牌河那张", r2.get("got"), "1p")
-    check("换出去的是刚摸的 9s", r2.get("gave"), "9s")
     row = db6._row("SELECT tile, face_down FROM round_discards WHERE round_id=? AND seq=?",
                    (rid6, 101))
-    check("牌河那张变成 9s（暗置）", (row["tile"], int(row["face_down"])), ("9s", 1))
+    check("牌河那张变成「本来要摸的」且暗置",
+          (row["tile"], int(row["face_down"])), (str(r2.get("gave")), 1))
     g9 = Game(db6, rid6)
-    check("我手里有了 1p", "1p" in list(g9.hand(0)), True)
-    check("我手里没 9s 了", "9s" in list(g9.hand(0)), False)
+    check("摸到的就是牌河那张 1p", g9.drawn_tile(0), "1p")
+    check("换完进入切牌", g9.phase, "discard")
+    check("手牌 14 张", len(g9.hand(0)), 14)
     check("用了就记一次", g9.skill_used(0, 11, 2), True)
     try:
         g9.card11s2_swap(0, 106)
@@ -294,10 +305,10 @@ def main() -> int:
     # 按「哪家 + 第几张」定位（客户端走这条路，不依赖全局 seq）
     db8 = tg.fresh_db("mg_fast3")
     rid8 = new_round(db8, 978, ORD_11)
-    tg.set_hand(db8, rid8, 0, H13 + ["9s"], drawn="9s")
+    tg.set_hand(db8, rid8, 0, H13)
     for k, t in enumerate(["1p", "2p", "3p", "4p", "5p", "6p"]):
         add_discard(db8, rid8, 2, 301 + k, t)
-    g11 = to_discard(Game(db8, rid8), 0)
+    g11 = to_draw(Game(db8, rid8), 0)
     try:
         g11.card11s2_swap(0, -1, 2, 1)                 # 对家第 2 张（第 2 列）
         check("按位置：第 2 列 → 拒绝", False)
@@ -307,15 +318,16 @@ def main() -> int:
     check("按位置：第 6 列可以换", r3.get("got"), "6p")
     row3 = db8._row("SELECT tile, face_down FROM round_discards WHERE round_id=? AND seq=?",
                     (rid8, 306))
-    check("对家那张变 9s 且暗置", (row3["tile"], int(row3["face_down"])), ("9s", 1))
+    check("对家那张变成「本来要摸的」且暗置",
+          (row3["tile"], int(row3["face_down"])), (str(r3.get("gave")), 1))
 
     # 自己牌河 / 暗置目标都不许
     db7 = tg.fresh_db("mg_fast2")
     rid7 = new_round(db7, 977, ORD_11)
-    tg.set_hand(db7, rid7, 0, H13 + ["9s"], drawn="9s")
+    tg.set_hand(db7, rid7, 0, H13)
     add_discard(db7, rid7, 0, 201, "3p")               # 我自己牌河第 1 张
     add_discard(db7, rid7, 1, 202, "3p", face_down=1)  # 别家暗置
-    g10 = to_discard(Game(db7, rid7), 0)
+    g10 = to_draw(Game(db7, rid7), 0)
     check("只剩暗置的 → 不能发动", g10.card11s2_can(0), False)
     try:
         g10.card11s2_swap(0, 201)

@@ -1,100 +1,132 @@
-# -*- coding: utf-8 -*-
-"""间合：点选阶段就要把「换过的行 / 被鸣走 / 暗置 / 立直牌」排掉（服务端下发列表）"""
+﻿# -*- coding: utf-8 -*-
+"""P9：(b) 口径 —— 【间合】的「一行牌河只能换一次」改成**按发动者各算各的**。
+
+规则（用户口径 2026-11-09）：
+  · 座位0 用【间合攻】换了座位3 牌河第 0 行 → 只有**座位0**不能再换那一行
+  · 座位3 自己想用【间合守】换自己那一行 → **允许**（以前被全局占用挡住）
+  · 同一个人对同一行第二次 → 仍然拒绝
+
+跑法：cd N:\\apps\\tianma\\server; python test_card09_rows.py
+"""
 from __future__ import annotations
 
-import io
+import json
 import os
 import sys
 
-sys.path.insert(0, r'N:\apps\tianma\server')
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
-from game import Game  # noqa: E402
-import test_game as tg  # noqa: E402
+from game import Game, RuleError         # noqa: E402
+from tiles import parse_hand             # noqa: E402
+import test_game as tg                   # noqa: E402
 
-OK = 0
-BAD = 0
+PASS = FAIL = 0
+HAND = parse_hand("123m456m789p12s5z")    # 13 张，含「白」
+HT = str(HAND[0])                          # 拿一张真实牌 id 当「换出去的手牌」
+ORD_9 = [[9, 1, 2, 3, 4], [1, 2, 3, 5, 6], [1, 2, 3, 5, 7], [9, 1, 2, 5, 8]]
 
 
-def check(cond, msg):
-    global OK, BAD
-    if cond:
-        OK += 1
+def check(name, got, want=True):
+    global PASS, FAIL
+    if got == want:
+        PASS += 1
+        print(f"  [OK]   {name}")
     else:
-        BAD += 1
-        print("  [FAIL]", msg)
+        FAIL += 1
+        print(f"  [FAIL] {name}  got={got!r} want={want!r}")
 
 
-def main():
-    db = tg.fresh_db("c09rows")
-    rid, _m, _u = tg.new_round(db, seed=121)
-    tg.set_hand(db, rid, 0, ["1m", "2m", "3m", "4m", "5m", "6m", "7m", "8m",
-                             "1s", "2s", "3s", "4s", "5s"])
+def new_round(db, seed: int, orders) -> int:
+    uids = [db.create_user(f"c09r{seed}_{i}") for i in range(4)]
+    room = db.create_room(uids[0])
+    for u in uids[1:]:
+        db.join_room(room["room_code"], u)
+    match = db.start_match(room["room_id"], seed=seed)
+    rid = db.start_round(match, "dong", 1, honba=0, dealer_seat=0, seed=seed)
+    body = {"seats": [{"ready": False, "hand": [], "picks": [], "order": list(o)}
+                      for o in orders],
+            "phase": "playing"}
     with db.tx():
-        # 1 号位牌河 8 张：500..505 = 第 0 行，506..507 = 第 1 行
-        tiles = ["9m", "9m", "9p", "9p", "1z", "1z", "8s", "8s"]
-        for i, t in enumerate(tiles):
-            db.conn.execute(
-                "INSERT INTO round_discards(round_id, seq, seat, wall_seq, tile, called,"
-                " is_riichi_tile, face_down) VALUES(?,?,?,?,?,0,0,0)",
-                (rid, 500 + i, 1, 9500 + i, t))
-        # 2 号位：一张暗置、一张立直宣言牌（都不该出现在可换列表里）
-        db.conn.execute(
-            "INSERT INTO round_discards(round_id, seq, seat, wall_seq, tile, called,"
-            " is_riichi_tile, face_down) VALUES(?,?,?,?,?,0,0,1)", (rid, 600, 2, 9600, "9s"))
-        db.conn.execute(
-            "INSERT INTO round_discards(round_id, seq, seat, wall_seq, tile, called,"
-            " is_riichi_tile, face_down) VALUES(?,?,?,?,?,0,1,0)", (rid, 601, 2, 9601, "9s"))
-        # 3 号位：被鸣走的一张
-        db.conn.execute(
-            "INSERT INTO round_discards(round_id, seq, seat, wall_seq, tile, called,"
-            " is_riichi_tile, face_down) VALUES(?,?,?,?,?,1,0,0)", (rid, 700, 3, 9700, "9m"))
-    g = Game(db, rid)
-    g.granted = {0: {9}}
-    g.phase, g.turn = "draw", 0
-    g.save_flags()
+        db.conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES('lobby_state', ?)",
+                        (json.dumps(body, ensure_ascii=False),))
+    return rid
 
-    # ── ① 初始：别家可换 = 1 号位 8 张（0 行 + 1 行）；暗置/立直/被鸣走都没有
-    oth = g.card09_targets(0, 2)
-    check(oth == [500, 501, 502, 503, 504, 505, 506, 507],
-          f"别家可换应该只有 1 号位那 8 张，实际 {oth}")
-    own = g.card09_targets(0, 1)
-    check(own == [], f"自己牌河是空的，实际 {own}")
 
-    # ── ② 换掉第 0 行的一张 → 整行都不能再换
-    tg.set_hand(db, rid, 1, ["1p", "2p", "3p", "4p", "5p", "6p", "7p", "8p",
-                             "1z", "1z", "1z", "2z", "2z"])
+def add_river(db, rid, seq: int, seat: int, tile: str) -> None:
+    with db.tx():
+        db.conn.execute(
+            "INSERT INTO round_discards(round_id, seq, seat, wall_seq, tile,"
+            " is_tsumogiri, is_riichi_tile, face_down, called) VALUES(?,?,?,?,?,0,0,0,0)",
+            (rid, seq, seat, 5000 + seq, tile))
+
+
+def err(g, *args, **kw):
+    try:
+        g.card09_swap(*args, **kw)
+        return ""
+    except RuleError as e:
+        return str(e)
+
+
+def at_draw(db, rid, seat: int) -> Game:
     g = Game(db, rid)
-    g.granted = {0: {9}}
-    g.phase, g.turn = "draw", 0
-    g.save_flags()
-    r = g.card09_swap(0, 2, "1m", 500)
-    check(r.get("got") == "9m", f"应该换到 9m，实际 {r}")
-    g = Game(db, rid)
-    # 换完这一巡就用掉了 —— 下一巡（我这个回合打完牌之后）面板再开时才看行锁
+    g.round_phase = "play"
+    g.turn, g.phase = int(seat), "draw"
     g.c09_turn = ""
+    g.c09_next = {}                      # 本测只验「行占用」，把 S1/S2 交替清掉
     g.save_flags()
+    return Game(db, rid)
+
+
+def main() -> int:
+    print("=" * 72)
+    print(" Card09【间合】：行占用按「发动者」各算各的")
+    print("=" * 72)
+
+    db = tg.fresh_db("c09rows")
+    rid = new_round(db, 61, ORD_9)
+    tg.set_hand(db, rid, 0, HAND)
+    tg.set_hand(db, rid, 3, HAND)
+    for i in range(7):                       # 座位3 牌河：第 0 行 6 张 + 第 1 行 1 张
+        add_river(db, rid, 100 + i, 3, ["1m", "2m", "3m", "4m", "5m", "6m", "7m"][i])
+
     g = Game(db, rid)
-    oth = g.card09_targets(0, 2)
-    check(oth == [506, 507],
-          f"第 0 行换过之后，整行（500-505）都不该再出现，实际 {oth}")
-
-    # ── ③ state_for 里也下发同样的列表
-    st = g.state_for(0)
-    check(sorted(int(x) for x in st.get("card09_other_seqs", [])) == [506, 507],
-          f"state.card09_other_seqs 不对：{st.get('card09_other_seqs')}")
-    check(st.get("card09_own_seqs") == [],
-          f"state.card09_own_seqs 不对：{st.get('card09_own_seqs')}")
-
-    # ── ④ 这一巡用过了 → 列表空
-    check(g.card09_targets(0, 2) == [506, 507], "下一巡时剩下那一行还是能换")
-    g.c09_turn = g._c09_turn_key(0)
+    g.granted = {0: {9}, 3: {9}}             # 两家都持 09 号卡
+    g.round_phase = "play"
+    g.turn, g.phase = 0, "draw"
     g.save_flags()
-    check(g.card09_targets(0, 2) == [], "这一巡用过了 → 不该再给可换列表")
 
-    print(f"\n通过 {OK} / 失败 {BAD}")
-    return 1 if BAD else 0
+    print("\n① 座位0 用【间合攻】换座位3 牌河第 0 行")
+    g = at_draw(db, rid, 0)
+    r = g.card09_swap(0, 2, HT, 100)
+    check("换成功", str(r.get("got", "")), "1m")
+    g = Game(db, rid)
+    check("占用记成「发动者:河主:行」", sorted(g.c09_rows), ["0:3:0"])
+
+    print("\n② 座位0 再换同一行 → 仍然拒绝")
+    g = at_draw(db, rid, 0)
+    e = err(g, 0, 2, HT, 101)
+    check("同一个人同一行第二次被拒", "换过" in e, True)
+
+    print("\n③ 座位3 用【间合守】换**自己**同一行 → 现在允许（b 口径）")
+    g = at_draw(db, rid, 3)
+    e2 = err(g, 3, 1, HT, 101)
+    check("别人换过不影响我换", e2, "")
+
+    print("\n④ 座位3 再换自己同一行 → 拒绝（自己也不能重复）")
+    g = at_draw(db, rid, 3)
+    e3 = err(g, 3, 1, str(HAND[2]), 102)
+    check("自己同一行第二次被拒", "换过" in e3, True)
+
+    print("\n" + "=" * 72)
+    print(" 合计：%d 断言，%d 失败" % (PASS, FAIL))
+    print("=" * 72)
+    return 1 if FAIL else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

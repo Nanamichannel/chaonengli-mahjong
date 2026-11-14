@@ -172,6 +172,14 @@ def judge(ctx: dict) -> dict:
 def _eval_one(ctx, counts, melds, hand_sets, pair, all_tiles, dora_n, aka_n, ura_n,
               closed_hand, tsumo, win_index, rules) -> dict | None:
     sets = list(hand_sets) + [meld_to_set(m) for m in melds]
+    # ★ 七对子的候选是 `((), -1)`：**没有面子分解、没有将**。
+    #   「花色 / 幺九」这类**看整手牌**的判定必须另开一条路，
+    #   否则 混一色 / 清一色 / 混老头 在七对子这一支永远判不出来。
+    #   （2026-11-08 实机：4s4s5s5s7s7s8s8s + 南南 + 北北 + 东，荣东，漏了混一色。）
+    if pair < 0:
+        _ids = [i for i in range(34) for _ in range(counts[i])]
+    else:
+        _ids = [i for s in sets for i in _indices(s)] + [pair]
     yaku: list[tuple[str, int]] = []
     counts13 = list(counts)
     counts13[win_index] -= 1
@@ -266,15 +274,13 @@ def _eval_one(ctx, counts, melds, hand_sets, pair, all_tiles, dora_n, aka_n, ura
     if dragon_trips == 2 and _is_honor_i(pair) and HONORS[pair - HONOR_BASE] in DRAGONS:
         yaku.append(("小三元", 2))
 
-    # —— 混老头 ——
-    if all(_is_orphan_i(i) for i in range(34) for _ in range(counts[i])) and pair != -1:
-        if all(_is_orphan_i(i) for s in sets for i in _indices(s)) and _is_orphan_i(pair):
-            yaku.append(("混老头", 2))
+    # —— 混老头 ——（七对子也能复合：七个幺九对子 = 混老头 + 七对子）
+    if _ids and all(_is_orphan_i(i) for i in _ids):
+        yaku.append(("混老头", 2))
 
     # —— 混一色 / 清一色 ——
-    suits = {_hole(i) for s in sets for i in _indices(s)} | ({_hole(pair)} if pair >= 0 else set())
-    used_suits = {x for x in suits if x}
-    has_honor = any(_is_honor_i(i) for s in sets for i in _indices(s)) or _is_honor_i(pair)
+    used_suits = {_hole(i) for i in _ids} - {""}
+    has_honor = any(_is_honor_i(i) for i in _ids)
     if len(used_suits) == 1 and has_honor:
         yaku.append(("混一色", 3 if closed_hand else 2))
     elif len(used_suits) == 1 and not has_honor:

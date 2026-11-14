@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Tianma"
-run/main_scene="res://初始菜单.tscn"
+run/main_scene="res://真初始场景.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -19,6 +19,10 @@ config/icon="res://icon.svg"
 
 MCPRuntimeProbe="*uid://bsg12huaf1u5i"
 ClientState="*res://client_state.gd"
+
+[audio]
+
+driver/output_latency=5
 
 [display]
 
@@ -34,7 +38,7 @@ project/assembly_name="Tianma"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
+enabled=PackedStringArray("res://addons/ae_motion/plugin.cfg", "res://addons/godot_mcp/plugin.cfg")
 
 [input]
 

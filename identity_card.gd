@@ -170,6 +170,16 @@ func set_skill_icon(index: int, from_card: int, from_skill: int = 1) -> void:
 	_apply_icon_override()
 
 
+## 这一格**实际**显示的技能：[card_no, skill_no]（0 号格被传承换过就返回换后的）
+## 遮罩 / 流水 / 点击都应该按它算 key。
+func effective_skill(index: int) -> Array:
+	var i := int(index)
+	if _icon_override.has(i):
+		var v: Array = _icon_override[i]
+		return [int(v[0]), int(v[1])]
+	return [int(_card_no), i + 1]
+
+
 func _apply_icon_override() -> void:
 	if _icon_override.is_empty():
 		return

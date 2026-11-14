@@ -1,0 +1,47 @@
+[gd_scene format=3 uid="uid://c1a8hmn0hxetk"]
+
+[ext_resource type="Texture2D" uid="uid://darcjyajv4n20" path="res://Cailiao/UI/测试/白色 纯色 2.png" id="1_01pf8"]
+[ext_resource type="Texture2D" uid="uid://cbhutar8mymog" path="res://Cailiao/UI/测试/红色 纯色 1.png" id="2_3cd1c"]
+[ext_resource type="Texture2D" uid="uid://bflwdr1jmje0" path="res://Cailiao/UI/测试/中间色绿色 纯色 1.png" id="3_ajja3"]
+
+[sub_resource type="Animation" id="Animation_01pf8"]
+length = 30.0
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_3cd1c"]
+_data = {
+&"play": SubResource("Animation_01pf8")
+}
+
+[node name="Node2D" type="Node2D" unique_id=1794942094]
+
+[node name="合成 2" type="Node3D" parent="." unique_id=960304606]
+
+[node name="白色 纯色 2" type="Sprite3D" parent="合成 2" unique_id=2080782982]
+centered = false
+offset = Vector2(-960, 540)
+pixel_size = 1.0
+texture = ExtResource("1_01pf8")
+
+[node name="红色 纯色 1" type="Sprite3D" parent="合成 2" unique_id=715737715]
+centered = false
+offset = Vector2(-100, 100)
+pixel_size = 1.0
+texture = ExtResource("2_3cd1c")
+
+[node name="中间色绿色 纯色 1" type="Sprite3D" parent="合成 2" unique_id=1314540245]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -800)
+centered = false
+offset = Vector2(-100, 100)
+pixel_size = 1.0
+texture = ExtResource("3_ajja3")
+
+[node name="摄像机 1" type="Node3D" parent="合成 2" unique_id=1745423644]
+
+[node name="Camera3D" type="Camera3D" parent="合成 2" unique_id=261972542]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2666.6667)
+current = true
+fov = 22.895193
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="合成 2" unique_id=1718268894]
+libraries/ = SubResource("AnimationLibrary_3cd1c")
+autoplay = &"play"

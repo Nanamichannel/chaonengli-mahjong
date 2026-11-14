@@ -62,13 +62,16 @@ func play_appear() -> void:
 	_update_pivot()
 	_kill_tween()
 	_kill_fade()
-	scale = _base_scale * 0.5
-	modulate.a = 0.0
+	# ★ 2026-11-14：以前从 0.5 倍 / 全透明开始，0.18s 才“看得见” →
+	#   玩家体感是「副露按钮出现很慢」（其实状态早就到了）。改成 0.82 倍 / 0.35 透明起步，
+	#   0.12s 到位 —— 几乎一出现就是可读的，动画只是收个尾。
+	scale = _base_scale * 0.82
+	modulate.a = 0.35
 	tween = create_tween()
 	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "scale", _base_scale, 0.18)
+	tween.tween_property(self, "scale", _base_scale, 0.12)
 	fade = create_tween()
-	fade.tween_property(self, "modulate:a", 1.0, 0.12)
+	fade.tween_property(self, "modulate:a", 1.0, 0.06)
 
 
 # 悬停：弹性放大（只动 scale，绝不碰 alpha）

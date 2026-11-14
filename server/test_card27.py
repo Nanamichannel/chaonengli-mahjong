@@ -2,7 +2,8 @@
 """Card27 S1「调包」+ S2「命中」自测
 
 用户口径：
-· S1：摸牌后点技能 → 选 1 张手牌 + 1 张**别人牌河**的明牌 → 开始 → 互换
+· S1：**摸牌前**点技能（2026-11-14 改）→ 选 1 张手牌 + 1 张**别人牌河**的明牌 →
+      开始 → 互换 → 然后正常摸牌
       （换的谁的牌就进谁的牌河，换进来的进我手里）；标记那一家；本小局一次。
       立直宣言牌**可以**换，暗置牌**不可以**。
 · S2：摸牌后点技能 → 选一张「切出后仍有役听牌 / 门清」的牌 → 开始 → **暗置**打出，
@@ -88,7 +89,7 @@ def main() -> int:
 
     # ── ① 注册 ─────────────────────────────────────────────────────
     print("\n① 注册")
-    check("S1 名字", skills.info(27, 1).get("name"), "调包")
+    check("S1 名字", skills.info(27, 1).get("name"), "瞄准")
     check("S2 名字", skills.info(27, 2).get("name"), "命中")
     check("S1 时机 = 摸牌后", skills.timing(27, 1), "draw")
     check("S2 时机 = 摸牌后", skills.timing(27, 2), "draw")
@@ -96,16 +97,16 @@ def main() -> int:
     # ── ② S1：能换哪张牌河牌 ───────────────────────────────────────
     print("\n② S1 可换的牌河牌")
     db, rid = setup("c27a")
+    tg.set_hand(db, rid, 0, parse_hand("123m456m789m5p5p6s9s"))   # 摸牌前：13 张（没摸）
     g = Game(db, rid)
-    tg.set_hand(db, rid, 0, parse_hand(H0), drawn="9s")
-    g = Game(db, rid)
+    g.turn, g.phase = 0, "draw"                  # 瞄准 2026-11-14 改成摸牌前发动
     check("能换：1 号位牌河里的 3p", 1 in g.c27s1_targets(0), True)
     check("能换：立直宣言牌（不是自己的就行）",
           [s for s in g.c27s1_targets(0)], [1, 2])
     check("不能换：暗置牌（seq 3）", 3 in g.c27s1_targets(0), False)
     check("不能换：自己牌河的牌", g.c27s1_targets(0).count(0), 0)
     check("自己不能换自己", 1 in g.c27s1_targets(1), False)
-    check("刚摸完牌 → 能发动", g.c27s1_can(0), True)
+    check("还没摸牌 → 能发动", g.c27s1_can(0), True)
 
     # ── ③ S1：换牌 + 标记 ─────────────────────────────────────────
     print("\n③ S1 换牌：牌面互换（进他的牌河 / 进我手里）+ 标记那一家")
@@ -117,11 +118,14 @@ def main() -> int:
     g2 = Game(db, rid)
     check("我手里有 3p 了", "3p" in g2.hand(0), True)
     check("9s 不在我手里了", "9s" in g2.hand(0), False)
-    check("我手牌张数不变（14）", len(g2.hand(0)), 14)
+    check("我手牌张数不变（13，还没摸牌）", len(g2.hand(0)), 13)
     river = g2.db._row("SELECT seat, tile FROM round_discards WHERE round_id=? AND seq=?",
                        (rid, 1))
     check("牌河那一格进了 9s，还挂在 1 号位名下",
           (int(river["seat"]), str(river["tile"])), (1, "9s"))
+    check("换过去的牌是暗置（2026-11-07 口径）", int(g2.db._one(
+        "SELECT face_down FROM round_discards WHERE round_id=? AND seq=1", (rid,)) or 0), 1)
+    check("暗置牌不造成振听", "9s" not in g2.discards_for_furiten(1), True)
     check("c27_mark = 1", g2.c27_mark.get(0), 1)
     check("计数从 0 开始", g2.c27_cnt.get(0), 0)
     check("本小局只能一次", g2.skill_used(0, 27, 1), True)

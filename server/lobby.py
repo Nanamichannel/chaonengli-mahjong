@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import json
+import os
 import random
+import re
 import time
 
 LOBBY_KEY = "lobby_state"
@@ -297,6 +299,66 @@ def _tick(db, lobby: dict) -> bool:
     return True
 
 
+def _card_room_card(db) -> int:
+    """房间号是 card<N> → 返回 N（1..46），否则 0。
+
+    认两种写法：`rooms.room_code`（显式建库时的房间号），
+    以及**数据库文件名**（云端每个房间一个 `data/room_<房间名>.db`）。
+    """
+    cands: list[str] = []
+    try:
+        row = db._row("SELECT room_code FROM rooms ORDER BY room_id LIMIT 1")
+        if row:
+            cands.append(str(row["room_code"] or ""))
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        base = os.path.basename(str(getattr(db, "path", "") or ""))
+        if base.startswith("room_") and base.endswith(".db"):
+            cands.append(base[len("room_"):-len(".db")])
+    except Exception:                                    # noqa: BLE001
+        pass
+    for c in cands:
+        m = re.match(r"^card(\d{1,2})$", c.strip().lower())
+        if not m:
+            continue
+        n = int(m.group(1))
+        if CARD_MIN <= n <= CARD_MAX:
+            return n
+    return 0
+
+
+def _maybe_card_room(db, lobby: dict, seat: int) -> bool:
+    """card<N> 调试房：另外三家自动放人机，真人拿 N 号卡，跳过选卡直接开打。
+
+    返回 True = 调用方要在事务**外面**开一个新半庄。
+    （用户口径 2026-11-08：房间号是 card1 就自动三家人机 + 我拿 1 号卡）
+    """
+    card = _card_room_card(db)
+    if not card:
+        return False
+    from api_cli import _human_seats                  # 延迟导入，避免循环依赖
+    me = int(seat)
+    fresh = str(lobby.get("phase", "")) != "play"
+    if fresh:
+        _new = reset(lobby)
+        lobby.clear()
+        lobby.update(_new)                            # 清掉选卡/调序残留
+    humans = _human_seats(db)
+    for s in range(4):
+        if s != me and s not in humans:
+            _set_bot(db, s, True)                     # 空位变人机
+        order = ([card] * PICK_PER_SEAT) if s == me else [1, 2, 3, 4, 5]
+        lobby["seats"][s]["order"] = list(order)
+        lobby["seats"][s]["picks"] = list(order)
+        lobby["seats"][s]["ready"] = True
+        lobby["joined"][s] = True
+    lobby["bots"] = sorted(bot_seats(db))
+    if fresh:
+        lobby["phase"] = "play"
+    return fresh
+
+
 def op_join(db, req: dict) -> dict:
     """认领座位（和 op_join 一样的租约规则），只进大厅、不开牌局。"""
     from api_cli import _human_seats, _touch_lease   # 复用座位租约
@@ -310,7 +372,12 @@ def op_join(db, req: dict) -> dict:
             seat = free[0] if free else None
         else:
             want = int(raw) % 4
-            if (want in humans or want in bots) and not req.get("force"):
+            if _card_room_card(db) and not req.get("force"):
+                # ★ card<N> 调试房：点哪个位就坐哪（人机让位；单人房为前提）
+                if want in bots:
+                    _set_bot(db, want, False)
+                seat = want
+            elif (want in humans or want in bots) and not req.get("force"):
                 seat = free[0] if free else None
             else:
                 seat = want
@@ -328,8 +395,12 @@ def op_join(db, req: dict) -> dict:
             lobby = reset(lobby)
         lobby["joined"][seat] = True
         _touch_lease(db, seat, req.get("pid"))
+        # ★ card<N> 调试房：三家人机 + 我拿 N 号卡（用户口径 2026-11-08）
+        _start_match_now = _maybe_card_room(db, lobby, seat)
         _tick(db, lobby)                             # 人机可能已经在等这个空位
         save(db, lobby)
+    if _start_match_now:
+        _start_new_hanchan(db)                       # 事务外开半庄（和 test_seats 一样）
     return _ok(lobby, seat, {"humans": sorted(_human_seats(db)),
                              "bots": sorted(bot_seats(db))})
 
@@ -564,6 +635,33 @@ def op_test_seats(db, req: dict) -> dict:
         if not _already:
             _start_new_hanchan(db)      # 只让第一个窗口开半庄；后面 2~4 号窗口直接接上
     return _ok(lobby, int(req.get("seat", 0)) % 4, {"test_seats": True})
+
+
+def op_leave(db, req: dict) -> dict:
+    """退出房间：把这个座位的租约、昵称、准备状态、手牌全部清掉。
+
+    和 op_remove_bot 的区别：那个是删人机，这个是真人自己走。
+    清掉 seat_lease 之后 _human_seats() 立刻看不到这个座位，别家马上能补进来。
+    """
+    from api_cli import LEASE_KEY
+
+    seat = int(req.get("seat", -1))
+    if not (0 <= seat < 4):
+        return _error("座位不对")
+    with db.tx():
+        lobby = load(db)
+        if seat in bot_seats(db):
+            _set_bot(db, seat, False)
+        lobby["joined"][seat] = False
+        lobby["pending"][seat] = False
+        lobby["seats"][seat]["ready"] = False
+        lobby["seats"][seat]["nick"] = ""
+        lobby["seats"][seat]["hand"] = []
+        lobby["seats"][seat]["picks"] = []
+        lobby["seats"][seat]["order"] = []
+        db.conn.execute("DELETE FROM meta WHERE key=?", (LEASE_KEY % seat,))
+        save(db, lobby)
+    return _ok(lobby, seat)
 
 
 def op_reset(db, req: dict) -> dict:

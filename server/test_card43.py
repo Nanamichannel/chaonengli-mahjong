@@ -47,7 +47,7 @@ def setup(tag, river=("7s", "8s"), face_down=False):
                 "INSERT INTO round_discards(round_id, seq, seat, wall_seq, tile, "
                 "is_tsumogiri, is_riichi_tile, face_down, is_nuki) "
                 "VALUES(?,?,?,?,?,0,0,?,0)",
-                (rid, i, 1 + i % 3, 9000 + i, t, 1 if face_down else 0))
+                (rid, i, 0, 9000 + i, t, 1 if face_down else 0))    # 只有自己的牌河能换
     g = Game(db, rid)
     g.granted = {0: {43}}
     g.round_phase = "play"
@@ -93,6 +93,14 @@ def main() -> int:
     check("牌河候选 2 张", len(g.c43s1_river_seqs(0)), 2)
     st = g.state_for(0)
     check("state.c43.can", bool((st.get("c43") or {}).get("can")), True)
+
+    # 2026-11-07 口径：只能换自己的牌河
+    db_own, rid_own = setup("c43own")
+    with db_own.tx():
+        db_own.conn.execute("UPDATE round_discards SET seat=1 WHERE round_id=?", (rid_own,))
+    g_own = Game(db_own, rid_own)
+    check("别人牌河不算候选", g_own.c43s1_river_seqs(0), [])
+    check("别人牌河不能发动", g_own.c43s1_can(0), False)
 
     print("\n④ 非搭子 → 拒绝确认")
     rs = river_seqs(db, rid)

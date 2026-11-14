@@ -1,0 +1,619 @@
+[gd_scene format=3 uid="uid://mjytpv0d7r7i"]
+
+[ext_resource type="Script" uid="uid://u186mat57q5a" path="res://kan_shou.gd" id="1_gul88"]
+[ext_resource type="Texture2D" uid="uid://bkpj3mccdf7w7" path="res://Cailiao/UI/鉴赏/[U2-Rip] Saki Achiga Hen Episode of Side-A [Menu09_2&10_2].png" id="1_v5wf0"]
+[ext_resource type="Texture2D" uid="uid://c34u4ddvfstr5" path="res://Cailiao/skill/cards/card_01.png" id="2_rkt14"]
+[ext_resource type="Texture2D" uid="uid://dpw7ptw47x117" path="res://Cailiao/skill/cards/card_02.png" id="3_n5pd5"]
+[ext_resource type="Texture2D" uid="uid://c7ko3ubxt8t1b" path="res://Cailiao/skill/cards/card_03.png" id="4_3w67l"]
+[ext_resource type="Texture2D" uid="uid://dr8jmxqcx7g4a" path="res://Cailiao/skill/cards/card_04.png" id="5_j0v5i"]
+[ext_resource type="Texture2D" uid="uid://dr7xka1j7in4y" path="res://Cailiao/skill/cards/card_05.png" id="6_3bv6n"]
+[ext_resource type="Texture2D" uid="uid://c3ni86rtvdg2w" path="res://Cailiao/skill/cards/card_06.png" id="7_gw58x"]
+[ext_resource type="Texture2D" uid="uid://b34ycahgjyxoh" path="res://Cailiao/skill/cards/card_07.png" id="8_ur5rn"]
+[ext_resource type="Script" uid="uid://c2r000a2qmnhj" path="res://kan_shou_camera.gd" id="10_h2c4k"]
+[ext_resource type="Texture2D" uid="uid://bfo2k6n0l8lur" path="res://Cailiao/skill/cards/card_08.png" id="11_8iu1t"]
+[ext_resource type="Texture2D" uid="uid://dc4v8hcorfcp3" path="res://Cailiao/skill/cards/card_09.png" id="12_klcjv"]
+[ext_resource type="Texture2D" uid="uid://nrpe2s8wqy6w" path="res://Cailiao/skill/cards/card_10.png" id="13_xtel3"]
+[ext_resource type="Texture2D" uid="uid://bw0a7gu35rc4h" path="res://Cailiao/skill/cards/card_11.png" id="14_1x7yu"]
+[ext_resource type="Texture2D" uid="uid://botqfrynoyl05" path="res://Cailiao/skill/cards/card_12.png" id="15_0l4hb"]
+[ext_resource type="Texture2D" uid="uid://h8l5lm08giao" path="res://Cailiao/skill/cards/card_13.png" id="16_darsx"]
+[ext_resource type="Texture2D" uid="uid://c284ogbek3av6" path="res://Cailiao/skill/cards/card_14.png" id="17_4ievy"]
+[ext_resource type="Texture2D" uid="uid://cxgami4fyedwk" path="res://Cailiao/skill/cards/card_15.png" id="18_jxhe1"]
+[ext_resource type="Texture2D" uid="uid://cphsecrsmpg1p" path="res://Cailiao/skill/cards/card_16.png" id="19_2xi3j"]
+[ext_resource type="Texture2D" uid="uid://dgeuq2oe7n4bb" path="res://Cailiao/skill/cards/card_17.png" id="20_1eg0d"]
+[ext_resource type="Texture2D" uid="uid://gg2hnxmfvgf3" path="res://Cailiao/skill/cards/card_18.png" id="21_xrx7r"]
+[ext_resource type="Texture2D" uid="uid://lscyj6umb8il" path="res://Cailiao/skill/cards/card_19.png" id="22_u1wif"]
+[ext_resource type="Texture2D" uid="uid://bv0j2axjsdxxo" path="res://Cailiao/skill/cards/card_20.png" id="23_47k8b"]
+[ext_resource type="Texture2D" uid="uid://dm6qcmbb2ialb" path="res://Cailiao/skill/cards/card_21.png" id="24_xel0a"]
+[ext_resource type="Texture2D" uid="uid://66udsj7q5wx" path="res://Cailiao/skill/cards/card_22.png" id="25_wkjwb"]
+[ext_resource type="Texture2D" uid="uid://3gk6q8uujvp1" path="res://Cailiao/skill/cards/card_23.png" id="26_2xnsr"]
+[ext_resource type="Texture2D" uid="uid://5yya5sn6te3u" path="res://Cailiao/skill/cards/card_24.png" id="27_cifcq"]
+[ext_resource type="Texture2D" uid="uid://bs1377hiiw4w0" path="res://Cailiao/skill/cards/card_25.png" id="28_obh6p"]
+[ext_resource type="Texture2D" uid="uid://3ggfrrnio25x" path="res://Cailiao/skill/cards/card_26.png" id="29_k2yms"]
+[ext_resource type="Texture2D" uid="uid://bcfw2p81wy0c8" path="res://Cailiao/skill/cards/card_27.png" id="30_1n68q"]
+[ext_resource type="Texture2D" uid="uid://degjxmvfi3ii6" path="res://Cailiao/skill/cards/card_28.png" id="31_8osxu"]
+[ext_resource type="Texture2D" uid="uid://rg00kdnajj7h" path="res://Cailiao/skill/cards/card_29.png" id="32_km0x0"]
+[ext_resource type="Texture2D" uid="uid://dnnnb3ri5leqi" path="res://Cailiao/skill/cards/card_30.png" id="33_vidap"]
+[ext_resource type="Texture2D" uid="uid://dpu8qi13h30ul" path="res://Cailiao/skill/cards/card_31.png" id="34_xslkl"]
+[ext_resource type="Texture2D" uid="uid://cv5ff3tc06lcg" path="res://Cailiao/skill/cards/card_32.png" id="35_mn7m2"]
+[ext_resource type="Texture2D" uid="uid://h364hwwlbsbq" path="res://Cailiao/skill/cards/card_33.png" id="36_5u1y2"]
+[ext_resource type="Texture2D" uid="uid://cpwqay6buxayl" path="res://Cailiao/skill/cards/card_34.png" id="37_p004u"]
+[ext_resource type="Texture2D" uid="uid://begd3gumyo47h" path="res://Cailiao/skill/cards/card_35.png" id="38_bfo4f"]
+[ext_resource type="Texture2D" uid="uid://d0kyhcnjrscll" path="res://Cailiao/skill/cards/card_36.png" id="39_mqknq"]
+[ext_resource type="Texture2D" uid="uid://dwfeutebhqeap" path="res://Cailiao/skill/cards/card_37.png" id="40_y0tis"]
+[ext_resource type="Texture2D" uid="uid://ddsitfxjjhqvg" path="res://Cailiao/skill/cards/card_38.png" id="41_vaafp"]
+[ext_resource type="Texture2D" uid="uid://dj0w4yrwrdala" path="res://Cailiao/skill/cards/card_39.png" id="42_ecr0v"]
+[ext_resource type="Texture2D" uid="uid://civyfptw78jnc" path="res://Cailiao/skill/cards/card_40.png" id="43_cau32"]
+[ext_resource type="Texture2D" uid="uid://cqcbnvvfjgb5v" path="res://Cailiao/skill/cards/card_41.png" id="44_0q2gm"]
+[ext_resource type="Texture2D" uid="uid://cj2mmsqt7bgut" path="res://Cailiao/skill/cards/card_42.png" id="45_hkeko"]
+[ext_resource type="Texture2D" uid="uid://dgt3r1c3ixu87" path="res://Cailiao/skill/cards/card_43.png" id="46_5fhbi"]
+[ext_resource type="Texture2D" uid="uid://dp37bsvtmcnfv" path="res://Cailiao/skill/cards/card_44.png" id="47_rw8to"]
+[ext_resource type="Texture2D" uid="uid://cdirvomxjdhwb" path="res://Cailiao/skill/cards/card_45.png" id="48_3g6ch"]
+[ext_resource type="Texture2D" uid="uid://rxttbt2clcfx" path="res://Cailiao/skill/cards/card_46.png" id="49_vjb23"]
+
+[sub_resource type="Animation" id="Animation_1hsu6"]
+length = 0.45
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("遮罩层/放大卡:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.09, 0.18, 0.27, 0.36, 0.45),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(704, 167), Vector2(704, 167), Vector2(704, 167), Vector2(704, 167), Vector2(704, 167), Vector2(704, 167)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("遮罩层/放大卡:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.09, 0.18, 0.27, 0.36, 0.45),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0.74, 0.74), Vector2(0.86688, 0.86688), Vector2(0.94384, 0.94384), Vector2(0.98336, 0.98336), Vector2(0.99792004, 0.99792004), Vector2(1, 1)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("遮罩层/黑幕:color:a")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.09, 0.18, 0.27, 0.36, 0.45),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [0.0, 0.35136, 0.56448, 0.67392, 0.71424, 0.72]
+}
+
+[sub_resource type="Animation" id="Animation_gul88"]
+length = 0.35
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("遮罩层/放大卡:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.07, 0.14, 0.21, 0.28, 0.35),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(704, 167), Vector2(704, 167), Vector2(704, 167), Vector2(704, 167), Vector2(704, 167), Vector2(704, 167)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("遮罩层/放大卡:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.07, 0.14, 0.21, 0.28, 0.35),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(1, 1), Vector2(0.87312, 0.87312), Vector2(0.79616, 0.79616), Vector2(0.75664, 0.75664), Vector2(0.74208, 0.74208), Vector2(0.74, 0.74)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("遮罩层/黑幕:color:a")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.07, 0.14, 0.21, 0.28, 0.35),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [0.72, 0.36863999999999997, 0.15551999999999996, 0.04607999999999996, 0.005760000000000005, 0.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_4dtbs"]
+_data = {
+&"放大": SubResource("Animation_1hsu6"),
+&"缩小": SubResource("Animation_gul88")
+}
+
+[node name="鉴赏界面" type="Node2D" unique_id=156213721]
+script = ExtResource("1_gul88")
+
+[node name="背景板" type="TextureButton" parent="." unique_id=757686424]
+offset_left = 2458.0
+offset_top = -102.0
+offset_right = 4378.0
+offset_bottom = 978.0
+rotation = 1.5707964
+scale = Vector2(2.733, 2.733)
+texture_normal = ExtResource("1_v5wf0")
+
+[node name="1" type="TextureButton" parent="." unique_id=1443780674]
+offset_left = 129.0
+offset_top = 37.955
+offset_right = 641.0
+offset_bottom = 783.955
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("2_rkt14")
+
+[node name="2" type="TextureButton" parent="." unique_id=1060456395]
+offset_left = 569.0
+offset_top = 37.955
+offset_right = 1081.0
+offset_bottom = 783.955
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("3_n5pd5")
+
+[node name="3" type="TextureButton" parent="." unique_id=645573713]
+offset_left = 1009.0
+offset_top = 37.955
+offset_right = 1521.0
+offset_bottom = 783.955
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("4_3w67l")
+
+[node name="4" type="TextureButton" parent="." unique_id=1742707752]
+offset_left = 1889.0
+offset_top = 37.955
+offset_right = 2401.0
+offset_bottom = 783.955
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("5_j0v5i")
+
+[node name="5" type="TextureButton" parent="." unique_id=1801774324]
+offset_left = -311.0
+offset_top = 37.955
+offset_right = 201.0
+offset_bottom = 783.955
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("6_3bv6n")
+
+[node name="6" type="TextureButton" parent="." unique_id=1600379507]
+offset_left = 1449.0
+offset_top = 37.955
+offset_right = 1961.0
+offset_bottom = 783.955
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("7_gw58x")
+
+[node name="7" type="TextureButton" parent="." unique_id=1220844003]
+offset_left = -311.0
+offset_top = 642.605
+offset_right = 201.0
+offset_bottom = 1388.6063
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("8_ur5rn")
+
+[node name="摄像机" type="Camera2D" parent="." unique_id=1909039981]
+position = Vector2(960, 540)
+script = ExtResource("10_h2c4k")
+
+[node name="遮罩层" type="CanvasLayer" parent="." unique_id=2119277853]
+layer = 10
+
+[node name="黑幕" type="ColorRect" parent="遮罩层" unique_id=1271690002]
+offset_right = 1920.0
+offset_bottom = 1080.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0)
+
+[node name="放大卡" type="TextureRect" parent="遮罩层" unique_id=1015682594]
+visible = false
+offset_left = 704.0
+offset_top = 167.0
+offset_right = 1216.0
+offset_bottom = 913.0
+pivot_offset = Vector2(256, 373)
+mouse_filter = 2
+expand_mode = 1
+
+[node name="动画" type="AnimationPlayer" parent="." unique_id=999556790]
+libraries/ = SubResource("AnimationLibrary_4dtbs")
+
+[node name="8" type="TextureButton" parent="." unique_id=606325679]
+offset_left = 129.0
+offset_top = 642.61005
+offset_right = 641.0
+offset_bottom = 1388.6101
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("11_8iu1t")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="9" type="TextureButton" parent="." unique_id=7137686]
+offset_left = 569.0
+offset_top = 642.61005
+offset_right = 1081.0
+offset_bottom = 1388.6101
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("12_klcjv")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="10" type="TextureButton" parent="." unique_id=681123933]
+offset_left = 1009.0
+offset_top = 642.61005
+offset_right = 1521.0
+offset_bottom = 1388.6101
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("13_xtel3")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="11" type="TextureButton" parent="." unique_id=452215593]
+offset_left = 1449.0
+offset_top = 642.61005
+offset_right = 1961.0
+offset_bottom = 1388.6101
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("14_1x7yu")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="12" type="TextureButton" parent="." unique_id=1889432488]
+offset_left = 1889.0
+offset_top = 642.61005
+offset_right = 2401.0
+offset_bottom = 1388.6101
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("15_0l4hb")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="13" type="TextureButton" parent="." unique_id=970895823]
+offset_left = -311.0
+offset_top = 1247.265
+offset_right = 201.0
+offset_bottom = 1993.265
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("16_darsx")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="14" type="TextureButton" parent="." unique_id=39009079]
+offset_left = 129.0
+offset_top = 1247.265
+offset_right = 641.0
+offset_bottom = 1993.265
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("17_4ievy")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="15" type="TextureButton" parent="." unique_id=1985021145]
+offset_left = 569.0
+offset_top = 1247.265
+offset_right = 1081.0
+offset_bottom = 1993.265
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("18_jxhe1")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="16" type="TextureButton" parent="." unique_id=1512494859]
+offset_left = 1009.0
+offset_top = 1247.265
+offset_right = 1521.0
+offset_bottom = 1993.265
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("19_2xi3j")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="17" type="TextureButton" parent="." unique_id=602882572]
+offset_left = 1449.0
+offset_top = 1247.265
+offset_right = 1961.0
+offset_bottom = 1993.265
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("20_1eg0d")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="18" type="TextureButton" parent="." unique_id=1727313010]
+offset_left = 1889.0
+offset_top = 1247.265
+offset_right = 2401.0
+offset_bottom = 1993.265
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("21_xrx7r")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="19" type="TextureButton" parent="." unique_id=1857601620]
+offset_left = -311.0
+offset_top = 1851.9199
+offset_right = 201.0
+offset_bottom = 2597.92
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("22_u1wif")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="20" type="TextureButton" parent="." unique_id=427670857]
+offset_left = 129.0
+offset_top = 1851.9199
+offset_right = 641.0
+offset_bottom = 2597.92
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("23_47k8b")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="21" type="TextureButton" parent="." unique_id=1266160255]
+offset_left = 569.0
+offset_top = 1851.9199
+offset_right = 1081.0
+offset_bottom = 2597.92
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("24_xel0a")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="22" type="TextureButton" parent="." unique_id=1946861120]
+offset_left = 1009.0
+offset_top = 1851.9199
+offset_right = 1521.0
+offset_bottom = 2597.92
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("25_wkjwb")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="23" type="TextureButton" parent="." unique_id=2142650289]
+offset_left = 1449.0
+offset_top = 1851.9199
+offset_right = 1961.0
+offset_bottom = 2597.92
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("26_2xnsr")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="24" type="TextureButton" parent="." unique_id=1143439497]
+offset_left = 1889.0
+offset_top = 1851.9199
+offset_right = 2401.0
+offset_bottom = 2597.92
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("27_cifcq")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="25" type="TextureButton" parent="." unique_id=1296725294]
+offset_left = -311.0
+offset_top = 2456.5752
+offset_right = 201.0
+offset_bottom = 3202.5752
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("28_obh6p")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="26" type="TextureButton" parent="." unique_id=161178679]
+offset_left = 129.0
+offset_top = 2456.5752
+offset_right = 641.0
+offset_bottom = 3202.5752
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("29_k2yms")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="27" type="TextureButton" parent="." unique_id=110855584]
+offset_left = 569.0
+offset_top = 2456.5752
+offset_right = 1081.0
+offset_bottom = 3202.5752
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("30_1n68q")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="28" type="TextureButton" parent="." unique_id=425549456]
+offset_left = 1009.0
+offset_top = 2456.5752
+offset_right = 1521.0
+offset_bottom = 3202.5752
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("31_8osxu")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="29" type="TextureButton" parent="." unique_id=300249750]
+offset_left = 1449.0
+offset_top = 2456.5752
+offset_right = 1961.0
+offset_bottom = 3202.5752
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("32_km0x0")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="30" type="TextureButton" parent="." unique_id=100696286]
+offset_left = 1889.0
+offset_top = 2456.5752
+offset_right = 2401.0
+offset_bottom = 3202.5752
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("33_vidap")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="31" type="TextureButton" parent="." unique_id=119380144]
+offset_left = -311.0
+offset_top = 3061.23
+offset_right = 201.0
+offset_bottom = 3807.23
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("34_xslkl")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="32" type="TextureButton" parent="." unique_id=1456991172]
+offset_left = 129.0
+offset_top = 3061.23
+offset_right = 641.0
+offset_bottom = 3807.23
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("35_mn7m2")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="33" type="TextureButton" parent="." unique_id=1444269477]
+offset_left = 569.0
+offset_top = 3061.23
+offset_right = 1081.0
+offset_bottom = 3807.23
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("36_5u1y2")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="34" type="TextureButton" parent="." unique_id=1618196805]
+offset_left = 1009.0
+offset_top = 3061.23
+offset_right = 1521.0
+offset_bottom = 3807.23
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("37_p004u")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="35" type="TextureButton" parent="." unique_id=467104002]
+offset_left = 1449.0
+offset_top = 3061.23
+offset_right = 1961.0
+offset_bottom = 3807.23
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("38_bfo4f")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="36" type="TextureButton" parent="." unique_id=66025888]
+offset_left = 1889.0
+offset_top = 3061.23
+offset_right = 2401.0
+offset_bottom = 3807.23
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("39_mqknq")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="37" type="TextureButton" parent="." unique_id=339851906]
+offset_left = -311.0
+offset_top = 3665.885
+offset_right = 201.0
+offset_bottom = 4411.885
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("40_y0tis")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="38" type="TextureButton" parent="." unique_id=1070893055]
+offset_left = 129.0
+offset_top = 3665.885
+offset_right = 641.0
+offset_bottom = 4411.885
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("41_vaafp")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="39" type="TextureButton" parent="." unique_id=136171765]
+offset_left = 569.0
+offset_top = 3665.885
+offset_right = 1081.0
+offset_bottom = 4411.885
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("42_ecr0v")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="40" type="TextureButton" parent="." unique_id=32823408]
+offset_left = 1009.0
+offset_top = 3665.885
+offset_right = 1521.0
+offset_bottom = 4411.885
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("43_cau32")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="41" type="TextureButton" parent="." unique_id=1839395822]
+offset_left = 1449.0
+offset_top = 3665.885
+offset_right = 1961.0
+offset_bottom = 4411.885
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("44_0q2gm")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="42" type="TextureButton" parent="." unique_id=891734160]
+offset_left = 1889.0
+offset_top = 3665.885
+offset_right = 2401.0
+offset_bottom = 4411.885
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("45_hkeko")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="43" type="TextureButton" parent="." unique_id=1847724829]
+offset_left = -311.0
+offset_top = 4270.54
+offset_right = 201.0
+offset_bottom = 5016.54
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("46_5fhbi")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="44" type="TextureButton" parent="." unique_id=582353137]
+offset_left = 129.0
+offset_top = 4270.54
+offset_right = 641.0
+offset_bottom = 5016.54
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("47_rw8to")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="45" type="TextureButton" parent="." unique_id=913121261]
+offset_left = 569.0
+offset_top = 4270.54
+offset_right = 1081.0
+offset_bottom = 5016.54
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("48_3g6ch")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="46" type="TextureButton" parent="." unique_id=1153473137]
+offset_left = 1009.0
+offset_top = 4270.54
+offset_right = 1521.0
+offset_bottom = 5016.54
+scale = Vector2(0.74, 0.74)
+texture_normal = ExtResource("49_vjb23")
+ignore_texture_size = true
+stretch_mode = 0

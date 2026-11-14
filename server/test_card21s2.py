@@ -121,6 +121,18 @@ def main() -> int:
     check("馈赠1 不能换", g4.gift_can(0), False)
     check("不弹窗", g4.gift_offer_open(0), False)
 
+    # ⑥ 作废的 offer 不能把后续询问堵死（2026-11-06 实机「一直触发不了」）
+    print("\n⑥ 卡住的 offer 自愈")
+    db5, rid5 = make("g5", 805)
+    g5 = Game(db5, rid5)
+    g5.gift_offer = {"seat": 2}          # 别的座位留下的作废 offer
+    g5.save_flags()
+    g5 = Game(db5, rid5)
+    check("先摆一笔作废的 offer（别的座位）", (g5.gift_offer or {}).get("seat"), 2)
+    ev5 = g5.advance()
+    check("卡住的 offer 不会堵死询问", ev5.get("event"), "gift")
+    check("offer 换成本人", (g5.gift_offer or {}).get("seat"), 0)
+
     print("\n" + "=" * 66)
     print(f" 通过 {PASS} / 失败 {FAIL}")
     print("=" * 66)

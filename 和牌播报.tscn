@@ -311,126 +311,6 @@ animations = [{
 }, {
 "duration": 1.0,
 "texture": ExtResource("45_jufip")
-}, {
-"duration": 1.0,
-"texture": ExtResource("46_pjmof")
-}, {
-"duration": 1.0,
-"texture": ExtResource("47_rp6of")
-}, {
-"duration": 1.0,
-"texture": ExtResource("48_8cgw6")
-}, {
-"duration": 1.0,
-"texture": ExtResource("49_2aamf")
-}, {
-"duration": 1.0,
-"texture": ExtResource("50_ytpao")
-}, {
-"duration": 1.0,
-"texture": ExtResource("51_bb2iq")
-}, {
-"duration": 1.0,
-"texture": ExtResource("52_0eydk")
-}, {
-"duration": 1.0,
-"texture": ExtResource("53_fcl3u")
-}, {
-"duration": 1.0,
-"texture": ExtResource("54_17e1v")
-}, {
-"duration": 1.0,
-"texture": ExtResource("55_4kkp1")
-}, {
-"duration": 1.0,
-"texture": ExtResource("56_fwglk")
-}, {
-"duration": 1.0,
-"texture": ExtResource("57_rytl8")
-}, {
-"duration": 1.0,
-"texture": ExtResource("58_b33tx")
-}, {
-"duration": 1.0,
-"texture": ExtResource("59_1dbco")
-}, {
-"duration": 1.0,
-"texture": ExtResource("60_g5ghh")
-}, {
-"duration": 1.0,
-"texture": ExtResource("61_gogj4")
-}, {
-"duration": 1.0,
-"texture": ExtResource("62_spglo")
-}, {
-"duration": 1.0,
-"texture": ExtResource("63_od3m7")
-}, {
-"duration": 1.0,
-"texture": ExtResource("64_xpgvo")
-}, {
-"duration": 1.0,
-"texture": ExtResource("65_rlpix")
-}, {
-"duration": 1.0,
-"texture": ExtResource("66_oiprc")
-}, {
-"duration": 1.0,
-"texture": ExtResource("67_2xltm")
-}, {
-"duration": 1.0,
-"texture": ExtResource("68_o817o")
-}, {
-"duration": 1.0,
-"texture": ExtResource("69_3pesb")
-}, {
-"duration": 1.0,
-"texture": ExtResource("70_5upnr")
-}, {
-"duration": 1.0,
-"texture": ExtResource("71_fxxs4")
-}, {
-"duration": 1.0,
-"texture": ExtResource("72_1tnkq")
-}, {
-"duration": 1.0,
-"texture": ExtResource("73_ouitk")
-}, {
-"duration": 1.0,
-"texture": ExtResource("74_37n31")
-}, {
-"duration": 1.0,
-"texture": ExtResource("75_ijcff")
-}, {
-"duration": 1.0,
-"texture": ExtResource("76_j8gqx")
-}, {
-"duration": 1.0,
-"texture": ExtResource("77_vvmh8")
-}, {
-"duration": 1.0,
-"texture": ExtResource("78_n0yjx")
-}, {
-"duration": 1.0,
-"texture": ExtResource("79_664nr")
-}, {
-"duration": 1.0,
-"texture": ExtResource("80_cpq2w")
-}, {
-"duration": 1.0,
-"texture": ExtResource("81_ki6eq")
-}, {
-"duration": 1.0,
-"texture": ExtResource("82_4egmn")
-}, {
-"duration": 1.0,
-"texture": ExtResource("83_hw5do")
-}, {
-"duration": 1.0,
-"texture": ExtResource("84_ra06o")
-}, {
-"duration": 1.0,
-"texture": ExtResource("85_fw0dm")
 }],
 "loop": 0,
 "name": &"倍满",
@@ -574,10 +454,12 @@ offset_right = 40.0
 offset_bottom = 40.0
 
 [node name="跳满" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=536132179]
-position = Vector2(1021.54, 539.7)
-scale = Vector2(1.15, 1.15)
+position = Vector2(921.66, 540.105)
+scale = Vector2(0.965, 0.965)
 sprite_frames = SubResource("SpriteFrames_0wcdv")
 animation = &"跳满"
+frame = 13
+frame_progress = 1.0
 
 [node name="满贯" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=169502089]
 position = Vector2(921.66, 540.105)
@@ -593,6 +475,8 @@ scale = Vector2(0.965, 0.965)
 sprite_frames = SubResource("SpriteFrames_tuq5b")
 animation = &"倍满"
 
+frame = 13
+frame_progress = 1.0
 [node name="三倍满" type="AnimatedSprite2D" parent="和牌播报面板" unique_id=766946116]
 position = Vector2(921.66, 540.105)
 scale = Vector2(0.965, 0.965)

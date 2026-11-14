@@ -170,13 +170,16 @@ def main() -> int:
     g5 = Game(db5, rid5)
     r5 = g5.card05_swap(0, "1m", "river", river_seq=1)
     check("换到 9p", r5.get("got"), "9p")
-    check("是明置位置", r5.get("face_down"), False)
+    check("换过去的是暗置", r5.get("face_down"), True)
+    g5b = Game(db5, rid5)
+    check("换牌后要亮牌（broadcast 5 号卡）", int((g5b.broadcast or {}).get("card", 0)), 5)
+    check("策略可多次发动（不置灰）", "5-1-0" in g5b.used_skills, False)
     g5 = Game(db5, rid5)
     check("手里多了 9p", "9p" in g5.hand(0), True)
     check("1m 去了牌河", db5._one(
         "SELECT tile FROM round_discards WHERE round_id=? AND seq=1", (rid5,)), "1m")
-    check("牌河这张还是明置", db5._one(
-        "SELECT face_down FROM round_discards WHERE round_id=? AND seq=1", (rid5,)), 0)
+    check("牌河这张现在是暗置", db5._one(
+        "SELECT face_down FROM round_discards WHERE round_id=? AND seq=1", (rid5,)), 1)
     check("换完机会用掉了", 0 in g5.card05_offer, False)
 
     # 机会发在「别人的回合」里也要能换（画板转移就是那一刻发的）
@@ -269,6 +272,17 @@ def main() -> int:
     check("盖住的三张看不到", [t for t in hand if t in ("1m", "2m", "3m")], [])
     check("其他牌还能看到", "bai" in hand, True)
     check("看别人的手牌不受影响", g7.card05_view_hand(1, 2).get("blocked"), False)
+
+    # ── ⑦ 计数器不攒点（2026-11-07 用户口径）──
+    print("\n⑦ 计数器不攒点：被影响只算 1 次，用完 / 取消即清零")
+    g5.card05_interfere(0, 1, "测试")
+    check("被影响 → 计数 1", g5.card05_counter.get(0), 1)
+    g5.card05_interfere(0, 2, "测试2")
+    check("再被影响也不叠加", g5.card05_counter.get(0), 1)
+    check("第二次机会覆盖第一次", (g5.card05_offer.get(0) or {}).get("by"), 2)
+    g5.card05_cancel(0)
+    check("取消换牌 → 计数清零", g5.card05_counter.get(0), None)
+    check("取消换牌 → 机会清掉", g5.card05_offer.get(0), None)
 
     for d in tg._OPEN_DBS:
         try:

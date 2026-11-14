@@ -7,6 +7,7 @@ extends Node
 # 只能放进程内存（就是这里）。
 
 var seat := -1
+var account := ""              # 当前登录账号名（空 = 未登录）；请求会带上去做座位绑定
 var voice_pack := ""           # 这个窗口选的角色语音包 id（见 voice_db.gd）                 # 0..3，-1 = 还没认领
 var lobby: Dictionary = {}     # 服务端大厅快照（phase / seats / pool / turn）
 var orders: Array = []         # 四家各自的 5 张最终顺序（进牌桌时从服务端抄下来）

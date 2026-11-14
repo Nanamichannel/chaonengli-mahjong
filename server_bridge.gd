@@ -87,6 +87,7 @@ func bg_busy() -> bool:
 
 
 func bg_send(req: Dictionary) -> bool:
+	req = _with_account(req)
 	if net != null and bool(net.enabled):
 		return bool(net.bg_send(req))
 	return _local_bg_send(req)
@@ -226,7 +227,26 @@ func push_close() -> void:
 		net.push_close()
 
 
+# 给请求补上「当前登录账号」：服务端据此把 seat ↔ 账号记下来（每小局记账要用）。
+# 登录态在 ClientState（四个窗口共用一份 user://，所以「我是谁」不能写文件里）。
+func _with_account(req: Dictionary) -> Dictionary:
+	if req.has("account"):
+		return req
+	var nm := ""
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null and tree.root != null:
+		var cs := tree.root.get_node_or_null("ClientState")
+		if cs != null:
+			nm = String(cs.get("account"))
+	if nm == "":
+		return req
+	req = req.duplicate()
+	req["account"] = nm
+	return req
+
+
 func request(req: Dictionary) -> Dictionary:
+	req = _with_account(req)
 	if net != null and net.enabled:
 		var rn: Dictionary = net.request(req)
 		if not bool(rn.get("ok", false)) and String(rn.get("error", "")) != "":

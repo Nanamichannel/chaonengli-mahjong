@@ -42,6 +42,7 @@ import skills                                            # noqa: E402
 from game import Game, RuleError                         # noqa: E402
 import game as game_mod                                  # noqa: E402
 import bot_ai                                           # 人机打牌 AI（kobalab/majiang-ai 移植）                                  # noqa: E402
+import accounts                                         # 全局账号库（名字即账号，无密码）          # noqa: E402
 from rules import agari, tenpai, wallmodel                # noqa: E402
 from tiles import counts_of, parse_hand, sort_tiles      # noqa: E402
 
@@ -1247,6 +1248,7 @@ _NO_GATE_OPS = {
     "start", "deal_step", "state", "poll", "advance",
     "act", "wall", "step", "tenpai", "furiten", "ron", "judge",
     "wipe", "view_hand",
+    "account_login", "account_create",   # 账号登录/注册：不依赖房间库，也不问看破
     "lobby_leave", "lobby_join", "lobby_order", "lobby_pick", "lobby_ready", "lobby_reset",
     "lobby_state", "lobby_unorder", "test_seats",
     "rename",                       # 本局昵称：不是技能，不问看破
@@ -2947,6 +2949,24 @@ def op_wall(db: DB, req: dict) -> dict:
             "round_id": rid}
 
 
+# ── 账号：名字即账号，无密码（用户口径 2026-11-14）────────────────────
+def op_account_login(db: DB, req: dict) -> dict:
+    r = accounts.login(req.get("name"))
+    out = {"ok": True, "state": None, "events": [], "result": None}
+    out.update(r)
+    return out
+
+
+def op_account_create(db: DB, req: dict) -> dict:
+    r = accounts.create(req.get("name"))
+    out = {"ok": True, "state": None, "events": [], "result": None}
+    out.update(r)
+    if r.get("error"):
+        out["ok"] = False
+        out["error"] = r["error"]
+    return out
+
+
 OPS = {
     "join": op_join,
     "lobby_join": lobby_mod.op_join,
@@ -2965,6 +2985,8 @@ OPS = {
     "next": op_next,
     "new_hanchan": op_new_hanchan,
     "match_confirm": op_match_confirm,        # 半庄终局：四家确认 → 清房间
+    "account_login": op_account_login,        # 账号登录（库里有没有这个名字）
+    "account_create": op_account_create,      # 账号注册（"确认取消"里点确认）
     "start": op_start,
     "deal_step": op_deal_step,
     "state": op_state,
@@ -3181,6 +3203,9 @@ def close_cached_dbs() -> None:
 
 def handle(req: dict, db_path: str = DB_PATH) -> dict:
     op = str(req.get("op", "state"))
+    # ★ 账号两个 op **不依赖房间库**（开始界面还没有房间，单机也还没选房间）→ 先分流
+    if op in ("account_login", "account_create"):
+        return OPS[op](None, req)
     fn = OPS.get(op)
     if fn is None:
         return {"ok": False, "state": None, "events": [], "result": None,
@@ -3205,6 +3230,14 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
         #   现在他只要还活着、还在发请求，座位就一直归他（死窗口不再发请求，照样过期）。
         if isinstance(seat, int) and 0 <= int(seat) <= 3:
             _touch_lease(db, int(seat))
+            # ★ 座位 ↔ 账号：客户端带 account 时记下来（记账要用）。变了才写，避免每 0.3s 轮询都写库。
+            _acc = accounts.norm(req.get("account"))
+            if _acc:
+                _k = "seat_account_%d" % int(seat)
+                _cur = db._row("SELECT value FROM meta WHERE key=?", (_k,))
+                if _cur is None or str(_cur["value"]) != _acc:
+                    db.conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
+                                    (_k, _acc))
         # Card34 S1【厄运】：静默期内其他三家不能使用任何技能
         if (op not in _C34_FREE_OPS and isinstance(seat, int)
                 and 0 <= int(seat) <= 3):

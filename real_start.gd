@@ -106,6 +106,8 @@ func _ready() -> void:
 	_setup_level1()
 	_setup_level2()
 	_setup_settings()
+	_setup_account()      # 「以登入账号」面板（设置面板动画的副本）
+	_load_auth()          # 上次登录的账号（user://auth.cfg）
 	_setup_lobby()
 	# 鉴赏：46 张卡，提前预加载，点【人物4】时几乎瞬间可切（转场动画不卡）
 	_gallery_req = (ResourceLoader.load_threaded_request(GALLERY_SCENE, "PackedScene") == OK)
@@ -293,8 +295,8 @@ func _on_settings_typed(t: String) -> void:
 
 
 func _on_settings_submitted(_t: String) -> void:
-	# 回车 = 点【登入】（跟搜索框的点【进入】同一个出口）
-	_play_settings_login()
+	# 回车 = 点【登入】：先去账号库问一句（有→登入；没有→弹确认取消）
+	_try_login()
 
 
 func _set_settings_search(on: bool) -> void:
@@ -449,6 +451,8 @@ func _hit_settings_login(mp: Vector2) -> bool:
 
 
 func _process(_dt: float) -> void:
+	if _acct_phase != 0:
+		_tick_account(_dt)          # 以登入账号面板：弹出 / 倒放
 	if _going:
 		return                              # 转场中：冻结一级交互
 	if _state == 3:
@@ -597,6 +601,23 @@ func _finish_exit() -> void:
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventMouseButton:
 		var mb := ev as InputEventMouseButton
+		# ① 确认取消面板弹着：吃掉所有点击（无动画，直接出现/直接消失）
+		if _cc_on():
+			if mb.pressed:
+				if mb.button_index == MOUSE_BUTTON_LEFT:
+					if _cc_hit_ok(get_viewport().get_mouse_position()):
+						_cc_confirm()
+					else:
+						_cc_hide()          # 点面板外 = 取消
+				elif mb.button_index == MOUSE_BUTTON_RIGHT:
+					_cc_hide()
+			return
+		# ② 「以登入账号」面板弹着：点一下 / 右键 = 倒放退出
+		if _state == 5:
+			if mb.pressed and (mb.button_index == MOUSE_BUTTON_LEFT
+					or mb.button_index == MOUSE_BUTTON_RIGHT):
+				_exit_account()
+			return
 		if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
 			if _state == 2:
 				# 已经在房间里 → 不许右键退回二级面板（要退出请点左上角「跳过」）
@@ -611,14 +632,18 @@ func _unhandled_input(ev: InputEvent) -> void:
 			if _hover == "人物12":
 				_enter_level2()
 			elif _hover == "人物3":
-				_enter_settings()
+				# 已登录 → 弹「以登入账号」；未登录 → 正常弹登录面板（搜索框）
+				if _auth_name != "":
+					_enter_account()
+				else:
+					_enter_settings()
 			elif _hover == "人物4":
 				_go_gallery()
 			return
 		if _state == 2 and _search_ready and _hit_enter3d(get_viewport().get_mouse_position()):
 			_play_outro()
 		elif _state == 4 and _settings_ready and _hit_settings_login(get_viewport().get_mouse_position()):
-			_play_settings_login()
+			_try_login()
 
 
 # 点【进入】：按 3D 投影算屏幕矩形（3D 位置一改，这里自动跟随）
@@ -782,3 +807,297 @@ func _on_lobby_phase(p: String) -> void:
 		_set_search(false)
 		_search_ready = false
 		_state = 9                     # 选卡阶段不再响应一级/二级的点击与右键
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  账号（2026-11-14）：名字即账号、没有密码、区分大小写；
+#  · 库里有这个名字 → 直接登入（播原有登入段）
+#  · 库里没有 → 弹「确认取消」（无动画）→ 确认=建账号（建完要再点一次登入）
+#  · 已登录再点【设置】→ 弹「以登入账号」面板（设置面板动画的副本 + 行楷名字）
+#  · 战绩由服务端在每小局结束时记（有人机的对局不计）
+# ══════════════════════════════════════════════════════════════════════════
+const AUTH_CFG := "user://auth.cfg"
+const ACCT_TEX := "res://Cailiao/UI/以登入账号.png"
+const CC_TEX := "res://Cailiao/UI/确认取消.png"
+const XINGKAI_FONT := "res://Cailiao/fonts/xingkai.ttf"
+const CC_IMG := Vector2(625.0, 310.0)
+const CC_SHOW := 1.15                                        # 面板显示倍率（画布坐标）
+const CC_BTN_OK := Rect2(140.0, 190.0, 140.0, 72.0)          # 图片像素（按 PNG 量）
+const CC_BTN_CANCEL := Rect2(348.0, 190.0, 137.0, 72.0)
+const ACCT_NAME_IMG := Vector2(312.0, 218.0)                 # 名字在板子上的图片坐标
+
+var _auth_name := ""                    # 已登录账号（空 = 未登录）
+var _auth_srv: ServerBridge = null
+var _hint_layer: CanvasLayer = null
+var _hint_lbl: Label = null
+var _hint_tw: Tween = null
+
+var _cc_layer: CanvasLayer = null
+var _cc_rect: TextureRect = null
+var _cc_pending := ""                   # 「确认创建」要建的名字
+
+var _acct: Node2D = null                # 「以登入账号」（设置面板子树 + 动画的副本）
+var _acct_ap: AnimationPlayer = null
+var _acct_layers: Array = []
+var _acct_vp: SubViewport = null
+var _acct_name3d: Label3D = null
+var _acct_phase := 0                    # 0 空闲 / 1 弹出中 / 2 定格 / 4 倒放
+var _acct_rewind_t := 0.0
+
+
+func _srv() -> ServerBridge:
+	if _auth_srv == null:
+		_auth_srv = ServerBridge.new()
+	return _auth_srv
+
+
+func _set_client_account(nm: String) -> void:
+	var cs := get_node_or_null("/root/ClientState")
+	if cs != null:
+		cs.set("account", nm)
+
+
+func _load_auth() -> void:
+	_auth_name = ""
+	var cf := ConfigFile.new()
+	if cf.load(AUTH_CFG) == OK:
+		_auth_name = String(cf.get_value("auth", "name", "")).strip_edges()
+	_set_client_account(_auth_name)
+	if _auth_name != "":
+		print("[账号] 已登录：%s" % _auth_name)
+
+
+func _save_auth() -> void:
+	var cf := ConfigFile.new()
+	cf.set_value("auth", "name", _auth_name)
+	cf.save(AUTH_CFG)
+
+
+# ── 屏幕提示（开始界面没有 toast，这里最简一行）────────────────────────
+func _hint(text: String) -> void:
+	if _hint_layer == null or not is_instance_valid(_hint_layer):
+		_hint_layer = CanvasLayer.new()
+		_hint_layer.name = "HintLayer"
+		_hint_layer.layer = 95
+		add_child(_hint_layer)
+		_hint_lbl = Label.new()
+		_hint_lbl.add_theme_font_size_override("font_size", 30)
+		_hint_lbl.add_theme_color_override("font_color", Color(1.0, 0.98, 0.9))
+		_hint_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		_hint_lbl.add_theme_constant_override("outline_size", 6)
+		_hint_lbl.position = Vector2(0, 980)
+		_hint_lbl.size = Vector2(1920, 60)
+		_hint_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_hint_layer.add_child(_hint_lbl)
+	if _hint_tw != null and _hint_tw.is_valid():
+		_hint_tw.kill()
+	_hint_lbl.text = text
+	_hint_lbl.modulate.a = 1.0
+	_hint_tw = create_tween()
+	_hint_tw.tween_interval(2.2)
+	_hint_tw.tween_property(_hint_lbl, "modulate:a", 0.0, 0.5)
+
+
+# ── 「确认取消」面板（无动画：直接出现 / 直接消失）─────────────────────
+func _cc_ensure() -> void:
+	if _cc_layer != null and is_instance_valid(_cc_layer):
+		return
+	_cc_layer = CanvasLayer.new()
+	_cc_layer.name = "ConfirmCancelLayer"
+	_cc_layer.layer = 90
+	add_child(_cc_layer)
+	_cc_rect = TextureRect.new()
+	_cc_rect.name = "ConfirmCancel"
+	_cc_rect.texture = load(CC_TEX)
+	_cc_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_cc_rect.visible = false
+	_cc_layer.add_child(_cc_rect)
+
+
+func _cc_on() -> bool:
+	return _cc_layer != null and is_instance_valid(_cc_layer) and _cc_rect != null \
+		and _cc_rect.visible
+
+
+func _cc_show() -> void:
+	_cc_ensure()
+	var vp := get_viewport_rect().size
+	var sz := CC_IMG * CC_SHOW
+	_cc_rect.size = sz
+	_cc_rect.position = ((vp - sz) * 0.5).round()
+	_cc_rect.visible = true                 # 直接出现：不建 Tween
+
+
+func _cc_hide() -> void:
+	if _cc_rect != null and is_instance_valid(_cc_rect):
+		_cc_rect.visible = false            # 直接消失：不建 Tween
+
+
+func _cc_hit_ok(p: Vector2) -> bool:
+	if _cc_rect == null or not is_instance_valid(_cc_rect):
+		return false
+	var img := (p - _cc_rect.position) / CC_SHOW
+	return CC_BTN_OK.has_point(img)
+
+
+func _cc_confirm() -> void:
+	_cc_hide()
+	var nm := _cc_pending
+	_cc_pending = ""
+	if nm == "":
+		return
+	var r: Dictionary = _srv().request({"op": "account_create", "name": nm})
+	if r.is_empty() or not bool(r.get("ok", false)):
+		_hint("创建失败：%s" % (String(r.get("error", "连不上服务端")) if not r.is_empty()
+				else "连不上服务端"))
+	else:
+		_hint("已创建账号「%s」——再点一次【登入】" % nm)
+	# 回到设置面板定格（输入框里名字还在，D1：不自动登入）
+	if _state == 4:
+		_set_settings_search(true)
+
+
+# ── 点【登入】/回车：先问账号库 ────────────────────────────────────────
+func _try_login() -> void:
+	if _state != 4 or not _settings_ready or _settings_search == null:
+		return
+	var nm := _settings_search.text.strip_edges()
+	if nm == "":
+		_hint("先输入账号名")
+		return
+	_set_settings_search(false)
+	var r: Dictionary = _srv().request({"op": "account_login", "name": nm})
+	if r.is_empty():
+		_hint("连不上服务端")
+		_set_settings_search(true)
+		return
+	if not bool(r.get("ok", false)):
+		_hint(String(r.get("error", "登录失败")))
+		_set_settings_search(true)
+		return
+	if bool(r.get("exists", false)):
+		_auth_name = nm
+		_save_auth()
+		_set_client_account(nm)
+		print("[账号] 登入：%s" % nm)
+		_play_settings_login()              # 原有 AE 67→250 登入段 → 回一级
+		return
+	# 库里没有 → 弹「确认取消」（面板直接出现，无动画）
+	_cc_pending = nm
+	_cc_show()
+
+
+# ── 「以登入账号」= 设置面板动画的副本（只换贴图，关键帧零改动）───────
+func _setup_account() -> void:
+	if _settings == null:
+		push_warning("真初始场景：没有设置面板，账号面板做不出来")
+		return
+	_acct = _settings.duplicate()           # 整棵子树（含 AnimationPlayer + 动画库）
+	_acct.name = "以登入账号"
+	add_child(_acct)
+	for c in _acct.get_children():
+		if c is CanvasLayer:
+			(c as CanvasLayer).visible = false
+			_acct_layers.append(c)
+	_acct_ap = _acct.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if _acct_ap != null:
+		for conn in _acct_ap.animation_finished.get_connections():
+			_acct_ap.animation_finished.disconnect(conn.callable)
+		_acct_ap.root_node = NodePath("..")
+		if _acct_ap.has_animation("intro"):
+			_acct_ap.play("intro")
+		_acct_ap.seek(0.0, true)
+		_acct_ap.pause()
+	_acct_vp = _acct.get_node_or_null("3D画面/3D容器/3D视口") as SubViewport
+	if _acct_vp != null:
+		_acct_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	# 换贴图：边框（625×310 的板）= 以登入账号.png；隐藏输入框和【登入】
+	var frame := _acct.find_child("边框", true, false) as Sprite3D
+	if frame != null:
+		frame.texture = load(ACCT_TEX)
+	else:
+		push_warning("以登入账号：找不到「边框」Sprite3D")
+	var box := _acct.find_child("搜索框", true, false) as Sprite3D
+	if box != null:
+		box.visible = false
+	var lg := _acct.find_child("登入", true, false) as Sprite3D
+	if lg != null:
+		lg.visible = false
+	# 账号名：Label3D 贴在板子下方（行楷 / 黑色 / 不描边）
+	if frame != null:
+		var lb := Label3D.new()
+		lb.name = "AccountName"
+		lb.font = load(XINGKAI_FONT)
+		lb.font_size = 52
+		lb.pixel_size = 1.0
+		lb.modulate = Color(0, 0, 0, 1)
+		lb.outline_size = 0
+		lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lb.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lb.no_depth_test = true
+		lb.render_priority = 100
+		lb.text = ""
+		frame.add_child(lb)
+		# Sprite3D 的局部 y 轴向上 → 图片像素 y 要取负（同 _hit_settings_login 的写法）
+		lb.position = Vector3(frame.offset.x + ACCT_NAME_IMG.x,
+			-(frame.offset.y + ACCT_NAME_IMG.y), 2.0)
+		_acct_name3d = lb
+
+
+func _enter_account() -> void:
+	if _state != 1:
+		return
+	if _acct == null or _acct_ap == null:
+		_hint("账号面板没准备好")
+		return
+	_state = 5
+	_acct_phase = 1
+	if _acct_name3d != null:
+		_acct_name3d.text = _auth_name
+	for l in _acct_layers:
+		(l as CanvasLayer).visible = true
+	if _acct_vp != null:
+		_acct_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_acct_ap.speed_scale = 1.0
+	_acct_ap.play("intro")
+	_acct_ap.seek(0.0, true)
+
+
+func _tick_account(dt: float) -> void:
+	if _acct_ap == null:
+		return
+	if _acct_phase == 4:
+		_acct_rewind_t -= dt
+		if _acct_rewind_t <= 0.0:
+			_acct_ap.seek(0.0, true)
+			_acct_ap.pause()
+			_finish_account()
+			return
+		_acct_ap.seek(_acct_rewind_t, true)
+		return
+	var t := _acct_ap.current_animation_position
+	if _acct_phase == 1 and t >= SETTINGS_T_FULL:
+		_acct_phase = 2
+	if _acct_phase == 2 and _acct_ap.current_animation != "idle" \
+			and _acct_ap.has_animation("idle") and t >= SETTINGS_T_INTRO - 0.0005:
+		_acct_ap.play("idle")               # 左右护法一直摇摆（和设置面板同一段）
+
+
+func _exit_account() -> void:
+	if _state != 5 or _acct_ap == null:
+		return
+	_acct_phase = 4
+	if _acct_ap.current_animation != "intro":
+		_acct_ap.play("intro")
+		_acct_ap.seek(SETTINGS_T_INTRO, true)
+	_acct_rewind_t = _acct_ap.current_animation_position
+	_acct_ap.pause()
+
+
+func _finish_account() -> void:
+	for l in _acct_layers:
+		(l as CanvasLayer).visible = false
+	if _acct_vp != null:
+		_acct_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_acct_phase = 0
+	_state = 1

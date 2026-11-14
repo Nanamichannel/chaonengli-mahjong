@@ -41,6 +41,8 @@ import random
 import sqlite3
 import time
 
+import accounts          # 全局账号库（data/accounts.db）：小局结算后记战绩
+
 SCHEMA_VERSION = "1"
 
 # ── 牌的基础工具：统一放在 tiles.py，数据库层和规则层共用同一份 ──────────────
@@ -799,6 +801,12 @@ class DB:
                     "(SELECT user_id FROM match_seats WHERE match_id = "
                     " (SELECT match_id FROM rounds WHERE round_id=?) AND seat = ?)",
                     (round_id, winner_seat))
+        # ★ 2026-11-14：每小局给登录账号记一条（有人机的对局整局不计）。
+        #   放在房间库事务**提交之后**：a) 不占房间库的锁；b) 这时 match_seats.score 已经加过 delta。
+        try:
+            accounts.note_round(self, int(round_id), str(result), deltas or {})
+        except Exception as e:                          # noqa: BLE001
+            print("[accounts] 记账失败：%s" % e, flush=True)
 
     def reveal_next_dora(self, round_id: int, kind: str = "dora") -> dict | None:
         """杠了以后翻开下一张宝牌指示牌（里宝牌同理，和了的时候才翻）。"""

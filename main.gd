@@ -310,6 +310,51 @@ const ACT_ASYNC := true                       # 出问题可以一行关掉，�
 var _act_pending := {}
 var _act_wait := {}          # 通道被轮询占着 → 排队等下一帧再发的动作
 var _poll_hold_until := 0    # 动作/一步刚落地：这一小段别轮询（响应已经是最新状态）
+
+# ── 帧尖峰归因（2026-11-15）────────────────────────────────────────
+#   dt 大而 proc 小 → 尖峰不在 Main._process；proc 大再看 apply/entity/net。
+const SPIKE_SEC := 0.033          # 超过这个时长记一条
+const SPIKE_LOG := "user://spike.log"
+var _spk_on := true
+var _spk_dt := 0.0                # 上一帧的 dt
+var _spk_proc_us := 0             # 上一帧 _process 耗时
+var _spk_enter_us := 0            # 本帧进入 _process 的时刻
+var _spk_ms := {}                 # "apply"/"entity"/"net" -> 最近一次耗时(ms)
+var _spk_n := 0
+
+
+func _spk_set(name: String, t0: int) -> void:
+	_spk_ms[name] = float(Time.get_ticks_usec() - t0) / 1000.0
+
+
+# 每帧第一件事：先结算「上一帧」——尖峰时把上一帧的分段耗时写日志
+func _spk_frame() -> void:
+	var now := Time.get_ticks_usec()
+	var prev_ms := _spk_ms.duplicate()      # 上一帧里各段记到的耗时
+	_spk_ms = {}
+	if _spk_enter_us != 0:
+		_spk_proc_us = now - _spk_enter_us  # 入口到入口 = 上一帧真实帧长（含被阻塞的时间）
+	_spk_enter_us = now
+	if not _spk_on:
+		return
+	if float(_spk_proc_us) / 1000000.0 > SPIKE_SEC:
+		_spk_n += 1
+		var line := ("[SPIKE] dt=%.0fms apply=%.2fms entity=%.2fms net=%.2fms"
+			+ " p=%.1fms phys=%.2fms req=%dms phase=%s apply_n=%d") % [
+			float(_spk_proc_us) / 1000.0,
+			float(prev_ms.get("apply", 0.0)), float(prev_ms.get("entity", 0.0)),
+			float(prev_ms.get("net", 0.0)),
+			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+			Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
+			last_req_ms, String(srv_state.get("phase", "")), _apply_n]
+		print(line)
+		var f := FileAccess.open(SPIKE_LOG, FileAccess.READ_WRITE)
+		if f == null:
+			f = FileAccess.open(SPIKE_LOG, FileAccess.WRITE)
+		if f != null:
+			f.seek_end()
+			f.store_line(line)
+			f.close()
 var _step_wait := {}         # 同上，排队的是「推进一步」
 # ★ 上云后调慢：没推送（反代没转发 WebSocket / 掉线）时全靠这个间隔拉状态。
 #   0.35 → 0.5 秒，服务端出网流量省 ~30%，人手感觉不出差别；
@@ -14219,6 +14264,7 @@ func _selection_sig() -> String:
 
 
 func _apply_entity_states(st2: Dictionary) -> void:
+	var _t_ent := Time.get_ticks_usec()
 	if tile_bank == null:
 		return
 	tile_bank.begin_frame()
@@ -14238,6 +14284,7 @@ func _apply_entity_states(st2: Dictionary) -> void:
 		str(hand_pick.picks.hash()) if hand_pick != null else "-",
 		int(riichi_selecting), int(hand_offset.x * 100.0), _selection_sig()]
 	if _esig == _entity_sig:
+		_spk_set("entity", _t_ent)
 		return
 	_entity_sig = _esig
 	var vp := get_viewport_rect().size
@@ -14614,6 +14661,7 @@ func _apply_entity_states(st2: Dictionary) -> void:
 	# 只隐藏「这一帧没有再出现」的牌；仍在手牌/牌河/副露里的牌不隐藏，
 	# 避免每帧 visible/mouse_filter 抖动导致鼠标悬停状态丢失（手牌自己落下/抽搐）
 	tile_bank.end_frame()
+	_spk_set("entity", _t_ent)
 
 
 # ── 性能：状态 / 渲染去重用的记号（见各函数里的 ★ 性能 注释）─────────────
@@ -14624,6 +14672,7 @@ var _push_seat_sent := -999                        # 已告知长连接的座位
 var _piles_hidden_done := false                     # 老画法的牌河格子已隐藏过（只需要一次）
 
 func srv_apply_state(st, events = null) -> void:
+	var _t_apply := Time.get_ticks_usec()
 	if typeof(st) != TYPE_DICTIONARY:
 		return
 	var st2: Dictionary = st
@@ -14644,6 +14693,7 @@ func srv_apply_state(st, events = null) -> void:
 	else:
 		var _sh: int = st2.hash()
 		if _sh != 0 and _sh == _last_state_hash and st2.size() == _last_state_size:
+			_spk_set("apply", _t_apply)
 			return
 		_last_state_hash = _sh
 		_last_state_size = st2.size()
@@ -14844,6 +14894,7 @@ func srv_apply_state(st, events = null) -> void:
 	_legal_guard(st2)
 	# 最后：如果服务端说「轮到我摸牌了」，我自己把摸牌推下去（见下面的注释）
 	_auto_draw_if_my_turn()
+	_spk_set("apply", _t_apply)
 
 
 # 轮到我摸牌 → 立刻自动推一步（客户端没有「摸牌」按钮，全靠这个）。
@@ -15190,6 +15241,12 @@ func _match_tick(delta: float) -> void:
 	if _match_acc < 1.5:
 		return
 	_match_acc = 0.0
+	# ★ 非阻塞（原来 1.5s 一次同步，终局画面每 1.5s 冻 ~120ms）
+	if _act_pending.is_empty() and not _srv_bg_busy() \
+			and srv != null and srv.has_method("bg_send") \
+			and bool(srv.call("bg_send", _srv_shape({"op": "match_confirm", "seat": my_seat}))):
+		_act_pending = {"kind": "match_poll", "t": Time.get_ticks_msec()}
+		return
 	var r := srv_request({"op": "match_confirm", "seat": my_seat})
 	if r.is_empty():
 		return
@@ -15264,7 +15321,22 @@ func _result_confirm_apply(raw) -> void:
 func _result_confirm_poll() -> void:
 	if not game_over:
 		return
+	# ★ 2026-11-15：这里原来每 0.8s **同步** 问一次 state —— 云端一个往返 ~120ms，
+	#   结算画面就每 0.8 秒冻一次（尖峰归因实测 req=117ms、p=118ms）。
+	#   现在走非阻塞通道，响应在 _process 里按 kind="result_poll" 收（见 _act_pending）。
+	if _act_pending.is_empty() and not _srv_bg_busy() \
+			and srv != null and srv.has_method("bg_send") \
+			and bool(srv.call("bg_send", _srv_shape({"op": "state", "seat": my_seat}))):
+		_act_pending = {"kind": "result_poll", "t": Time.get_ticks_msec()}
+		return
 	var r := srv_request({"op": "state", "seat": my_seat})
+	if r.is_empty():
+		return
+	_result_confirm_handle(r)
+
+
+# 结算画面轮询回来的那份：同步 / 非阻塞两条路共用
+func _result_confirm_handle(r: Dictionary) -> void:
 	if r.is_empty():
 		return
 	var st = r.get("state")
@@ -17767,7 +17839,10 @@ func _lease_tick(delta: float) -> void:
 		return
 	_lease_ping = 0.0
 	if srv != null and not game_over:
-		srv_request({"op": "state", "seat": my_seat})
+		# ★ 保活用：非阻塞发一发（原来同步等一个往返，面板开着时每 2s 冻一次）
+		if _act_pending.is_empty() and not _srv_bg_busy() \
+				and srv.has_method("bg_send"):
+			srv.call("bg_send", _srv_shape({"op": "state", "seat": my_seat}))
 
 
 # 面板还开着、但服务端已经不允许发动了（刚换完 / 已经摸牌 / 被别的窗口推进）
@@ -18026,8 +18101,63 @@ func _busy_clear() -> void:
 	_busy_site = ""
 	_busy_warned = false
 
+# ★ 收网络结果：_process 里**最先**跑（任何提前 return 之前），
+#   否则和牌播报/结算面板一盖住界面，异步动作的响应就永远收不到。
+func _net_in_tick() -> void:
+	# ★ 先收上一次「非阻塞轮询」的结果（公网往返 100~300ms 也不冻画面）
+	var _t_net := Time.get_ticks_usec()
+	if srv != null and srv.has_method("bg_poll") and bool(srv.call("bg_busy")):
+		var rb: Dictionary = srv.call("bg_poll")
+		if not rb.is_empty():
+			# ★ 这一发是我刚发的动作/推进一步吗？是的话走它自己的尾巴
+			var pend := _act_pending
+			_act_pending = {}
+			var rr := _srv_handle(rb)
+			if typeof(rr.get("humans")) == TYPE_ARRAY:
+				srv_humans = rr.get("humans")
+			# 半庄打完了 → 弹终局名次播报（不管是谁点下的最后一下确认）
+			if bool(rr.get("match_finished", false)) and not match_active:
+				_show_match_final(rr.get("final_rank", []), rr.get("confirmed", []))
+			if pend.is_empty():
+				if not rr.is_empty() and not bool(rr.get("same", false)):
+					srv_apply_state(rr.get("state"), rr.get("events"))
+			elif String(pend.get("kind", "")) == "step":
+				_step_tail(rr)
+			elif String(pend.get("kind", "")) == "result_poll":
+				if not rr.is_empty():
+					_result_confirm_handle(rr)
+			elif String(pend.get("kind", "")) == "match_poll":
+				if not rr.is_empty():
+					_match_apply(rr)
+			else:
+				if not rr.is_empty() and not bool(rr.get("same", false)):
+					srv_apply_state(rr.get("state"), rr.get("events"))
+				_act_tail(rr, String(pend.get("action", "")))
+	# ★ 长连接推送：服务端状态一变就发新的 ver 过来 → 立刻拉一次，不用等轮询周期
+	if srv != null and srv.has_method("push_tick"):
+		if _push_seat_sent != my_seat:          # ★ 每帧重发纯属浪费，座位变了才发
+			_push_seat_sent = my_seat
+			srv.call("push_set_seat", my_seat)
+		var pr: Dictionary = srv.call("push_tick")
+		if not pr.is_empty():
+			var pv := String(pr.get("ver", ""))
+			var pst = pr.get("state")
+			if typeof(pst) == TYPE_DICTIONARY and not (pst as Dictionary).is_empty():
+				# 推送里直接带了「按我这个座位裁好」的整份 state → 不用再拉
+				if pv != "":
+					_state_ver = pv
+				_push_n += 1
+				_apply_n += 1
+				srv_apply_state(pst, [])
+			elif pv != "" and pv != _state_ver:
+				poll_accum = 99999.0        # 只推了版本号 → 被叫醒，自己拉一次
+	_spk_set("net", _t_net)
+
+
 func _process(delta: float) -> void:
 	var _pf0 := Time.get_ticks_usec()
+	_spk_frame()                # 结算上一帧（尖峰归因）
+	_net_in_tick()              # 先收网络结果（早退也不影响）
 	_audio_dev_tick(delta)      # F9 切输出设备的收尾（平时直接 return）
 	_lat_test_tick()            # F10 延迟自测的节拍（平时直接 return）
 	# ★ 非阻塞动作的兜底：一发超过 12 秒还没回来（断网 / 服务端不响应）→ 别卡死。
@@ -18108,46 +18238,6 @@ func _process(delta: float) -> void:
 		_voice_preload_my_pack()
 	_tm_tick(delta)
 	_perf_sample(delta, _pf0, _pf_ui0, _pf_ui1)
-	# ★ 先收上一次「非阻塞轮询」的结果（公网往返 100~300ms 也不冻画面）
-	if srv != null and srv.has_method("bg_poll") and bool(srv.call("bg_busy")):
-		var rb: Dictionary = srv.call("bg_poll")
-		if not rb.is_empty():
-			# ★ 这一发是我刚发的动作/推进一步吗？是的话走它自己的尾巴
-			var pend := _act_pending
-			_act_pending = {}
-			var rr := _srv_handle(rb)
-			if typeof(rr.get("humans")) == TYPE_ARRAY:
-				srv_humans = rr.get("humans")
-			# 半庄打完了 → 弹终局名次播报（不管是谁点下的最后一下确认）
-			if bool(rr.get("match_finished", false)) and not match_active:
-				_show_match_final(rr.get("final_rank", []), rr.get("confirmed", []))
-			if pend.is_empty():
-				if not rr.is_empty() and not bool(rr.get("same", false)):
-					srv_apply_state(rr.get("state"), rr.get("events"))
-			elif String(pend.get("kind", "")) == "step":
-				_step_tail(rr)
-			else:
-				if not rr.is_empty() and not bool(rr.get("same", false)):
-					srv_apply_state(rr.get("state"), rr.get("events"))
-				_act_tail(rr, String(pend.get("action", "")))
-	# ★ 长连接推送：服务端状态一变就发新的 ver 过来 → 立刻拉一次，不用等轮询周期
-	if srv != null and srv.has_method("push_tick"):
-		if _push_seat_sent != my_seat:          # ★ 每帧重发纯属浪费，座位变了才发
-			_push_seat_sent = my_seat
-			srv.call("push_set_seat", my_seat)
-		var pr: Dictionary = srv.call("push_tick")
-		if not pr.is_empty():
-			var pv := String(pr.get("ver", ""))
-			var pst = pr.get("state")
-			if typeof(pst) == TYPE_DICTIONARY and not (pst as Dictionary).is_empty():
-				# 推送里直接带了「按我这个座位裁好」的整份 state → 不用再拉
-				if pv != "":
-					_state_ver = pv
-				_push_n += 1
-				_apply_n += 1
-				srv_apply_state(pst, [])
-			elif pv != "" and pv != _state_ver:
-				poll_accum = 99999.0        # 只推了版本号 → 被叫醒，自己拉一次
 	if game_over or srv_busy:
 		return
 	if _prompt_blocked():

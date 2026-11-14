@@ -51,3 +51,6 @@ Cailiao/UI/示范/
 # 联机口令（导出时打进 exe，绝不进仓库）
 net_token.cfg
 net_token.txt
+
+# 海底捞月帧序列（约 2.0 GB / 4730 个文件，Godot 里也有 .gdignore，只留在本地与打包里，不进仓库）
+Cailiao/UI/海底捞月/

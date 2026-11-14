@@ -28,6 +28,13 @@ var available := false
 var last_error := ""
 var calls := 0
 var req_path := ""                       # 本窗口专属（带进程号）
+# ★ 2026-11-15：单机常驻服务端（见 server/api_worker.py）
+#   以前每个请求起一个新 python ≈ 101ms → 点一张牌冻 100ms（「切牌非常卡」）。
+#   常驻进程里 handle() 往返实测 2~4ms，且不再阻塞主线程。
+var _wk := {}                             # db_key -> {pid, req, res, db}
+var _wk_seq := 0                          # 请求序号（服务端据此判重）
+var _wk_fail := 0                         # 连失败两次就永久关掉，退回一次性子进程
+var _wk_bg := {}                          # 非阻塞通道里「还没收」的那一发
 var res_path := ""
 
 func _init() -> void:
@@ -83,6 +90,8 @@ func bg_ok() -> bool:
 func bg_busy() -> bool:
 	if net != null and bool(net.enabled):
 		return bool(net.bg_busy())
+	if not _wk_bg.is_empty():
+		return true                       # 常驻进程那一发还没收
 	return _local_pid != 0
 
 
@@ -99,7 +108,134 @@ func bg_poll() -> Dictionary:
 	return _local_bg_poll()
 
 
-# ── 单机非阻塞通道 ────────────────────────────────────────────────────
+# ── 单机常驻服务端（api_cli.py --serve）────────────────────────────────
+# 协议：写请求文件（带递增 _seq）→ 常驻进程处理 → 原子替换响应文件（回带同一 _seq）。
+# 客户端只读响应文件、拿 seq 对上号才算数，所以旧残留不会串包。
+# 为什么不用管道：Godot 读管道会阻塞主线程，而这里是「非阻塞等 + 同步只等 2~4ms」。
+
+
+# 取（必要时起）这个房间库的常驻进程
+func _worker_for(db_path: String) -> Dictionary:
+	if not available or python == "" or _wk_fail >= 2:
+		return {}
+	var key := db_path if db_path != "" else "default"
+	var w = _wk.get(key, null)
+	if w != null and int((w as Dictionary).get("pid", 0)) > 0 \
+			and OS.is_process_running(int((w as Dictionary)["pid"])):
+		return w
+	var cli := _cli_path()
+	if not FileAccess.file_exists(cli):
+		_wk_fail = 99                       # 脚本都找不到 → 永久走一次性子进程
+		return {}
+	var tag := "%d_%d" % [OS.get_process_id(), _wk.size() + 1]
+	var nw := {"pid": 0,
+		"req": "user://srv_w_req_%s.json" % tag,
+		"res": "user://srv_w_res_%s.json" % tag,
+		"db": db_path}
+	var args := PackedStringArray([cli, "--serve",
+		"--in", ProjectSettings.globalize_path(String(nw["req"])),
+		"--out", ProjectSettings.globalize_path(String(nw["res"])),
+		"--idle", "900", "--parent", str(OS.get_process_id())])
+	if db_path != "":
+		args.append_array(PackedStringArray(["--db", db_path]))
+	var pid := OS.create_process(python, args)
+	if pid <= 0:
+		_wk_fail += 1
+		last_error = "起不了常驻服务端（改回一次性子进程）"
+		return {}
+	nw["pid"] = pid
+	_wk[key] = nw
+	return nw
+
+
+func _worker_write(w: Dictionary, req: Dictionary) -> int:
+	if w.is_empty():
+		return 0
+	if not _wk_bg.is_empty():
+		_wk_bg = {}                       # 被这一发插队了：作废，别让它等满 5s 算失败
+	_wk_seq += 1
+	var r := req.duplicate()
+	r["_seq"] = _wk_seq
+	if not r.has("pid"):
+		r["pid"] = OS.get_process_id()
+	var f := FileAccess.open(String(w["req"]), FileAccess.WRITE)
+	if f == null:
+		last_error = "请求文件写不了：" + String(w["req"])
+		return 0
+	f.store_string(JSON.stringify(r))
+	f.close()
+	calls += 1
+	return _wk_seq
+
+
+# 非阻塞读：没回来（或 seq 对不上）就回空字典
+func _worker_read(w: Dictionary, seq: int) -> Dictionary:
+	if w.is_empty() or seq <= 0:
+		return {}
+	var p := String(w.get("res", ""))
+	if p == "" or not FileAccess.file_exists(p):
+		return {}
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return {}
+	var txt := f.get_as_text()
+	f.close()
+	if txt.strip_edges() == "":
+		return {}
+	var d = JSON.parse_string(txt)
+	if typeof(d) != TYPE_DICTIONARY:
+		return {}                          # 正在写 → 下一帧再看
+	var dd: Dictionary = d
+	if int(dd.get("_seq", -1)) != seq:
+		return {}
+	dd.erase("_seq")
+	last_error = ""
+	return dd
+
+
+# 同步走常驻进程：正常 2~4ms 就回来（老办法 101ms）
+func _worker_request(req: Dictionary, wait_ms := 2000) -> Dictionary:
+	var w := _worker_for(_local_db_path())
+	if w.is_empty():
+		return {}
+	var seq := _worker_write(w, req)
+	if seq <= 0:
+		_wk_fail += 1
+		return {}
+	var deadline := Time.get_ticks_msec() + int(wait_ms)
+	var pid := int(w.get("pid", 0))
+	var spin := 0
+	while true:
+		var d := _worker_read(w, seq)
+		if not d.is_empty():
+			return d
+		spin += 1
+		if spin % 100 == 0 and pid > 0 and not OS.is_process_running(pid):
+			_wk_fail += 1                 # 进程没了：别干等，立刻退回一次性子进程
+			last_error = "常驻服务端进程没了（改回一次性子进程）"
+			return {}
+		if Time.get_ticks_msec() >= deadline:
+			_wk_fail += 1
+			last_error = "常驻服务端没回话（改回一次性子进程）"
+			return {}
+		OS.delay_msec(1)
+	return {}
+
+
+# 关窗口 / 停编辑器时把常驻进程收掉（不然会留下一个 python 僵尸）
+func shutdown() -> void:
+	for k in _wk.keys():
+		var pid := int((_wk[k] as Dictionary).get("pid", 0))
+		if pid > 0 and OS.is_process_running(pid):
+			OS.kill(pid)
+	_wk.clear()
+	_wk_bg = {}
+	if _local_pid != 0 and OS.is_process_running(_local_pid):
+		OS.kill(_local_pid)
+		_local_pid = 0
+
+
+# ── 单机非阻塞通道（老办法：一次一个子进程）──────────────────────────
 # 主线程只做「写请求文件 / 起进程 / 每帧查输出文件」，python 跑在独立进程里。
 # 以前 _poll() 每 0.35s 同步 OS.execute 一次（实测 94~105ms），界面一顿一顿。
 var _local_pid := 0
@@ -133,8 +269,16 @@ func _local_db_path() -> String:
 
 
 func _local_bg_send(req: Dictionary) -> bool:
-	if not available or _local_pid != 0:
+	if not available or _local_pid != 0 or not _wk_bg.is_empty():
 		return false
+	# ★ 优先常驻进程：只写请求文件，2~4ms 后由 _local_bg_poll 收结果
+	var wk := _worker_for(_local_db_path())
+	if not wk.is_empty():
+		var wseq := _worker_write(wk, req)
+		if wseq > 0:
+			_wk_bg = {"key": String(wk["req"]), "seq": wseq,
+				"deadline": Time.get_ticks_msec() + 5000}
+			return true
 	if not req.has("pid"):
 		req = req.duplicate()
 		req["pid"] = OS.get_process_id()
@@ -167,6 +311,22 @@ func _local_bg_send(req: Dictionary) -> bool:
 
 
 func _local_bg_poll() -> Dictionary:
+	if not _wk_bg.is_empty():
+		var wk2 = _wk.get("default", null)
+		for k2 in _wk.keys():
+			if String((_wk[k2] as Dictionary).get("req", "")) == String(_wk_bg["key"]):
+				wk2 = _wk[k2]
+				break
+		if wk2 != null:
+			var d2 := _worker_read(wk2, int(_wk_bg["seq"]))
+			if not d2.is_empty():
+				_wk_bg = {}
+				return d2
+		if Time.get_ticks_msec() > int(_wk_bg.get("deadline", 0)):
+			_wk_bg = {}
+			_wk_fail += 1
+			last_error = "常驻服务端没回话（改回一次性子进程）"
+		return {}
 	if _local_pid == 0:
 		return {}
 	var timeout := Time.get_ticks_msec() > _local_deadline
@@ -252,6 +412,10 @@ func request(req: Dictionary) -> Dictionary:
 		if not bool(rn.get("ok", false)) and String(rn.get("error", "")) != "":
 			last_error = String(rn.get("error", ""))
 		return rn
+	# ★ 单机：先走常驻进程（2~4ms）；起不来/没回话两次就永久退回一次性子进程
+	var rw := _worker_request(req)
+	if not rw.is_empty():
+		return rw
 	var out: Dictionary = {}
 	for attempt in range(3):
 		out = _request_once(req)

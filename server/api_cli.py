@@ -3537,6 +3537,93 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
             db.close()
 
 
+# ── 常驻模式（--serve）──────────────────────────────────────────────────
+# 客户端以前每个请求都起一个新 python：光启动 + import 就 ~101ms（实测），
+# 点一张牌冻 100ms → 用户报「切牌非常卡」。handle() 本身只要 0.1~3ms。
+# 这里让同一个进程反复处理「请求文件 → 响应文件」，往返实测 2~4ms。
+#
+# 协议：客户端把 JSON 写进 --in 文件（带递增 "_seq"），
+#       本进程处理完把结果（回带同一个 "_seq"）原子替换进 --out 文件。
+#       客户端只认 seq 对得上的响应，所以旧响应残留不会串包。
+def _parent_alive(pid: int) -> bool:
+    """客户端还在不在（Windows 用 OpenProcess；别的平台用 kill 0）。"""
+    if not pid:
+        return True
+    try:
+        if os.name == "nt":
+            import ctypes
+            k32 = ctypes.windll.kernel32
+            h = k32.OpenProcess(0x1000, False, int(pid))       # QUERY_LIMITED_INFORMATION
+            if not h:
+                return False
+            code = ctypes.c_ulong(0)
+            ok = k32.GetExitCodeProcess(h, ctypes.byref(code))
+            k32.CloseHandle(h)
+            return bool(ok) and code.value == 259              # STILL_ACTIVE
+        os.kill(int(pid), 0)
+        return True
+    except Exception:                                          # noqa: BLE001
+        return True                                            # 查不出来就当活着
+
+
+def serve_loop(req_path: str, res_path: str, db_path: str,
+               idle_exit: float = 900.0, client_pid: int = 0) -> int:
+    global CACHE_CONN
+    CACHE_CONN = True          # 常驻进程 → 连接缓存才有意义（省掉每次 init_schema）
+    last_seq = 0
+    last_active = time.time()
+    last_check = last_active
+    while True:
+        now = time.time()
+        if client_pid and now - last_check >= 2.0:
+            last_check = now
+            if not _parent_alive(client_pid):
+                return 0                                       # 客户端没了 → 别留僵尸
+        if now - last_active > idle_exit:
+            return 0
+        try:
+            with open(req_path, "r", encoding="utf-8") as f:
+                raw = f.read()
+        except OSError:
+            raw = ""
+        if not raw.strip():
+            time.sleep(0.002)
+            continue
+        try:
+            req = json.loads(raw)
+        except Exception:                                      # noqa: BLE001
+            time.sleep(0.002)                                  # 客户端还在写，下一轮再读
+            continue
+        if not isinstance(req, dict):
+            time.sleep(0.002)
+            continue
+        seq = int(req.get("_seq", 0) or 0)
+        if seq <= last_seq:                                    # 同一份请求，别重复执行
+            time.sleep(0.002)
+            continue
+        last_seq = seq
+        last_active = time.time()
+        req.pop("_seq", None)
+        try:
+            out = handle(req, db_path)
+            if not isinstance(out, dict):
+                out = {"ok": False, "state": None, "events": [], "result": None,
+                       "error": "serve: 返回的不是 dict"}
+        except Exception as e:                                 # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            out = {"ok": False, "state": None, "events": [], "result": None,
+                   "error": f"serve: {type(e).__name__}: {e}"}
+        out["_seq"] = seq
+        tmp = res_path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(out, f, ensure_ascii=False)
+            os.replace(tmp, res_path)                          # 原子替换：客户端不会读到半份
+        except OSError:
+            pass
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--in", dest="infile")
@@ -3547,7 +3634,20 @@ def main() -> int:
     ap.add_argument("--action")
     ap.add_argument("--tile")
     ap.add_argument("--hand")
+    ap.add_argument("--serve", action="store_true",
+                    help="常驻模式：反复处理 --in / --out 这对文件（见 serve_loop）")
+    ap.add_argument("--idle", type=float, default=900.0,
+                    help="常驻模式：空闲多少秒自动退出")
+    ap.add_argument("--parent", type=int, default=0,
+                    help="常驻模式：客户端 pid，它没了本进程就退出")
     args = ap.parse_args()
+
+    if args.serve:
+        if not args.infile or not args.outfile:
+            print("--serve 需要同时给 --in 和 --out", file=sys.stderr)
+            return 2
+        return serve_loop(args.infile, args.outfile, args.db_path or DB_PATH,
+                          args.idle, args.parent)
 
     if args.infile:
         with open(args.infile, "r", encoding="utf-8") as f:

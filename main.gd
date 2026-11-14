@@ -304,6 +304,12 @@ var my_seat := 0                                # 0..3
 var waiting_for_others := false                 # 现在是不是在等别人出牌（等的时候要轮询）
 var poll_accum := 0.0
 var _poll_fast_until := 0                     # 刚发过动作：这之前用快速轮询
+# ★ 2026-11-15：动作/推进一步走非阻塞通道（公网一个往返 ~150ms，同步等就是冻屏）
+#   _act_pending = {} 表示空闲；否则 {"kind": "act"|"step", "action": ..., "t": ms}
+const ACT_ASYNC := true                       # 出问题可以一行关掉，退回全同步
+var _act_pending := {}
+var _act_wait := {}          # 通道被轮询占着 → 排队等下一帧再发的动作
+var _step_wait := {}         # 同上，排队的是「推进一步」
 # ★ 上云后调慢：没推送（反代没转发 WebSocket / 掉线）时全靠这个间隔拉状态。
 #   0.35 → 0.5 秒，服务端出网流量省 ~30%，人手感觉不出差别；
 #   有长连接推送时这值根本不生效（下面会被抬到 2 秒）。
@@ -1723,6 +1729,8 @@ func _on_window_closing() -> void:
 	var seat := my_seat if my_seat >= 0 else -1
 	if srv != null:
 		srv.request({"op": "wipe", "seat": seat})
+		if srv.has_method("shutdown"):
+			srv.shutdown()      # 常驻服务端（api_cli.py --serve）别留僵尸进程
 	for p in ["user://player_orders.json", "user://player_order.json",
 			"user://player_cards.json", "user://from_initial_menu.flag",
 			"user://hanchan_owner.json"]:
@@ -3336,13 +3344,42 @@ func _pre_draw_watchdog(delta: float) -> void:
 	_pre_draw_resume()
 
 
+# 非阻塞通道上有东西在飞吗（动作 / 推进一步 / 定时轮询共用一条）
+func _srv_bg_busy() -> bool:
+	return srv != null and srv.has_method("bg_busy") and bool(srv.call("bg_busy"))
+
+
 func _srv_step_once(pre_ok := false) -> void:
 	if game_over:
 		_busy_clear()
 		return
 	# pre_ok=true 才允许服务端「替我摸牌」。没问过摸牌前技能就传 false，
 	# 服务端会停在那里（wait_pre），不会先摸牌再让我发动技能。
+	#
+	# ★ 2026-11-15 非阻塞优先：这一步在「别家出牌之后」每一步都要发一次，
+	#   同步等就是每步冻一个 RTT（用户报「切牌非常卡」）。
+	#   发出去立刻返回，_process 收到响应再交给 _step_tail()。
+	if ACT_ASYNC:
+		if not _act_pending.is_empty():
+			return                       # 已经有一发在飞：它收完会带着链往下走
+		if _srv_bg_busy():
+			_step_wait = {"pre_ok": pre_ok}   # 定时轮询在飞 → 下一帧补发（别等一整个 RTT）
+			return
+		if srv != null and srv.has_method("bg_send") \
+				and bool(srv.call("bg_send", _srv_shape({"op": "step", "seat": my_seat,
+					"pre_ok": pre_ok}))):
+			_act_pending = {"kind": "step", "t": Time.get_ticks_msec()}
+			return
+	# 通道彻底用不了 → 退回原来的同步实现（行为一模一样）
 	var r := srv_request({"op": "step", "seat": my_seat, "pre_ok": pre_ok})
+	_step_tail(r)
+
+
+# 「推进一步」的服务端响应：同步 / 非阻塞两条路共用这一段尾巴
+func _step_tail(r: Dictionary) -> void:
+	if game_over:
+		_busy_clear()
+		return
 	if r.is_empty():
 		_busy_clear()
 		return
@@ -3367,6 +3404,8 @@ func _srv_step_once(pre_ok := false) -> void:
 				draw_tile()
 				return
 	if typeof(evs) == TYPE_ARRAY and not (evs as Array).is_empty():
+		if not _act_pending.is_empty():
+			return                       # apply 里已经自己推了一步（_auto_draw_if_my_turn）
 		_busy_set("_srv_step_once")
 		get_tree().create_timer(_bs_delay(OPP_DRAW_DELAY)).timeout.connect(_srv_step_once)
 	else:
@@ -3408,6 +3447,54 @@ func srv_act(action: String, extra: Dictionary = {}) -> Dictionary:
 		_busy_set("srv_act")
 		get_tree().create_timer(_bs_delay(OPP_DRAW_DELAY)).timeout.connect(_srv_step_once)
 	return r
+
+
+# 我做一个动作（非阻塞版）：发出去就返回，响应在 _process 里收（见 _bg_result）
+#   返回 true  = 已接管（也包括「上一发还没回来 → 这次吞掉」，防连点重复打牌）
+#   返回 false = 非阻塞通道用不了，请调用方走同步 srv_act()
+func srv_act_async(action: String, extra: Dictionary = {}) -> bool:
+	if not ACT_ASYNC:
+		return false
+	if not _act_pending.is_empty():
+		if Time.get_ticks_msec() - int(_act_pending.get("t", 0)) < 8000:
+			return true                  # 上一发还在飞：吞掉这次（防连点重复打牌）
+		_act_pending = {}                # 飞太久了（界面被播报盖住之类）→ 作废重来
+	if not _act_wait.is_empty():
+		return true                      # 已经有一个在排队了
+	if srv == null or not srv.has_method("bg_send"):
+		return false
+	srv_layout_buttons([])               # 先收起按钮，动作做完再按新状态摆
+	_poll_fast_until = Time.get_ticks_msec() + 1500
+	return _act_send_now(action, extra)
+
+
+# 把动作真正发到非阻塞通道。发不出去（定时轮询正在飞）→ 排队，返回 true 表示「已接管」
+func _act_send_now(action: String, extra: Dictionary) -> bool:
+	var req := {"op": "act", "seat": my_seat, "action": action}
+	for k in extra:
+		req[k] = extra[k]
+	if srv == null or not srv.has_method("bg_send"):
+		return false
+	if not bool(srv.call("bg_send", _srv_shape(req))):
+		_act_wait = {"action": action, "extra": extra, "t": Time.get_ticks_msec()}
+		return true                      # 排队：_process 下一帧补发
+	_act_pending = {"kind": "act", "action": action, "t": Time.get_ticks_msec()}
+	return true
+
+
+# 「我做一个动作」的服务端响应：srv_act() 那条尾巴（非阻塞版用这个）
+func _act_tail(r: Dictionary, _action: String = "") -> void:
+	if r.is_empty():
+		# 请求失败（超时 / 断线）：提示一句并拉一次最新状态，能自己爬起来
+		_toast(_srv_err("动作没发出去，正在重新同步…"))
+		_pull_state()
+		return
+	if not bool(r.get("ok", false)) and String(r.get("error", "")) != "":
+		_toast(String(r.get("error")))
+	_ensure_result()
+	if not game_over and not srv_busy:
+		_busy_set("srv_act")
+		get_tree().create_timer(_bs_delay(OPP_DRAW_DELAY)).timeout.connect(_srv_step_once)
 
 
 # 轮到我了：服务端说能和就和；其余按钮按服务端给的选项显示
@@ -15430,7 +15517,10 @@ func _discard_at(index: int, rotated: bool) -> void:
 		req["c25_ok"] = true                 # 已经确认过要切宝牌
 	if rotated:
 		_voice_local("reach")                        # 立直宣言：点了就响
-	srv_act("riichi" if rotated else "discard", req)
+	var act := "riichi" if rotated else "discard"
+	# ★ 切牌是最高频的动作：走非阻塞（公网一个往返 ~150ms，同步等就是「切牌卡」）
+	if not srv_act_async(act, req):
+		srv_act(act, req)                            # 通道用不了 → 退回同步老路
 
 
 # 打出手牌后，刚摸的那张正式进手牌并重新排序
@@ -17126,6 +17216,7 @@ func _draw_tenpai_hand_rack(win: Dictionary) -> Node2D:
 	var root := Node2D.new()
 	root.name = "TenpaiHands"
 	var seats: Array = []
+	var rows: Array = []                 # 每一行（淡入要用）
 	for k in (th as Dictionary).keys():
 		seats.append(int(k))
 	seats.sort()                         # 按座位号排：0 号位在最上面
@@ -17171,7 +17262,18 @@ func _draw_tenpai_hand_rack(win: Dictionary) -> Node2D:
 		# 整行水平居中（牌是从局部 x=0 往右摆的）
 		row_node.position = Vector2(vp.x * 0.5 - row_w * k * 0.5, y)
 		root.add_child(row_node)
+		rows.append(row_node)
 		y += uh * k + 66.0
+	# 不透明度淡入（用户口径 2026-11-15）：整行一起淡，行与行错开 ──
+	#   节点这时还没加进场景树（show_panel 里才 add_child），但 Tween 改的是
+	#   Node2D 的属性，进树前后都有效；父层 modulate.a 是 1，不会打架。
+	for i in range(rows.size()):
+		var nd: Node2D = rows[i]
+		nd.modulate.a = 0.0
+		var tw := create_tween()
+		tw.tween_interval(0.06 + 0.10 * float(i))
+		tw.tween_property(nd, "modulate:a", 1.0, 0.45) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	return root
 
 
@@ -17919,12 +18021,35 @@ func _process(delta: float) -> void:
 	var _pf0 := Time.get_ticks_usec()
 	_audio_dev_tick(delta)      # F9 切输出设备的收尾（平时直接 return）
 	_lat_test_tick()            # F10 延迟自测的节拍（平时直接 return）
+	# ★ 非阻塞动作的兜底：一发超过 12 秒还没回来（断网 / 服务端不响应）→ 别卡死。
+	#   必须放在所有提前 return 之前：和牌播报一盖住界面 _process 就早退了，
+	#   这一发不在最前面清掉会一直挂着。
+	if not _act_pending.is_empty() \
+			and Time.get_ticks_msec() - int(_act_pending.get("t", 0)) > 12000:
+		_act_pending = {}
+		_busy_clear()
+		_toast(_srv_err("动作没回应，正在重新同步…"))
+		_pull_state()
 	# ★ 诊断：srv_busy 超过 5 秒还没清 → 打印是谁置上的。
 	#   只报日志，**不自动复位**（自动复位是兜底，会把真 bug 藏起来）。
 	if srv_busy and not _busy_warned and Time.get_ticks_msec() - _busy_ms > 5000:
 		_busy_warned = true
 		push_error("[BUSY] srv_busy 超过 5 秒没清：%s" % _busy_site)
 		_toast("内部状态卡在：%s（请把这条报给开发者）" % _busy_site)
+	# ★ 通道被定时轮询占着时，动作排在这里补发（否则每次切牌都可能撞上一整个 RTT）
+	if not _act_wait.is_empty() and _act_pending.is_empty() and not _srv_bg_busy():
+		var aw := _act_wait
+		_act_wait = {}
+		var aex = aw.get("extra", {})
+		var ad: Dictionary = aex if typeof(aex) == TYPE_DICTIONARY else {}
+		if Time.get_ticks_msec() - int(aw.get("t", 0)) > 3000:
+			srv_act(String(aw.get("action", "")), ad)      # 排太久 → 老老实实同步发一次
+		elif not _act_send_now(String(aw.get("action", "")), ad):
+			srv_act(String(aw.get("action", "")), ad)
+	if not _step_wait.is_empty() and _act_pending.is_empty() and not _srv_bg_busy():
+		var pw := _step_wait
+		_step_wait = {}
+		_srv_step_once(bool(pw.get("pre_ok", false)))
 	_pass_armed_tick()      # 被 busy 吞掉的那一下右键，这里补上
 	_lizhi_stick_tick()      # 选牌界面盖着时把立直棒整层藏起来
 	# 播报期间牌桌是静态的：只留租约/结算确认，其余 tick/sync/轮询全跳过（不然每帧一堆活抢帧）
@@ -17978,15 +18103,24 @@ func _process(delta: float) -> void:
 	if srv != null and srv.has_method("bg_poll") and bool(srv.call("bg_busy")):
 		var rb: Dictionary = srv.call("bg_poll")
 		if not rb.is_empty():
+			# ★ 这一发是我刚发的动作/推进一步吗？是的话走它自己的尾巴
+			var pend := _act_pending
+			_act_pending = {}
 			var rr := _srv_handle(rb)
-			if not rr.is_empty():
-				if typeof(rr.get("humans")) == TYPE_ARRAY:
-					srv_humans = rr.get("humans")
-				if not bool(rr.get("same", false)):
+			if typeof(rr.get("humans")) == TYPE_ARRAY:
+				srv_humans = rr.get("humans")
+			# 半庄打完了 → 弹终局名次播报（不管是谁点下的最后一下确认）
+			if bool(rr.get("match_finished", false)) and not match_active:
+				_show_match_final(rr.get("final_rank", []), rr.get("confirmed", []))
+			if pend.is_empty():
+				if not rr.is_empty() and not bool(rr.get("same", false)):
 					srv_apply_state(rr.get("state"), rr.get("events"))
-				# 半庄打完了 → 弹终局名次播报（不管是谁点下的最后一下确认）
-				if bool(rr.get("match_finished", false)) and not match_active:
-					_show_match_final(rr.get("final_rank", []), rr.get("confirmed", []))
+			elif String(pend.get("kind", "")) == "step":
+				_step_tail(rr)
+			else:
+				if not rr.is_empty() and not bool(rr.get("same", false)):
+					srv_apply_state(rr.get("state"), rr.get("events"))
+				_act_tail(rr, String(pend.get("action", "")))
 	# ★ 长连接推送：服务端状态一变就发新的 ver 过来 → 立刻拉一次，不用等轮询周期
 	if srv != null and srv.has_method("push_tick"):
 		if _push_seat_sent != my_seat:          # ★ 每帧重发纯属浪费，座位变了才发
@@ -19897,4 +20031,3 @@ func _dev_auto_blocking_ui() -> String:
 	if c26_active:
 		return "26S2 天梯排牌山"
 	return ""
-

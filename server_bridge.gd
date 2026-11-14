@@ -35,6 +35,7 @@ var _wk := {}                             # db_key -> {pid, req, res, db}
 var _wk_seq := 0                          # 请求序号（服务端据此判重）
 var _wk_fail := 0                         # 连失败两次就永久关掉，退回一次性子进程
 var _wk_bg := {}                          # 非阻塞通道里「还没收」的那一发
+var _wk_lost := {}                        # 同步请求插队时收掉的、还没交给调用方的那一份
 var res_path := ""
 
 func _init() -> void:
@@ -90,6 +91,8 @@ func bg_ok() -> bool:
 func bg_busy() -> bool:
 	if net != null and bool(net.enabled):
 		return bool(net.bg_busy())
+	if not _wk_lost.is_empty():
+		return true                       # 有一份收好了还没交出去
 	if not _wk_bg.is_empty():
 		return true                       # 常驻进程那一发还没收
 	return _local_pid != 0
@@ -195,6 +198,11 @@ func _worker_read(w: Dictionary, seq: int) -> Dictionary:
 
 # 同步走常驻进程：正常 2~4ms 就回来（老办法 101ms）
 func _worker_request(req: Dictionary, wait_ms := 2000) -> Dictionary:
+	# 同步请求要插队 → 先把在飞的那一发收干净（别丢：异步动作的响应就是它）
+	if not _wk_bg.is_empty():
+		var d0 := _local_bg_poll()
+		if not d0.is_empty():
+			_wk_lost = d0
 	var w := _worker_for(_local_db_path())
 	if w.is_empty():
 		return {}
@@ -311,6 +319,10 @@ func _local_bg_send(req: Dictionary) -> bool:
 
 
 func _local_bg_poll() -> Dictionary:
+	if not _wk_lost.is_empty():
+		var d0 := _wk_lost
+		_wk_lost = {}
+		return d0
 	if not _wk_bg.is_empty():
 		var wk2 = _wk.get("default", null)
 		for k2 in _wk.keys():

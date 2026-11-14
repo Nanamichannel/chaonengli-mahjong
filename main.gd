@@ -309,6 +309,7 @@ var _poll_fast_until := 0                     # 刚发过动作：这之前用�
 const ACT_ASYNC := true                       # 出问题可以一行关掉，退回全同步
 var _act_pending := {}
 var _act_wait := {}          # 通道被轮询占着 → 排队等下一帧再发的动作
+var _poll_hold_until := 0    # 动作/一步刚落地：这一小段别轮询（响应已经是最新状态）
 var _step_wait := {}         # 同上，排队的是「推进一步」
 # ★ 上云后调慢：没推送（反代没转发 WebSocket / 掉线）时全靠这个间隔拉状态。
 #   0.35 → 0.5 秒，服务端出网流量省 ~30%，人手感觉不出差别；
@@ -1154,7 +1155,7 @@ func srv_request(req: Dictionary) -> Dictionary:
 	# 真动作（不是轮询）→ 开 1.5 秒快轮询，别让结算等下一次慢轮询
 	var _op := String(req.get("op", ""))
 	if _op != "" and _op != "state" and _op != "poll":
-		_poll_fast_until = Time.get_ticks_msec() + 1500
+		_poll_fast_until = Time.get_ticks_msec() + 400
 	var _t0 := Time.get_ticks_msec()
 	var r: Dictionary = srv.request(_srv_shape(req))
 	last_req_ms = Time.get_ticks_msec() - _t0
@@ -3377,6 +3378,7 @@ func _srv_step_once(pre_ok := false) -> void:
 
 # 「推进一步」的服务端响应：同步 / 非阻塞两条路共用这一段尾巴
 func _step_tail(r: Dictionary) -> void:
+	_poll_hold_until = Time.get_ticks_msec() + 220
 	if game_over:
 		_busy_clear()
 		return
@@ -3464,7 +3466,7 @@ func srv_act_async(action: String, extra: Dictionary = {}) -> bool:
 	if srv == null or not srv.has_method("bg_send"):
 		return false
 	srv_layout_buttons([])               # 先收起按钮，动作做完再按新状态摆
-	_poll_fast_until = Time.get_ticks_msec() + 1500
+	_poll_fast_until = Time.get_ticks_msec() + 400
 	return _act_send_now(action, extra)
 
 
@@ -3482,8 +3484,16 @@ func _act_send_now(action: String, extra: Dictionary) -> bool:
 	return true
 
 
+# 点按钮 / 打牌做动作：非阻塞优先（公网一次往返 ~150ms，同步等就是冻屏），
+# 通道用不了才退回同步 srv_act()。
+func _act_fire(action: String, extra: Dictionary = {}) -> void:
+	if not srv_act_async(action, extra):
+		srv_act(action, extra)
+
+
 # 「我做一个动作」的服务端响应：srv_act() 那条尾巴（非阻塞版用这个）
 func _act_tail(r: Dictionary, _action: String = "") -> void:
+	_poll_hold_until = Time.get_ticks_msec() + 220
 	if r.is_empty():
 		# 请求失败（超时 / 断线）：提示一句并拉一次最新状态，能自己爬起来
 		_toast(_srv_err("动作没发出去，正在重新同步…"))
@@ -3515,7 +3525,7 @@ func _on_pass_pressed() -> void:
 	if not srv_c29s1_ask().is_empty():
 		_c29s1_op("c29s1_skip")
 		return
-	srv_act("pass")
+	_act_fire("pass")
 
 
 # ────────── 操作按钮（图片样式；位置/大小/贴图都取自场景里 UI 下对应的节点）──────────
@@ -3582,7 +3592,7 @@ func _on_action_button(kind: String) -> void:
 		return
 	if kind == "tsumo" and has_action("skill_tsumo") and not has_action("tsumo"):
 		_voice_local("tsumo")                        # 技能发的自摸：点了就响
-		srv_act("skill_tsumo")
+		_act_fire("skill_tsumo")
 		return
 	if kind == "kan":                                # 明杠 / 加杠 / 暗杠，交给服务端根据 legal 选择
 		_voice_local("kan")                          # 点了就响（不等服务端）
@@ -3591,10 +3601,10 @@ func _on_action_button(kind: String) -> void:
 				# 暗杠 / 加杠，服务端需要知道是哪一张牌，从 legal 里取第一张
 				var t := srv_legal_tile(srv_state, a)
 				if t != "":
-					srv_act(a, {"tile": t})
+					_act_fire(a, {"tile": t})
 					return
 			elif has_action(a):
-				srv_act(a)
+				_act_fire(a)
 				return
 		return
 	if kind == "chi":
@@ -3606,7 +3616,7 @@ func _on_action_button(kind: String) -> void:
 		return
 	if kind == "tsumo" or kind == "ron" or kind == "pon" or kind == "minkan":
 		_voice_local("kan" if kind == "minkan" else kind)   # 点了就响
-	srv_act(kind)                                    # tsumo / ron / pon / minkan / pass
+	_act_fire(kind)                                  # tsumo / ron / pon / minkan / pass
 
 
 # ── 人物卡技能 ────────────────────────────────────────────────────────
@@ -15519,8 +15529,7 @@ func _discard_at(index: int, rotated: bool) -> void:
 		_voice_local("reach")                        # 立直宣言：点了就响
 	var act := "riichi" if rotated else "discard"
 	# ★ 切牌是最高频的动作：走非阻塞（公网一个往返 ~150ms，同步等就是「切牌卡」）
-	if not srv_act_async(act, req):
-		srv_act(act, req)                            # 通道用不了 → 退回同步老路
+	_act_fire(act, req)
 
 
 # 打出手牌后，刚摸的那张正式进手牌并重新排序
@@ -17965,7 +17974,7 @@ func _tm_auto_discard() -> void:
 		return
 	_dev_log("[TIMER] 出牌超时 → 摸切 %s" % t)
 	_toast("35 秒到：自动摸切")
-	srv_act("discard", {"tile": t})
+	_act_fire("discard", {"tile": t})
 
 
 # ── 计时器：每帧 ────────────────────────────────────────────────────
@@ -18142,6 +18151,8 @@ func _process(delta: float) -> void:
 	if game_over or srv_busy:
 		return
 	if _prompt_blocked():
+		if not _act_pending.is_empty() or not _act_wait.is_empty():
+			return                        # 自己的请求在飞：别用同步 state 把通道搅乱
 		# 有人在等回答：不推进对局，但必须继续问 state ——
 		# 否则「询问结束」这一刻永远看不到，界面就永久停在旧状态（看起来像卡死）。
 		poll_accum += delta
@@ -18169,10 +18180,20 @@ func _process(delta: float) -> void:
 	var period := (_bs_delay(POLL_SEC) if (waiting_for_others or deal_running or others_here)
 		else _bs_delay(POLL_IDLE_SEC))
 	# 推送长连接活着 → 轮询退化成「保险丝」，放慢到 2 秒（公网流量/手机电量都省）
-	if srv != null and srv.has_method("push_ok") and bool(srv.call("push_ok")):
+	var _push_alive: bool = srv != null and srv.has_method("push_ok") and bool(srv.call("push_ok"))
+	if _push_alive:
 		period = maxf(period, 2.0)
+	# 有长连接推送时不需要「快速轮询」：状态一变服务端就推过来，客户端立刻拉
 	if Time.get_ticks_msec() < _poll_fast_until:
-		period = 0.10                     # 刚点完动作：0.1s 一次，结算一到就播
+		period = 0.30 if _push_alive else 0.10
+	if Time.get_ticks_msec() < _poll_hold_until:
+		poll_accum = 0.0                  # 刚收过动作响应 → 这一小段别再问（省流量也腾出通道）
+		return
+	# ★ 自己的动作/推进还在飞（或排着队）→ 绝不能发同步 state：
+	#   同步请求会 _bg_drain 把那一发的响应收走，动作就永远落不了地。
+	if not _act_pending.is_empty() or not _act_wait.is_empty() or not _step_wait.is_empty():
+		poll_accum = 0.0
+		return
 	poll_accum += delta
 	if poll_accum < period:
 		return
@@ -18790,7 +18811,7 @@ func _chow_choose() -> void:
 			return
 		if (groups[0] as Array).size() != 2:
 			return
-		srv_act("chi")
+		_act_fire("chi")
 		return
 	chi_groups = groups
 	chi_selecting = true
@@ -18975,7 +18996,7 @@ func do_chow(group: Array) -> void:
 		_c29s1_op("c29s1_chi", extra)
 		return
 	_voice_local("chi")                            # 点了就响（不等服务端）
-	srv_act("chi", extra)
+	_act_fire("chi", extra)
 
 
 # 一组副露：三张左右紧贴；第 rot_index 张「横置」且底边紧靠画面下沿，其余竖直。
@@ -19904,10 +19925,10 @@ func _dev_auto_tick() -> void:
 	if ph == "claim" and not opts.is_empty():
 		if "ron" in opts:
 			_dev_log("[AUTOPLAY] %s 荣和" % rname)
-			srv_act("ron")
+			_act_fire("ron")
 		elif "tsumo" in opts:
 			_dev_log("[AUTOPLAY] %s 自摸和牌" % rname)
-			srv_act("tsumo")
+			_act_fire("tsumo")
 		else:
 			_dev_log("[AUTOPLAY] %s 过（鸣牌窗口：%s）" % [rname, str(opts)])
 			_on_pass_pressed()
@@ -19923,7 +19944,7 @@ func _dev_auto_tick() -> void:
 		"discard":
 			if "tsumo" in opts:
 				_dev_log("[AUTOPLAY] %s 自摸和牌" % rname)
-				srv_act("tsumo")
+				_act_fire("tsumo")
 				return
 			var n := display_tiles().size()
 			var idx := n - 1
@@ -19936,7 +19957,7 @@ func _dev_auto_tick() -> void:
 		"claim":
 			if "ron" in opts:
 				_dev_log("[AUTOPLAY] %s 荣和" % rname)
-				srv_act("ron")
+				_act_fire("ron")
 			else:
 				_on_pass_pressed()
 		_:

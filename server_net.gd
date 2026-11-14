@@ -444,13 +444,14 @@ func _post(req: Dictionary) -> Dictionary:
 #   公网（Tailscale Funnel）往返 100~300ms，同步等待会把画面按住整段 RTT，
 #   0.35s 问一次 = 每 0.35 秒掉一次帧。这里发出去就返回，_process 每帧推一点。
 var _bg_state := 0                     # 0 空闲 / 1 等响应头 / 2 读 body
+var _bg_lost: Dictionary = {}          # _bg_drain 收掉、调用方还没取走的那一份（别丢）
 var _bg_deadline := 0
 var _bg_raw := PackedByteArray()
 var _bg_code := 0
 var _bg_gzip := false
 
 func bg_busy() -> bool:
-	return _bg_state != 0
+	return _bg_state != 0 or not _bg_lost.is_empty()
 
 
 func bg_send(req: Dictionary) -> bool:
@@ -485,6 +486,10 @@ func bg_send(req: Dictionary) -> bool:
 
 # 每帧调一次：还没完回 {}，收完回服务端那份 JSON
 func bg_poll() -> Dictionary:
+	if not _bg_lost.is_empty():
+		var d0 := _bg_lost          # 上一发被 _bg_drain 收走的（例如异步动作的响应）
+		_bg_lost = {}
+		return d0
 	if _bg_state == 0:
 		return {}
 	var http := _http
@@ -546,7 +551,11 @@ func bg_reset() -> void:
 func _bg_drain() -> void:
 	var guard := Time.get_ticks_msec() + mini(timeout_ms, 1500)
 	while _bg_state != 0:
-		bg_poll()
+		# ★ 收掉的这一份可能正是「异步动作」的响应 —— 存起来交给下一次 bg_poll，
+		#   否则 _act_pending 永远落不了地，之后所有动作都会被当成「上一发还在飞」吞掉。
+		var dd := bg_poll()
+		if not dd.is_empty() and _bg_lost.is_empty():
+			_bg_lost = dd
 		if Time.get_ticks_msec() > guard:
 			last_error = "轮询没有响应，放弃这一次"
 			bg_reset()

@@ -417,6 +417,24 @@ def _clean_nick(raw) -> str:
     return s[:8]
 
 
+def set_nick(db, seat: int, nick: str, limit: int = 24) -> None:
+    """把某个座位的本局昵称设成指定名字（登录账号自动套用）。
+
+    大厅 JSON 和 match_seats 两边一起写，播报/播报面板/分数条都读得到。
+    """
+    s = int(seat) % 4
+    nm = str(nick or "").strip()[:int(limit)]
+    with db.tx():
+        lobby = load(db)
+        lobby["seats"][s]["nick"] = nm
+        save(db, lobby)
+        row = db._row("SELECT match_id FROM matches ORDER BY match_id DESC LIMIT 1")
+        if row:
+            db.conn.execute(
+                "UPDATE match_seats SET nickname=? WHERE match_id=? AND seat=?",
+                (nm, int(row["match_id"]), s))
+
+
 def op_rename(db, req: dict) -> dict:
     """本局昵称：准备前（waiting）改；已经开局就同步到 match_seats（播报要用）。"""
     seat = int(req.get("seat", 0)) % 4

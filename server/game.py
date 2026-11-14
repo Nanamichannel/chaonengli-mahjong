@@ -13289,6 +13289,19 @@ class Game:
             getattr(self, _hook)(res, env)
         return res
 
+    def _seat_name(self, seat: int) -> str:
+        """座位 → 玩家显示名（昵称 / 登录账号 ID）；拿不到就退回「N 号位」。"""
+        try:
+            row = self.db._row("SELECT nickname FROM match_seats WHERE match_id=? AND seat=?",
+                               (self.match_id, int(seat)))
+            nm = str(row["nickname"] or "").strip() if row else ""
+            if nm and nm not in ("我", "下家", "对家", "上家", "me", "B", "C", "D"):
+                return nm
+        except Exception:                                # noqa: BLE001
+            pass
+        return "%d 号位" % int(seat)
+
+
     def _finish(self, winner: int, loser: int | None, result: str, res: dict) -> None:
         # 【夺目】(42S2) **结算那一刻问一次**（用户口径 2026-10-28）：
         #   以前只能自己在切牌前点图标，很容易错过（#98）。这里先把这次结算挂起，
@@ -13376,7 +13389,7 @@ class Game:
         _c44 = self._c44s1_waive(winner, deltas, result)
         if _c44:
             res["c44s1"] = _c44
-            _waive_who = "、".join("%d 号位" % int(x.get("seat", -1)) for x in _c44)
+            _waive_who = "、".join(self._seat_name(int(x.get("seat", -1))) for x in _c44)
             _waive_amt = sum(int(x.get("saved", 0) or 0) for x in _c44)
             _pay_notes.append("%s 失点 %d → 0（弃子）" % (_waive_who, _waive_amt))
         # ── 自信：没和牌的人，失点双倍（放铳 / 其他家自摸都算）──

@@ -3238,6 +3238,17 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                 if _cur is None or str(_cur["value"]) != _acc:
                     db.conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
                                     (_k, _acc))
+                # ★ 2026-11-15：登录账号就是「玩家 ID」——顺手当成座位昵称，
+                #   这样播报 / 分数条 / 听牌列表里显示的都是 ID 而不是「N 号位」。
+                _nk = "seat_nick_%d" % int(seat)
+                _cn = db._row("SELECT value FROM meta WHERE key=?", (_nk,))
+                if _cn is None or str(_cn["value"]) != _acc:
+                    db.conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
+                                    (_nk, _acc))
+                    try:
+                        lobby_mod.set_nick(db, int(seat), _acc)
+                    except Exception as _e:                     # noqa: BLE001
+                        print("[account] 昵称同步失败：%s" % _e, flush=True)
         # Card34 S1【厄运】：静默期内其他三家不能使用任何技能
         if (op not in _C34_FREE_OPS and isinstance(seat, int)
                 and 0 <= int(seat) <= 3):

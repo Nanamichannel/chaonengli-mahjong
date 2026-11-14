@@ -2403,16 +2403,19 @@ func _apply_round_start(r: Dictionary) -> void:
 
 func _seat_text() -> String:
 	# 屏幕上的位置是定的（0 号位永远在下方、1 号位在右…）；本窗口坐的是几号位就是哪一家
+	var nm := srv_nick_of(my_seat)               # 显示玩家 ID（账号名）
+	if nm == "":
+		nm = "%d 号位" % my_seat
 	match my_seat:
 		0:
-			return "0 号位（屏幕下方 · 自己）"
+			return "%s（屏幕下方 · 自己）" % nm
 		1:
-			return "1 号位（屏幕右侧 · 下家）"
+			return "%s（屏幕右侧 · 下家）" % nm
 		2:
-			return "2 号位（屏幕上方 · 对家）"
+			return "%s（屏幕上方 · 对家）" % nm
 		3:
-			return "3 号位（屏幕左侧 · 上家）"
-	return "%d 号位" % my_seat
+			return "%s（屏幕左侧 · 上家）" % nm
+	return nm
 
 
 func _humans_text() -> String:
@@ -12103,8 +12106,8 @@ func _c27s1_confirm(picks: Array, rivers: Array) -> void:
 		sw = r.get("c27s1")
 	srv_apply_state(r.get("state"), r.get("events"))
 	if not sw.is_empty():
-		_toast("瞄准：%s ⇄ %s（标记 %d 号位）"
-			% [hand, String(sw.get("got", "")), int(sw.get("mark", -1))])
+		_toast("瞄准：%s ⇄ %s（标记 %s）"
+			% [hand, String(sw.get("got", "")), srv_nick_of(int(sw.get("mark", -1)))])
 
 
 func _c27s2_open() -> void:
@@ -12154,8 +12157,8 @@ func _c27s2_confirm(picks: Array, _rivers: Array) -> void:
 	var mk := int(d.get("mark", -1))
 	var riichi_txt := "、同时立直" if bool(d.get("riichi", false)) else ""
 	if mk >= 0:
-		_toast("命中：%s 暗置打出%s；标记 %d 号位（他手切 3 张就出铳）"
-			% [t, riichi_txt, mk])
+		_toast("命中：%s 暗置打出%s；标记 %s（他手切 3 张就出铳）"
+			% [t, riichi_txt, srv_nick_of(mk)])
 	else:
 		_toast("命中：%s 暗置打出%s（字牌不标记）" % [t, riichi_txt])
 
@@ -17108,33 +17111,27 @@ func _win_hand_show(seat: int, win: Dictionary) -> void:
 	sc.call("set_hand", root)
 
 
-# 流局：把**听牌家的手牌**摆进播报面板（四家小面板 980 宽居中 → 左右各 470px 是空的）
-#   每家一行：「N 号位 听牌」+ 暗手 + 副露；左列最多 2 行，第 3 家放右列。
+# 流局：把**听牌家的手牌**摆出来
+#   ★ 2026-11-15 用户口径：牌放大、第一家**水平居中贴近页面上方**，其他听牌家往下依次排。
 func _draw_tenpai_hand_rack(win: Dictionary) -> Node2D:
 	var th = win.get("tenpai_hands")
 	if typeof(th) != TYPE_DICTIONARY or (th as Dictionary).is_empty():
 		return null
 	var tm = win.get("tenpai_melds")
-	var uw := 33.0
+	var uw := 52.0                       # 牌宽（原来是 33，放大 ~1.6 倍）
+	var gap := 2.0
 	var uh := uw * 86.0 / 60.0
 	var vp := get_viewport_rect().size
+	var maxw := vp.x * 0.86
 	var root := Node2D.new()
 	root.name = "TenpaiHands"
 	var seats: Array = []
 	for k in (th as Dictionary).keys():
 		seats.append(int(k))
-	seats.sort()
-	var i := 0
+	seats.sort()                         # 按座位号排：0 号位在最上面
+	var y := 64.0
 	for sd in seats:
-		var col := 0 if i < 2 else 1
-		var row := i if i < 2 else 0
 		var row_node := Node2D.new()
-		var lbl := Label.new()
-		lbl.text = "%d 号位　听牌" % int(sd)
-		lbl.add_theme_color_override("font_color", Color(0.443, 0.871, 0.796, 1.0))
-		lbl.add_theme_font_size_override("font_size", 20)
-		lbl.position = Vector2(0.0, -22.0)
-		row_node.add_child(lbl)
 		var x := 0.0
 		var tiles: Array = (th as Dictionary).get(str(int(sd)), [])
 		for t in tiles:
@@ -17142,7 +17139,7 @@ func _draw_tenpai_hand_rack(win: Dictionary) -> Node2D:
 			if vis != null:
 				vis.position = Vector2(x + uw * 0.5, uh * 0.5)
 				row_node.add_child(vis)
-			x += uw + 2.0
+			x += uw + gap
 		var melds: Array = []
 		if typeof(tm) == TYPE_DICTIONARY:
 			melds = (tm as Dictionary).get(str(int(sd)), [])
@@ -17150,21 +17147,31 @@ func _draw_tenpai_hand_rack(win: Dictionary) -> Node2D:
 			if typeof(g) != TYPE_DICTIONARY:
 				continue
 			var tt: Array = (g as Dictionary).get("tiles", [])
-			x += 10.0
+			x += 12.0                    # 手牌和副露之间留一道缝
 			for t2 in tt:
 				var v2 := _make_face_visual(String(t2), uw)
 				if v2 != null:
 					v2.position = Vector2(x + uw * 0.5, uh * 0.5)
 					row_node.add_child(v2)
-				x += uw + 2.0
-		var maxw := 452.0
-		if x > maxw:
-			row_node.scale = Vector2.ONE * (maxw / x)
-		var px := 18.0 if col == 0 else (vp.x - 470.0)
-		var py := 210.0 + float(row) * 96.0
-		row_node.position = Vector2(px, py)
+				x += uw + gap
+		var row_w := maxf(x, 1.0)
+		var k := 1.0
+		if row_w > maxw:                 # 太宽就整体缩一下（仍然居中）
+			k = maxw / row_w
+			row_node.scale = Vector2.ONE * k
+		# 玩家 ID 标签：压在牌正上方、跟这一行同宽居中
+		var lbl := Label.new()
+		lbl.text = "%s　听牌" % srv_nick_of(int(sd))
+		lbl.add_theme_color_override("font_color", Color(0.443, 0.871, 0.796, 1.0))
+		lbl.add_theme_font_size_override("font_size", 26)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.size = Vector2(row_w, 32.0)
+		lbl.position = Vector2(0.0, -36.0)
+		row_node.add_child(lbl)
+		# 整行水平居中（牌是从局部 x=0 往右摆的）
+		row_node.position = Vector2(vp.x * 0.5 - row_w * k * 0.5, y)
 		root.add_child(row_node)
-		i += 1
+		y += uh * k + 66.0
 	return root
 
 
@@ -17492,7 +17499,7 @@ func show_hupai(win: Dictionary = {}) -> void:
 			if typeof(tp) == TYPE_ARRAY and not (tp as Array).is_empty():
 				var who := []
 				for sid in tp:
-					who.append("%d 号位" % int(sid))
+					who.append(srv_nick_of(int(sid)))
 				detail += "\n听牌：%s" % "、".join(who)
 				sub_text = "聽牌　%s" % "・".join(who)
 		else:
@@ -19890,3 +19897,4 @@ func _dev_auto_blocking_ui() -> String:
 	if c26_active:
 		return "26S2 天梯排牌山"
 	return ""
+

@@ -1,0 +1,414 @@
+[gd_resource type="SpriteFrames" format=3 uid="uid://fua4d03gnide"]
+
+[ext_resource type="Texture2D" uid="uid://b8gw611ekftdm" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00000.png" id="1_pfgy6"]
+[ext_resource type="Texture2D" uid="uid://cg7552113yn1t" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00001.png" id="2_buaty"]
+[ext_resource type="Texture2D" uid="uid://ddu44nvur4ho6" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00002.png" id="3_sx01m"]
+[ext_resource type="Texture2D" uid="uid://bqdgxw65ppcq3" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00003.png" id="4_pu066"]
+[ext_resource type="Texture2D" uid="uid://dr2bhfnei1n8u" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00004.png" id="5_oc4dg"]
+[ext_resource type="Texture2D" uid="uid://c85ek7s60lofc" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00005.png" id="6_udguv"]
+[ext_resource type="Texture2D" uid="uid://ciymfxeqpuig2" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00006.png" id="7_bsdsx"]
+[ext_resource type="Texture2D" uid="uid://bd7lqcy78sarf" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00007.png" id="8_x0f4m"]
+[ext_resource type="Texture2D" uid="uid://b7w7akpbpg62g" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00008.png" id="9_hqie5"]
+[ext_resource type="Texture2D" uid="uid://c3kvhi62f2jd1" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00009.png" id="10_hot5e"]
+[ext_resource type="Texture2D" uid="uid://sknfpjadqk6y" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00010.png" id="11_rodw2"]
+[ext_resource type="Texture2D" uid="uid://cbpwxa4ixie75" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00011.png" id="12_rh18y"]
+[ext_resource type="Texture2D" uid="uid://by1gffjmf7jyv" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00012.png" id="13_gnqvs"]
+[ext_resource type="Texture2D" uid="uid://wjlsuwxjyju1" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00013.png" id="14_ilkeh"]
+[ext_resource type="Texture2D" uid="uid://cscehfwtioie5" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00014.png" id="15_x1js3"]
+[ext_resource type="Texture2D" uid="uid://b4xxj12jjjnb3" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00015.png" id="16_gwy3o"]
+[ext_resource type="Texture2D" uid="uid://bhnjd8gd5yoi1" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00016.png" id="17_tf3js"]
+[ext_resource type="Texture2D" uid="uid://7hnfjoy70mhw" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00017.png" id="18_d8bgm"]
+[ext_resource type="Texture2D" uid="uid://cbhc5476vkjqw" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00018.png" id="19_wpedb"]
+[ext_resource type="Texture2D" uid="uid://bw01u7oiognd" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00019.png" id="20_7d0nh"]
+[ext_resource type="Texture2D" uid="uid://dqj1scqgw70h1" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00020.png" id="21_5aamd"]
+[ext_resource type="Texture2D" uid="uid://cbfj82ly22pyj" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00021.png" id="22_n6uwo"]
+[ext_resource type="Texture2D" uid="uid://oxrf5crnw4px" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00022.png" id="23_qkjax"]
+[ext_resource type="Texture2D" uid="uid://b2ca74ohcyu3d" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00023.png" id="24_yeary"]
+[ext_resource type="Texture2D" uid="uid://cfilvs8ncq7rt" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00024.png" id="25_kgklx"]
+[ext_resource type="Texture2D" uid="uid://pt8yojnmh8on" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00025.png" id="26_xlp7v"]
+[ext_resource type="Texture2D" uid="uid://d1qmvtd4dmshu" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00026.png" id="27_q4p42"]
+[ext_resource type="Texture2D" uid="uid://t5j5a0rg0av6" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00027.png" id="28_6x53k"]
+[ext_resource type="Texture2D" uid="uid://cv8bajbg3upt1" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00028.png" id="29_i34aj"]
+[ext_resource type="Texture2D" uid="uid://bj1ygi05nup47" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00029.png" id="30_j4kkb"]
+[ext_resource type="Texture2D" uid="uid://erlhlrykdwpr" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00030.png" id="31_b8uao"]
+[ext_resource type="Texture2D" uid="uid://jtrtbldmsr71" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00031.png" id="32_bh4va"]
+[ext_resource type="Texture2D" uid="uid://bp3kbe2j4lenj" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00032.png" id="33_4vkkg"]
+[ext_resource type="Texture2D" uid="uid://c8ww54pgt5a24" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00033.png" id="34_cagih"]
+[ext_resource type="Texture2D" uid="uid://bv04jmk0g4clh" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00034.png" id="35_tvrp1"]
+[ext_resource type="Texture2D" uid="uid://d1eo6k6ie0w6c" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00035.png" id="36_kgplg"]
+[ext_resource type="Texture2D" uid="uid://dfk4nn0dhx0lf" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00036.png" id="37_vr1tl"]
+[ext_resource type="Texture2D" uid="uid://cluhbb87e5ssl" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00037.png" id="38_poc16"]
+[ext_resource type="Texture2D" uid="uid://btlf6f3qax7re" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00038.png" id="39_4t1bs"]
+[ext_resource type="Texture2D" uid="uid://cbvmp6h10dj5u" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00039.png" id="40_u6tob"]
+[ext_resource type="Texture2D" uid="uid://bgp0rmlaaow8v" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00040.png" id="41_xttv4"]
+[ext_resource type="Texture2D" uid="uid://y2cyewo0t8pv" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00041.png" id="42_vpj70"]
+[ext_resource type="Texture2D" uid="uid://b05hdf6mee28y" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00042.png" id="43_7g1vk"]
+[ext_resource type="Texture2D" uid="uid://by51o7jpwiji3" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00043.png" id="44_kpkcv"]
+[ext_resource type="Texture2D" uid="uid://bwfcxvt64xctj" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00044.png" id="45_aoe5b"]
+[ext_resource type="Texture2D" uid="uid://bbl8j7qlv00ub" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00045.png" id="46_xaple"]
+[ext_resource type="Texture2D" uid="uid://dcexluyoong0n" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00046.png" id="47_mv5ev"]
+[ext_resource type="Texture2D" uid="uid://cul0gg6equm4t" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00047.png" id="48_tg6tm"]
+[ext_resource type="Texture2D" uid="uid://cek52dy2u2rn1" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00048.png" id="49_kkmvp"]
+[ext_resource type="Texture2D" uid="uid://d11fryianr1vp" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00049.png" id="50_0ryef"]
+[ext_resource type="Texture2D" uid="uid://b4un5548b0rt2" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00050.png" id="51_v6p3c"]
+[ext_resource type="Texture2D" uid="uid://daiwwxtun460b" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00051.png" id="52_13wnd"]
+[ext_resource type="Texture2D" uid="uid://cm5bsukl0r6pm" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00052.png" id="53_p20px"]
+[ext_resource type="Texture2D" uid="uid://do58nmxht77ee" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00053.png" id="54_onrp8"]
+[ext_resource type="Texture2D" uid="uid://dk2ncv5xay75o" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00054.png" id="55_h5f42"]
+[ext_resource type="Texture2D" uid="uid://vxbn3gfufls0" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00055.png" id="56_2mbt0"]
+[ext_resource type="Texture2D" uid="uid://mlpfb34ikwh8" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00056.png" id="57_s0you"]
+[ext_resource type="Texture2D" uid="uid://dbyxkwiyyd0t6" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00057.png" id="58_j2uxl"]
+[ext_resource type="Texture2D" uid="uid://xwrx2fwy58wa" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00058.png" id="59_7h6m6"]
+[ext_resource type="Texture2D" uid="uid://jqlimybkvho3" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00059.png" id="60_yprry"]
+[ext_resource type="Texture2D" uid="uid://crc35msxnrwfv" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00060.png" id="61_dyvwh"]
+[ext_resource type="Texture2D" uid="uid://dpsf1oxp8434n" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00061.png" id="62_rrgmq"]
+[ext_resource type="Texture2D" uid="uid://csjhvr7lqwrnt" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00062.png" id="63_i578r"]
+[ext_resource type="Texture2D" uid="uid://ddp2kpd0rpj7y" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00063.png" id="64_7xfi3"]
+[ext_resource type="Texture2D" uid="uid://b20gsxt6krybn" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00064.png" id="65_i3xlf"]
+[ext_resource type="Texture2D" uid="uid://bdor3dwgvfsxl" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00065.png" id="66_kkarj"]
+[ext_resource type="Texture2D" uid="uid://b0x4ydy470n7x" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00066.png" id="67_iddjg"]
+[ext_resource type="Texture2D" uid="uid://db3icnh8hr2xk" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00067.png" id="68_142p0"]
+[ext_resource type="Texture2D" uid="uid://dgrud61riulv8" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00068.png" id="69_twjq0"]
+[ext_resource type="Texture2D" uid="uid://b2ee5y4j43li1" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00069.png" id="70_vdudw"]
+[ext_resource type="Texture2D" uid="uid://dtxajhfacm8bq" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00070.png" id="71_lrg0t"]
+[ext_resource type="Texture2D" uid="uid://bpfhgjlghgqxx" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00071.png" id="72_cmftp"]
+[ext_resource type="Texture2D" uid="uid://d3883t510u8y5" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00072.png" id="73_8l4nv"]
+[ext_resource type="Texture2D" uid="uid://el1fy16c7jkk" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00073.png" id="74_dp3xa"]
+[ext_resource type="Texture2D" uid="uid://bvxydnwf77h7n" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00074.png" id="75_h7h1g"]
+[ext_resource type="Texture2D" uid="uid://cuemgyrrbukj1" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00075.png" id="76_0g0lr"]
+[ext_resource type="Texture2D" uid="uid://cvp65rhxu3tny" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00076.png" id="77_meqrw"]
+[ext_resource type="Texture2D" uid="uid://c38sx4f7n5cqm" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00077.png" id="78_cksqq"]
+[ext_resource type="Texture2D" uid="uid://barp1guh2621p" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00078.png" id="79_tfkks"]
+[ext_resource type="Texture2D" uid="uid://5jj7v3o78o6g" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00079.png" id="80_6rb2q"]
+[ext_resource type="Texture2D" uid="uid://d3w1oppm403m4" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00080.png" id="81_grdna"]
+[ext_resource type="Texture2D" uid="uid://dv8p66r8ilnug" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00081.png" id="82_k13jh"]
+[ext_resource type="Texture2D" uid="uid://cjpbkjppq27c2" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00082.png" id="83_vi6gt"]
+[ext_resource type="Texture2D" uid="uid://5eo6ojtv7xto" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00083.png" id="84_48b3n"]
+[ext_resource type="Texture2D" uid="uid://ce3p8v6jcau4x" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00084.png" id="85_5cnce"]
+[ext_resource type="Texture2D" uid="uid://c0ondgjpd783c" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00085.png" id="86_j4htj"]
+[ext_resource type="Texture2D" uid="uid://mpjfpurdkvl3" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00086.png" id="87_8irll"]
+[ext_resource type="Texture2D" uid="uid://bd5wrh4jf0cxq" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00087.png" id="88_63iga"]
+[ext_resource type="Texture2D" uid="uid://dh077opfk2eiu" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00088.png" id="89_1yg0p"]
+[ext_resource type="Texture2D" uid="uid://bs4xdjyo7vcu6" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00089.png" id="90_6g36f"]
+[ext_resource type="Texture2D" uid="uid://wldp84oghuld" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00090.png" id="91_r6q5s"]
+[ext_resource type="Texture2D" uid="uid://ccnudnbnif0o7" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00091.png" id="92_2tc7c"]
+[ext_resource type="Texture2D" uid="uid://lqjo4b1x1bs3" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00092.png" id="93_o6gcw"]
+[ext_resource type="Texture2D" uid="uid://cqq5d6kx4ds37" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00093.png" id="94_a7dmx"]
+[ext_resource type="Texture2D" uid="uid://damssv2oif8ik" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00094.png" id="95_70acs"]
+[ext_resource type="Texture2D" uid="uid://rqfijqqfgxoj" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00095.png" id="96_gtf4p"]
+[ext_resource type="Texture2D" uid="uid://cm338oijecyr8" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00096.png" id="97_ljoj5"]
+[ext_resource type="Texture2D" uid="uid://builvjv2dgi56" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00097.png" id="98_3em40"]
+[ext_resource type="Texture2D" uid="uid://by8bpex403lgo" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00098.png" id="99_divdt"]
+[ext_resource type="Texture2D" uid="uid://byp814cirrilc" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00099.png" id="100_osj0i"]
+[ext_resource type="Texture2D" uid="uid://cg8cgw15sftja" path="res://Cailiao/UI/鉴赏/只差遮罩/插帧_4x/转场4x_00100.png" id="101_0ut1j"]
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_pfgy6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_buaty")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_sx01m")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_pu066")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_oc4dg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_udguv")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_bsdsx")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_x0f4m")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_hqie5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_hot5e")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_rodw2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_rh18y")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_gnqvs")
+}, {
+"duration": 1.0,
+"texture": ExtResource("14_ilkeh")
+}, {
+"duration": 1.0,
+"texture": ExtResource("15_x1js3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_gwy3o")
+}, {
+"duration": 1.0,
+"texture": ExtResource("17_tf3js")
+}, {
+"duration": 1.0,
+"texture": ExtResource("18_d8bgm")
+}, {
+"duration": 1.0,
+"texture": ExtResource("19_wpedb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("20_7d0nh")
+}, {
+"duration": 1.0,
+"texture": ExtResource("21_5aamd")
+}, {
+"duration": 1.0,
+"texture": ExtResource("22_n6uwo")
+}, {
+"duration": 1.0,
+"texture": ExtResource("23_qkjax")
+}, {
+"duration": 1.0,
+"texture": ExtResource("24_yeary")
+}, {
+"duration": 1.0,
+"texture": ExtResource("25_kgklx")
+}, {
+"duration": 1.0,
+"texture": ExtResource("26_xlp7v")
+}, {
+"duration": 1.0,
+"texture": ExtResource("27_q4p42")
+}, {
+"duration": 1.0,
+"texture": ExtResource("28_6x53k")
+}, {
+"duration": 1.0,
+"texture": ExtResource("29_i34aj")
+}, {
+"duration": 1.0,
+"texture": ExtResource("30_j4kkb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("31_b8uao")
+}, {
+"duration": 1.0,
+"texture": ExtResource("32_bh4va")
+}, {
+"duration": 1.0,
+"texture": ExtResource("33_4vkkg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("34_cagih")
+}, {
+"duration": 1.0,
+"texture": ExtResource("35_tvrp1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("36_kgplg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("37_vr1tl")
+}, {
+"duration": 1.0,
+"texture": ExtResource("38_poc16")
+}, {
+"duration": 1.0,
+"texture": ExtResource("39_4t1bs")
+}, {
+"duration": 1.0,
+"texture": ExtResource("40_u6tob")
+}, {
+"duration": 1.0,
+"texture": ExtResource("41_xttv4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("42_vpj70")
+}, {
+"duration": 1.0,
+"texture": ExtResource("43_7g1vk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("44_kpkcv")
+}, {
+"duration": 1.0,
+"texture": ExtResource("45_aoe5b")
+}, {
+"duration": 1.0,
+"texture": ExtResource("46_xaple")
+}, {
+"duration": 1.0,
+"texture": ExtResource("47_mv5ev")
+}, {
+"duration": 1.0,
+"texture": ExtResource("48_tg6tm")
+}, {
+"duration": 1.0,
+"texture": ExtResource("49_kkmvp")
+}, {
+"duration": 1.0,
+"texture": ExtResource("50_0ryef")
+}, {
+"duration": 1.0,
+"texture": ExtResource("51_v6p3c")
+}, {
+"duration": 1.0,
+"texture": ExtResource("52_13wnd")
+}, {
+"duration": 1.0,
+"texture": ExtResource("53_p20px")
+}, {
+"duration": 1.0,
+"texture": ExtResource("54_onrp8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("55_h5f42")
+}, {
+"duration": 1.0,
+"texture": ExtResource("56_2mbt0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("57_s0you")
+}, {
+"duration": 1.0,
+"texture": ExtResource("58_j2uxl")
+}, {
+"duration": 1.0,
+"texture": ExtResource("59_7h6m6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("60_yprry")
+}, {
+"duration": 1.0,
+"texture": ExtResource("61_dyvwh")
+}, {
+"duration": 1.0,
+"texture": ExtResource("62_rrgmq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("63_i578r")
+}, {
+"duration": 1.0,
+"texture": ExtResource("64_7xfi3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("65_i3xlf")
+}, {
+"duration": 1.0,
+"texture": ExtResource("66_kkarj")
+}, {
+"duration": 1.0,
+"texture": ExtResource("67_iddjg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("68_142p0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("69_twjq0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("70_vdudw")
+}, {
+"duration": 1.0,
+"texture": ExtResource("71_lrg0t")
+}, {
+"duration": 1.0,
+"texture": ExtResource("72_cmftp")
+}, {
+"duration": 1.0,
+"texture": ExtResource("73_8l4nv")
+}, {
+"duration": 1.0,
+"texture": ExtResource("74_dp3xa")
+}, {
+"duration": 1.0,
+"texture": ExtResource("75_h7h1g")
+}, {
+"duration": 1.0,
+"texture": ExtResource("76_0g0lr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("77_meqrw")
+}, {
+"duration": 1.0,
+"texture": ExtResource("78_cksqq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("79_tfkks")
+}, {
+"duration": 1.0,
+"texture": ExtResource("80_6rb2q")
+}, {
+"duration": 1.0,
+"texture": ExtResource("81_grdna")
+}, {
+"duration": 1.0,
+"texture": ExtResource("82_k13jh")
+}, {
+"duration": 1.0,
+"texture": ExtResource("83_vi6gt")
+}, {
+"duration": 1.0,
+"texture": ExtResource("84_48b3n")
+}, {
+"duration": 1.0,
+"texture": ExtResource("85_5cnce")
+}, {
+"duration": 1.0,
+"texture": ExtResource("86_j4htj")
+}, {
+"duration": 1.0,
+"texture": ExtResource("87_8irll")
+}, {
+"duration": 1.0,
+"texture": ExtResource("88_63iga")
+}, {
+"duration": 1.0,
+"texture": ExtResource("89_1yg0p")
+}, {
+"duration": 1.0,
+"texture": ExtResource("90_6g36f")
+}, {
+"duration": 1.0,
+"texture": ExtResource("91_r6q5s")
+}, {
+"duration": 1.0,
+"texture": ExtResource("92_2tc7c")
+}, {
+"duration": 1.0,
+"texture": ExtResource("93_o6gcw")
+}, {
+"duration": 1.0,
+"texture": ExtResource("94_a7dmx")
+}, {
+"duration": 1.0,
+"texture": ExtResource("95_70acs")
+}, {
+"duration": 1.0,
+"texture": ExtResource("96_gtf4p")
+}, {
+"duration": 1.0,
+"texture": ExtResource("97_ljoj5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("98_3em40")
+}, {
+"duration": 1.0,
+"texture": ExtResource("99_divdt")
+}, {
+"duration": 1.0,
+"texture": ExtResource("100_osj0i")
+}, {
+"duration": 1.0,
+"texture": ExtResource("101_0ut1j")
+}],
+"loop": 1,
+"name": &"default",
+"speed": 126.25
+}]

@@ -102,6 +102,16 @@ var _lobby_layer: CanvasLayer = null
 var _lobby_on := false
 var _going := false
 
+# ── 移动端：长按 = 右键（只在大厅/初始场景里有）────────────────────────
+#   牌桌里不需要（取消有按钮 + ESC、摸切用双击），这里是「右键=退回上一级」的唯一入口。
+const HOLD_SEC := 0.45              # 按多久算长按
+const HOLD_MOVE_TOL := 14.0         # 拖动超过这么远就不算长按（避免和滑动打架）
+var _hold_idx := -1
+var _hold_pos := Vector2.ZERO
+var _hold_t := 0.0
+var _hold_used := false
+var _suppress_left_until := 0       # 长按触发后抬手补的那一下左键要忽略
+
 
 func _ready() -> void:
 	# 音效预热：播放器先挂好、音频先解码 —— 点【确认】创建账号那一刻才没有读盘延迟
@@ -456,6 +466,7 @@ func _hit_settings_login(mp: Vector2) -> bool:
 
 
 func _process(_dt: float) -> void:
+	_hold_tick(_dt)                     # 移动端长按 = 右键
 	if _acct_phase != 0:
 		_tick_account(_dt)          # 以登入账号面板：弹出 / 倒放
 	if _going:
@@ -603,9 +614,62 @@ func _finish_exit() -> void:
 	_state = 1
 
 
+# ── 移动端长按 = 右键 ────────────────────────────────────────────────
+#   `_input` 早于 GUI，所以这里能拿到全部触摸；拖动过就不算长按。
+func _input(ev: InputEvent) -> void:
+	if not OS.has_feature("mobile"):
+		return
+	if ev is InputEventScreenTouch:
+		var st := ev as InputEventScreenTouch
+		if st.pressed:
+			if _hold_idx == -1:
+				_hold_idx = st.index
+				_hold_pos = st.position
+				_hold_t = 0.0
+				_hold_used = false
+		elif st.index == _hold_idx:
+			_hold_idx = -1
+			_hold_t = 0.0
+	elif ev is InputEventScreenDrag:
+		var sd := ev as InputEventScreenDrag
+		if sd.index == _hold_idx and sd.position.distance_to(_hold_pos) > HOLD_MOVE_TOL:
+			_hold_t = -1.0              # 拖动过 → 这次不算长按
+
+
+func _hold_tick(dt: float) -> void:
+	if not OS.has_feature("mobile"):
+		return
+	if _hold_idx == -1 or _hold_used or _hold_t < 0.0:
+		return
+	# 正在软键盘输入（搜索框 / 登录框）→ 长按不当右键，免得一边打字一边退面板
+	var fo := get_viewport().gui_get_focus_owner()
+	if fo != null and (fo is LineEdit or fo is TextEdit):
+		return
+	_hold_t += dt
+	if _hold_t >= HOLD_SEC:
+		_hold_used = true
+		_emit_right_click(_hold_pos)
+
+
+func _emit_right_click(pos: Vector2) -> void:
+	# 抬手时系统会补一次左键 → 250ms 内把它吃掉，免得顺手又点开一个面板
+	_suppress_left_until = Time.get_ticks_msec() + 250
+	for pressed in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_RIGHT
+		ev.pressed = pressed
+		ev.position = pos
+		ev.global_position = pos
+		Input.parse_input_event(ev)
+
+
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventMouseButton:
 		var mb := ev as InputEventMouseButton
+		# 长按刚刚合成过右键 → 抬手补的这次左键丢掉（否则会顺手点开一个面板）
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT \
+				and Time.get_ticks_msec() < _suppress_left_until:
+			return
 		# ① 确认取消面板弹着：吃掉所有点击（无动画，直接出现/直接消失）
 		if _cc_on():
 			if mb.pressed:

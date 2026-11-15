@@ -1,4 +1,5 @@
 extends "res://lobby_cards.gd"
+const UiSfx := preload("res://ui_sfx.gd")
 ##
 ## lobby_panel.gd —— 把「初始菜单」的大厅 / 选卡 / 调序 搬进真初始场景之后的面板。
 ##
@@ -84,6 +85,7 @@ func _ready() -> void:
 	t.autostart = true
 	t.timeout.connect(_poll)
 	add_child(t)
+	UiSfx.hook_buttons(self)     # 房间里的 开始 / 卡片 / 机器人行 / 跳过
 
 
 # ── 外部入口：房间号（来自二级「搜索框」输入框）────────────────────

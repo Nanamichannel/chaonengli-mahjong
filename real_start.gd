@@ -106,6 +106,7 @@ var _going := false
 func _ready() -> void:
 	# 音效预热：播放器先挂好、音频先解码 —— 点【确认】创建账号那一刻才没有读盘延迟
 	UiSfx.warm()
+	UiSfx.hook_buttons(self)     # 场景里所有真按钮（大厅的 开始/卡片/机器人行/跳过）
 	_setup_level1()
 	_setup_level2()
 	_setup_settings()
@@ -299,6 +300,7 @@ func _on_settings_typed(t: String) -> void:
 
 func _on_settings_submitted(_t: String) -> void:
 	# 回车 = 点【登入】：先去账号库问一句（有→登入；没有→弹确认取消）
+	UiSfx.play("press", -8.0)
 	_try_login()
 
 
@@ -609,8 +611,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 			if mb.pressed:
 				if mb.button_index == MOUSE_BUTTON_LEFT:
 					if _cc_hit_ok(get_viewport().get_mouse_position()):
-						_cc_confirm()
+						_cc_confirm()       # 成功→「创建成功」音；失败在里面补「按按钮」
 					else:
+						UiSfx.play("press", -8.0)
 						_cc_hide()          # 点面板外 = 取消
 				elif mb.button_index == MOUSE_BUTTON_RIGHT:
 					_cc_hide()
@@ -619,6 +622,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if _state == 5:
 			if mb.pressed and (mb.button_index == MOUSE_BUTTON_LEFT
 					or mb.button_index == MOUSE_BUTTON_RIGHT):
+				UiSfx.play("press", -8.0)
 				_exit_account()
 			return
 		if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
@@ -633,19 +637,24 @@ func _unhandled_input(ev: InputEvent) -> void:
 			return
 		if _state == 1:
 			if _hover == "人物12":
+				UiSfx.play("press", -8.0)
 				_enter_level2()
 			elif _hover == "人物3":
+				UiSfx.play("press", -8.0)
 				# 已登录 → 弹「以登入账号」；未登录 → 正常弹登录面板（搜索框）
 				if _auth_name != "":
 					_enter_account()
 				else:
 					_enter_settings()
 			elif _hover == "人物4":
+				UiSfx.play("press", -8.0)
 				_go_gallery()
 			return
 		if _state == 2 and _search_ready and _hit_enter3d(get_viewport().get_mouse_position()):
+			UiSfx.play("press", -8.0)
 			_play_outro()
 		elif _state == 4 and _settings_ready and _hit_settings_login(get_viewport().get_mouse_position()):
+			UiSfx.play("press", -8.0)
 			_try_login()
 
 
@@ -951,6 +960,7 @@ func _cc_confirm() -> void:
 		return
 	var r: Dictionary = _srv().request({"op": "account_create", "name": nm})
 	if r.is_empty() or not bool(r.get("ok", false)):
+		UiSfx.play("press", -8.0)      # 失败也给一下点击反馈（成功用「创建成功」）
 		_hint("创建失败：%s" % (String(r.get("error", "连不上服务端")) if not r.is_empty()
 				else "连不上服务端"))
 	else:

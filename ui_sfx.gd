@@ -8,7 +8,8 @@ extends Node
 ##   "create" 账号创建成功的那一下                        ← real_start.gd:_cc_confirm
 ##   "discard" 一张牌打到牌桌上的那一下                   ← main.gd:_discard_at / 出牌事件
 ##   "stamp" 结算播报盖大红印章的那一下                   ← 和牌播报.gd:_play_level
-##   "strips" 番种条从上往下扫开的那一下                  ← 和牌播报.gd:_reveal_strips
+##   "press" 真初始场景里点任意按钮的那一下                 ← hook_buttons / 手写 hit-test
+##   "strips" 番种条从上往下扫开的那一下（素材 1.mp3）                  ← 和牌播报.gd:_reveal_strips
 ##
 ## 用法（**不用 autoload、不用 class_name**，preload 后直接调静态方法）：
 ##     const UiSfx := preload("res://ui_sfx.gd")
@@ -21,7 +22,8 @@ const FILES := {
 	"hover": "鼠标悬浮在牌上.wav",      # 0.07s
 	"button": "出现按钮.wav",           # 0.20s
 	"plate": "底座底座拉开.wav",        # 0.75s
-	"strips": "番种条.wav",             # 0.63s
+	"strips": "1.mp3",                  # 番种条扫开（用户 2026-11-15 换素材）
+	"press": "按按钮.mp3",             # 真初始场景里所有按钮的点击音
 	"create": "创建成功.mp3",          # 账号创建成功（用户 2026-11-15）
 	"discard": "出牌.mp3",             # 牌打出去那一刻（我方点击 / 别家出牌事件）
 	"stamp": "印章.mp3",               # 结算播报 满贯/跳满/倍满/三倍满/役满 大红印章
@@ -75,6 +77,19 @@ static func _stream(sfx: String) -> AudioStream:
 	var s := ResourceLoader.load(path) as AudioStream
 	_cache[sfx] = s
 	return s
+
+
+## 给一棵子树里**所有** BaseButton 挂「按按钮」音效（幂等：靠 meta 标记）。
+## 用法：场景 _ready 末尾 UiSfx.hook_buttons(self)；之后动态新建的按钮再调一次。
+static func hook_buttons(root: Node, volume_db := -8.0) -> void:
+	if root == null or not root.is_inside_tree():
+		return
+	for n in root.find_children("*", "BaseButton", true, false):
+		var b := n as BaseButton
+		if b == null or b.has_meta("ui_sfx_hooked"):
+			continue
+		b.set_meta("ui_sfx_hooked", true)
+		b.pressed.connect(func() -> void: play("press", volume_db))
 
 
 ## 预热：开局就把播放器和四个音频读进内存（第一次 play 不再有读盘/解码那一下）

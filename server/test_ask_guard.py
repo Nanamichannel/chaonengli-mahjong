@@ -146,6 +146,8 @@ def main() -> int:
     rs = io.open(os.path.join(ROOT, "real_start.gd"), encoding="utf-8").read()
     check("大厅长按只对空白生效（按在按钮上不算长按）",
           "gui_get_hovered_control()" in rs and "if hov is BaseButton:" in rs)
+    check("大厅触屏不做悬停（单击=直接生效）",
+          "func _touch_mode() -> bool:" in rs and "func _char_at(mp: Vector2) -> String:" in rs)
     ks = io.open(KANSHOU, encoding="utf-8").read()
     check("鉴赏右上角跳过按钮", "SKIP_TEX" in ks and "func _make_skip_ui() -> void:" in ks)
     check("鉴赏放大态点空白缩回", "_big.get_global_rect().has_point(mp)" in ks)

@@ -111,6 +111,14 @@ var _hold_pos := Vector2.ZERO
 var _hold_t := 0.0
 var _hold_used := false
 var _suppress_left_until := 0       # 长按触发后抬手补的那一下左键要忽略
+var _last_touch_ms := 0             # 最近一次触摸（判断「这次是手指操作」）
+
+
+# 这一次操作算不算「手指」（Android / PC 触摸屏都算）→ 手指没有「悬浮」这个状态
+func _touch_mode() -> bool:
+	if OS.has_feature("mobile"):
+		return true
+	return Time.get_ticks_msec() - _last_touch_ms <= 500
 
 
 func _ready() -> void:
@@ -483,6 +491,12 @@ func _process(_dt: float) -> void:
 		if _hover != "":
 			_apply_hover("")
 		return
+	# ★ 用户口径 2026-11-15：触屏上**不考虑悬浮** —— 手指按下去就是一次鼠标单击，
+	#   不显示悬停标题/框，也不留 `_hover` 状态（避免「第一下只是悬浮」的错觉）。
+	if _touch_mode():
+		if _hover != "":
+			_apply_hover("")
+		return
 	var mp := get_global_mouse_position()
 	var hit := _char_at(mp)
 	if hit != _hover:
@@ -621,6 +635,8 @@ func _finish_exit() -> void:
 # ── 移动端长按 = 右键 ────────────────────────────────────────────────
 #   `_input` 早于 GUI，所以这里能拿到全部触摸；拖动过就不算长按。
 func _input(ev: InputEvent) -> void:
+	if ev is InputEventScreenTouch:
+		_last_touch_ms = Time.get_ticks_msec()
 	if not OS.has_feature("mobile"):
 		return
 	if ev is InputEventScreenTouch:

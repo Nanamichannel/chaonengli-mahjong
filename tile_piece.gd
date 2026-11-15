@@ -69,7 +69,7 @@ func _on_fly_done() -> void:
 	z_index = 1 if (_hovered and _hover_enabled) else 0
 	_update_hit(_hover_enabled, scale)
 
-signal clicked(slot_index: int)
+signal clicked(slot_index: int, fresh_hover: bool)   # fresh_hover = 这一下是「刚把指针挪上来」
 # 牌河里的牌被点了（参数 = 这张牌在 round_discards 里的全场 seq）
 signal river_clicked(discard_seq: int)
 # 副露牌被点了（鬼门·乙：整组副露用彩框选中）
@@ -387,6 +387,8 @@ func _on_hit_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-			clicked.emit(slot_index)
+			# 同一次点按里「mouse_entered → click」的间隔很短 → 判为「刚上浮」
+			var fresh := _hover_ms > 0 and (Time.get_ticks_msec() - _hover_ms) <= 120
+			clicked.emit(slot_index, fresh)
 			if _hit != null:
 				_hit.accept_event()

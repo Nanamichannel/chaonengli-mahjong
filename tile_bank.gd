@@ -2,7 +2,7 @@ class_name TileBank
 extends Node2D
 
 # 某张手牌被点击（参数 = 它在手牌里的显示序号）
-signal hand_clicked(slot_index: int)
+signal hand_clicked(slot_index: int, fresh_hover: bool)
 # 牌河里的牌被点（换牌技能）
 signal river_clicked(discard_seq: int)
 
@@ -97,7 +97,7 @@ func build(base_size: Vector2) -> void:
 			piece = TilePiece.new()
 			add_child(piece)
 			_pieces[eid] = piece
-			piece.clicked.connect(func(idx: int): hand_clicked.emit(idx))
+			piece.clicked.connect(func(idx: int, fresh: bool): hand_clicked.emit(idx, fresh))
 			piece.river_clicked.connect(func(seq: int): river_clicked.emit(seq))
 		piece.setup(eid, k, texes, base_size)
 		piece.visible = false

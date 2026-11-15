@@ -16217,7 +16217,14 @@ func _build_hand_legacy() -> void:
 #   立直选宣言牌也走同一条链（第一下上浮、第二下宣言切牌）。
 #   桌面：单击即出牌，不变。
 #   其它选牌态（技能面板 / 国标 / 一定和牌 / 换牌…）：仍然是单击即选。
-const TAP_HOVER_FRESH_MS := 120     # 同一次点按里「mouse_entered → click」的间隔上限
+var _last_touch_ms := 0             # 最近一次触摸事件（判断「这是触屏输入」用）
+
+
+# 这一次点击算不算触屏（Android / PC 触摸屏都算；纯鼠标不算）
+func _is_touch_input() -> bool:
+	if OS.has_feature("mobile"):
+		return true
+	return Time.get_ticks_msec() - _last_touch_ms <= 500
 
 
 # 这一下点击会不会真的把牌打出去？（有一堆选牌面板时不要求双击）
@@ -16231,27 +16238,16 @@ func _could_be_real_discard() -> bool:
 	return true
 
 
-## 这张手牌「这次上浮」是什么时候开始的（-1 = 拿不到）
-##   ★ 必须问牌本体：手牌格子按钮是 mouse_filter=IGNORE，收不到 mouse_entered，
-##     拿它当判据的话第一下就直接出牌了（2026-11-15 实测「单击既响悬浮音又打出」）。
-func _hand_piece_hover_ms(index: int) -> int:
-	if tile_bank == null:
-		return -1
-	var tiles := display_tiles()
-	if index < 0 or index >= tiles.size():
-		return -1
-	var p = tile_bank.piece(String(tiles[index]))
-	if p == null or not is_instance_valid(p) or not p.has_method("hover_ms"):
-		return -1
-	return int(p.call("hover_ms"))
-
-
-func _on_hand_clicked(index: int) -> void:
-	if OS.has_feature("mobile") and _could_be_real_discard():
-		var ms := _hand_piece_hover_ms(int(index))
-		if ms >= 0 and Time.get_ticks_msec() - ms <= TAP_HOVER_FRESH_MS:
-			# 这一下点按就是「刚把指针挪上来」→ 只算悬浮：上浮 + hover 音已经由牌本体做了
-			return
+## 手牌点击（用户口径 2026-11-15）
+##   触屏：**单击 = 鼠标悬浮**（上浮 + hover 音，牌本体自己做的）→ 这一下不算打牌；
+##         同一张牌「已经上浮着」再单击 = 打出去。所以「未选中时双击」天然是
+##         第一下选中、第二下打牌；立直选宣言牌同理。
+##   桌面：单击即出牌，不变。
+##   ★ fresh_hover 由 TilePiece 自己在发出信号时判定（同一次点按里 mouse_entered→click 的间隔），
+##     不依赖反查牌本体 —— 之前反查失败就落到「直接出牌」，表现成单击就打。
+func _on_hand_clicked(index: int, fresh_hover: bool = false) -> void:
+	if fresh_hover and _is_touch_input() and _could_be_real_discard():
+		return                              # 只算悬浮：上浮 + hover 音已经发过了
 	discard_tile(index)
 
 
@@ -18617,6 +18613,8 @@ func _process(delta: float) -> void:
 # 空格 = 摸牌；摸到之后点右键 = 把刚摸的那张直接切出去（摸切）
 # 用 _input 而不是 _unhandled_input：这样鼠标停在手牌/按钮上时右键也一样有效
 func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		_last_touch_ms = Time.get_ticks_msec()
 	# 输入框（例如猜番数）有焦点时，所有调试热键都不响应 ——
 	# 否则 _input 比输入框先跑，1~4 会被「切座位」吃掉，数字根本打不进去。
 	var _focus := get_viewport().gui_get_focus_owner() if get_viewport() != null else null

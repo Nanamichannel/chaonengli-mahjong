@@ -13115,25 +13115,17 @@ func _c26_make_ui() -> void:
 	c26_btn.ignore_texture_size = true
 	c26_btn.stretch_mode = TextureButton.STRETCH_SCALE
 	c26_btn.focus_mode = Control.FOCUS_NONE
+	c26_btn.size = rc.size
+	c26_btn.position = rc.position
+	c26_btn.visible = false
+	c26_btn.pressed.connect(_c26_confirm)
+	c26_ui.add_child(c26_btn)
 	# 「跳过」按钮（流势 35-1 用；天梯 26-2 没有 c26_skip_op → 不显示）
 	var stex := btn_tex("pass")
 	var saspect := aspect
 	if stex != null and stex.get_width() > 0:
 		saspect = float(stex.get_height()) / float(stex.get_width())
-	# ★ 2026-11-15：流势 = 「独立选牌 UI」，确认 + 跳过 并排时两个一起缩到 PAIR_SCALE
-	#   （原来是整张牌高，两个并排很占地方）；天梯只有确认一枚 → 保持原尺寸。
-	var pair_mode := c26_skip_op != ""
-	var rc2 := rc
 	var src2 := prompt_btn_rect(saspect)
-	if pair_mode:
-		var prs: Array = prompt_pair_rects(aspect, saspect)
-		rc2 = prs[0]
-		src2 = prs[1]
-	c26_btn.size = rc2.size
-	c26_btn.position = rc2.position
-	c26_btn.visible = false
-	c26_btn.pressed.connect(_c26_confirm)
-	c26_ui.add_child(c26_btn)
 	c26_skip_btn = TextureButton.new()
 	c26_skip_btn.name = "C26Skip"
 	c26_skip_btn.texture_normal = stex
@@ -13141,8 +13133,10 @@ func _c26_make_ui() -> void:
 	c26_skip_btn.stretch_mode = TextureButton.STRETCH_SCALE
 	c26_skip_btn.focus_mode = Control.FOCUS_NONE
 	c26_skip_btn.size = src2.size
-	# 跳过放在确认**右侧**（原来在左侧、手牌右边缘只留 12px → 压住最后 1~2 张手牌）
-	c26_skip_btn.position = src2.position
+	# ★ 2026-11-15：原来放在确认**左侧**（rc.x - w - 18），而手牌右边缘离确认只有
+	#   prompt_btn_gap=12px → 那枚按钮直接压在手牌最后 1~2 张上。统一挪到右侧（尺寸不变）。
+	c26_skip_btn.position = Vector2(src2.position.x + src2.size.x + CANCEL_GAP,
+		src2.position.y)
 	c26_skip_btn.visible = false
 	c26_skip_btn.pressed.connect(_c26_skip)
 	c26_ui.add_child(c26_skip_btn)

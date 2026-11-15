@@ -25,6 +25,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAIN = os.path.join(ROOT, "main.gd")
 SKILLPANEL = os.path.join(ROOT, "skill_panel.gd")
 KANSHOU = os.path.join(ROOT, "kan_shou.gd")
+TILEPIECE = os.path.join(ROOT, "tile_piece.gd")
+UISFX = os.path.join(ROOT, "ui_sfx.gd")
 PROJECT = os.path.join(ROOT, "project.godot")
 PASS = FAIL = 0
 
@@ -133,7 +135,14 @@ def main() -> int:
     ks = io.open(KANSHOU, encoding="utf-8").read()
     check("鉴赏右上角跳过按钮", "SKIP_TEX" in ks and "func _make_skip_ui() -> void:" in ks)
     check("鉴赏放大态点空白缩回", "_big.get_global_rect().has_point(mp)" in ks)
-    check("触屏双击出牌", "func _on_hand_clicked(index: int) -> void:" in src)
+    check("触屏手牌：单击=悬浮（等上浮再过牌）",
+          "_tap_hover_fresh" in src and "if _tap_hover_idx == int(index) and _tap_hover_fresh:" in src)
+    tp = io.open(TILEPIECE, encoding="utf-8").read()
+    check("手牌悬浮音在移动端强行播", 'UiSfx.play("hover", UiSfx.DEFAULT_DB, true)' in tp)
+    us = io.open(UISFX, encoding="utf-8").read()
+    check("ui_sfx.play 有 force 口子", "volume_db := DEFAULT_DB, force := false" in us
+          and "and not force" in us)
+    check("立直切牌走同一条链", "if riichi_selecting:\n\t\treturn false" not in src)
 
     print("\n" + "=" * 70)
     print(f" 通过 {PASS} 项，失败 {FAIL} 项")

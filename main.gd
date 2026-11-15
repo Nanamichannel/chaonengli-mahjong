@@ -16164,13 +16164,15 @@ func _build_hand_legacy() -> void:
 
 
 # ── 手牌点击（用户口径 2026-11-15）─────────────────────────────────────
-#   触屏：切牌时**单击 = 鼠标悬浮**（抬起/悬浮音已经在 mouse_entered 里做过），
-#         同一张牌 350ms 内**再点一次 = 出牌**。
+#   触屏（用户口径 2026-11-15）：
+#     **单击 = PC 上「鼠标悬浮在手牌上」**（上浮 + hover 音，由悬停逻辑自己发）；
+#     **同一张牌在「已上浮」状态再单击 = 出牌**。
+#   于是「未选中时双击」天然就是「第一下选中、第二下打牌」；
+#   立直选宣言牌也走同一条链（第一下上浮、第二下宣言切牌）。
 #   桌面：单击即出牌，不变。
-#   选牌态（技能面板 / 国标 / 一定和牌 / 立直选牌 / 换牌…）：仍然是单击即选。
-const TAP_DOUBLE_MS := 350
-var _tap_ms := 0
-var _tap_idx := -1
+#   其它选牌态（技能面板 / 国标 / 一定和牌 / 换牌…）：仍然是单击即选。
+var _tap_hover_idx := -1            # 触屏：上一次「上浮」的是哪张
+var _tap_hover_fresh := false       # 这张的上浮是不是「刚刚这一次点按」造成的
 
 
 # 这一下点击会不会真的把牌打出去？（有一堆选牌面板时不要求双击）
@@ -16179,8 +16181,6 @@ func _could_be_real_discard() -> bool:
 		return false
 	if c11_active or c05_hide_active or wind_active or flow_active:
 		return false
-	if riichi_selecting:
-		return false                      # 立直选宣言牌：单击即选
 	if sw_stage != "":
 		return false
 	return true
@@ -16188,23 +16188,24 @@ func _could_be_real_discard() -> bool:
 
 func _on_hand_clicked(index: int) -> void:
 	if OS.has_feature("mobile") and _could_be_real_discard():
-		var now := Time.get_ticks_msec()
-		if _tap_idx == int(index) and (now - _tap_ms) <= TAP_DOUBLE_MS:
-			_tap_idx = -1
-			_tap_ms = 0                       # 双击成立 → 走下面的真出牌
-		else:
-			_tap_idx = int(index)
-			_tap_ms = now
-			return                            # 第一下：只当悬浮
+		# 这一下点按是不是「刚把指针挪上来」？（mouse_entered 和 click 属于同一次点按）
+		if _tap_hover_idx == int(index) and _tap_hover_fresh:
+			_tap_hover_fresh = false      # 只算悬浮：上浮 + hover 音由悬停逻辑自己发
+			return
+		_tap_hover_idx = -1               # 已经上浮着的牌再点 → 打出去
 	discard_tile(index)
 
 
 func _on_tile_entered(index: int) -> void:
+	_tap_hover_idx = int(index)
+	_tap_hover_fresh = true             # 触屏：这次上浮是「刚点上来」造成的
 	hovered_index = index
 	update_tile_positions()
 
 
 func _on_tile_exited(index: int) -> void:
+	if _tap_hover_idx == int(index):
+		_tap_hover_fresh = false        # 指针走开了 → 再点回来又算一次「上浮」
 	if hovered_index == index:
 		hovered_index = -1
 	update_tile_positions()

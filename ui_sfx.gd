@@ -130,12 +130,13 @@ static func warm() -> void:
 		_stream(String(k))
 
 
-static func play(sfx: String, volume_db := DEFAULT_DB) -> void:
+static func play(sfx: String, volume_db := DEFAULT_DB, force := false) -> void:
 	if muted:
 		return
-	# ★ 触屏没有真正的「悬停」：tap 会先触发一次 mouse_entered，导致每点一张牌都响一声。
-	#   移动端直接吞掉 hover 音（2026-11-15 安卓移植）。
-	if sfx == "hover" and OS.has_feature("mobile"):
+	# ★ 触屏没有真正的「悬停」：tap 会先触发一次 mouse_entered → 每点一张牌都响一声。
+	#   所以移动端默认吞掉 hover 音（2026-11-15 安卓移植）。
+	#   ★ 例外：手牌「单击 = 悬浮」要的就是这一声 → tile_piece 用 force=true 播。
+	if sfx == "hover" and OS.has_feature("mobile") and not force:
 		return
 	var s := _stream(sfx)
 	if s == null:

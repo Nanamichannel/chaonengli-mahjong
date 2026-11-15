@@ -286,7 +286,7 @@ func _on_hover_enter() -> void:
 		return
 	# ★ 音效先响：以前 is_flying() 一起挡在开头 → 摸牌/理牌那 0.22s 里指上来的牌没声，
 	#   要等下一张才响，听起来就是「音效延迟/不跟手」（用户 2026-11-14 反馈）。
-	UiSfx.play("hover")
+	UiSfx.play("hover", UiSfx.DEFAULT_DB, true)     # 触屏上这声就是「单击=悬浮」的反馈
 	if is_flying():
 		return                                # 正在飞 → 先别抢位置，落地再说
 	_hovered = true

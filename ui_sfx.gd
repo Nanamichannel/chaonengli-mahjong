@@ -6,6 +6,8 @@ extends Node
 ##   "button" 吃/碰/杠/立直/自摸/荣 按钮出现的那一下      ← main.gd:srv_layout_buttons
 ##   "plate"  结算播报「底座底座」横向拉开的那一下        ← 和牌播报.gd:_reveal_plate
 ##   "create" 账号创建成功的那一下                        ← real_start.gd:_cc_confirm
+##   "discard" 一张牌打到牌桌上的那一下                   ← main.gd:_discard_at / 出牌事件
+##   "stamp" 结算播报盖大红印章的那一下                   ← 和牌播报.gd:_play_level
 ##   "strips" 番种条从上往下扫开的那一下                  ← 和牌播报.gd:_reveal_strips
 ##
 ## 用法（**不用 autoload、不用 class_name**，preload 后直接调静态方法）：
@@ -21,6 +23,8 @@ const FILES := {
 	"plate": "底座底座拉开.wav",        # 0.75s
 	"strips": "番种条.wav",             # 0.63s
 	"create": "创建成功.mp3",          # 账号创建成功（用户 2026-11-15）
+	"discard": "出牌.mp3",             # 牌打出去那一刻（我方点击 / 别家出牌事件）
+	"stamp": "印章.mp3",               # 结算播报 满贯/跳满/倍满/三倍满/役满 大红印章
 }
 const DEFAULT_DB := -6.0
 

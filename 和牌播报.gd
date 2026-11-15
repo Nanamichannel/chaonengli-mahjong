@@ -316,6 +316,8 @@ func _play_level(gen: int, data: Dictionary) -> void:
 	var n := _level_node(String(data.get("level", "")))
 	if n == null:
 		return
+	# 大红印章（满贯/跳满/倍满/三倍满/役满）盖下来的那一下
+	UiSfx.play("stamp", -4.0)            # 高潮音：比 UI 常规(-6)稍亮
 	_hide_levels()
 	var n_frames := 13.0
 	var n_fps := 60.0

@@ -14877,6 +14877,7 @@ func srv_apply_state(st, events = null) -> void:
 			elif e == "discard":
 				opp_drawn[w2] = ""
 				_show_opp_drawn(w2, false)
+				UiSfx.play("discard", -10.0)   # 别家打到牌桌上（自己的在 _discard_at 里响过了）
 	# 已经和了 / 流局了
 	var res = st2.get("result")
 	if typeof(res) == TYPE_DICTIONARY and not (res as Dictionary).is_empty():
@@ -15600,6 +15601,8 @@ func _discard_at(index: int, rotated: bool) -> void:
 	if rotated:
 		_voice_local("reach")                        # 立直宣言：点了就响
 	var act := "riichi" if rotated else "discard"
+	# 出牌音效：点下去就响（客户端已校验过合法，不等服务端那一个往返）
+	UiSfx.play("discard", -10.0)          # 一次对局里响十几次 → 比 UI 常规(-6)压低
 	# ★ 切牌是最高频的动作：走非阻塞（公网一个往返 ~150ms，同步等就是「切牌卡」）
 	_act_fire(act, req)
 
@@ -18049,6 +18052,7 @@ func _tm_auto_discard() -> void:
 		return
 	_dev_log("[TIMER] 出牌超时 → 摸切 %s" % t)
 	_toast("35 秒到：自动摸切")
+	UiSfx.play("discard", -10.0)
 	_act_fire("discard", {"tile": t})
 
 

@@ -3253,6 +3253,23 @@ def handle(req: dict, db_path: str = DB_PATH) -> dict:
                         lobby_mod.set_nick(db, int(seat), _acc)
                     except Exception as _e:                     # noqa: BLE001
                         print("[account] 昵称同步失败：%s" % _e, flush=True)
+                else:
+                    # ★ 2026-11-15 修：`lobby.reset()`（换房 / 新的一局）会把
+                    #   seats[].nick 清空，而 meta 里的值没错 → 以前就一直不补，
+                    #   客户端「加入房间」那一行显示成「玩家N」而不是登录 ID。
+                    #   这里再看一眼大厅里的值，缺了就补回去。
+                    _lb_nick = ""
+                    try:
+                        _lb = lobby_mod.load(db)
+                        _lb_nick = str(((_lb.get("seats") or [])[int(seat)] or {})
+                                       .get("nick") or "").strip()
+                    except Exception:                           # noqa: BLE001
+                        _lb_nick = ""
+                    if _lb_nick != _acc:
+                        try:
+                            lobby_mod.set_nick(db, int(seat), _acc)
+                        except Exception as _e2:                # noqa: BLE001
+                            print("[account] 昵称补写失败：%s" % _e2, flush=True)
         # Card34 S1【厄运】：静默期内其他三家不能使用任何技能
         if (op not in _C34_FREE_OPS and isinstance(seat, int)
                 and 0 <= int(seat) <= 3):

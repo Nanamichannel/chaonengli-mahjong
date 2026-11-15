@@ -484,15 +484,19 @@ func _process(_dt: float) -> void:
 			_apply_hover("")
 		return
 	var mp := get_global_mouse_position()
-	var hit := ""
-	for nm in _chars.keys():
-		if _world_rect(_chars[nm]).has_point(mp):
-			hit = String(nm)
-			break
+	var hit := _char_at(mp)
 	if hit != _hover:
 		_apply_hover(hit)
 	if _hover != "" and _frame != null:
 		_frame.call("set_rect", _world_rect(_chars[_hover]))
+
+
+## 世界坐标命中了哪个人物（"" = 没命中）
+func _char_at(mp: Vector2) -> String:
+	for nm in _chars.keys():
+		if _world_rect(_chars[nm]).has_point(mp):
+			return String(nm)
+	return ""
 
 
 func _world_rect(sp: Sprite2D) -> Rect2:
@@ -705,17 +709,22 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
 			return
 		if _state == 1:
-			if _hover == "人物12":
+			# ★ 2026-11-15 修：不要读 `_hover` —— 它是 `_process` 里按光标位置算的。
+			#   手机上一个 tap 的「移动光标」和「按下」可能落在同一帧，`_process` 还没跑，
+			#   `_hover` 还是上一次的值 → 点「设置」却弹出了房间号输入框（人物12 那条）。
+			#   这里改成用**点击当刻的坐标**现算命中。
+			var hit1 := _char_at(get_global_mouse_position())
+			if hit1 == "人物12":
 				UiSfx.play("press", -8.0)
 				_enter_level2()
-			elif _hover == "人物3":
+			elif hit1 == "人物3":
 				UiSfx.play("press", -8.0)
 				# 已登录 → 弹「以登入账号」；未登录 → 正常弹登录面板（搜索框）
 				if _auth_name != "":
 					_enter_account()
 				else:
 					_enter_settings()
-			elif _hover == "人物4":
+			elif hit1 == "人物4":
 				UiSfx.play("press", -8.0)
 				_go_gallery()
 			return

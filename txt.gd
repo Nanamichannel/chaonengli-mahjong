@@ -8,22 +8,22 @@ extends RefCounted
 ##   const Txt := preload("res://txt.gd")
 ##   lbl.text = Txt.half(some_text)
 
-const MAP := {
-	"：": ":", "，": ",", "；": ";", "（": "(", "）": ")",
-	"、": ",", "【": "[", "】": "]", "\u3000": " ", "＝": "=",
-	"／": "/", "％": "%",
-}
+# 源 → 目标（成对放在一个扁平数组里，避免每次调用都构造 Dictionary/keys 数组）
+const _SRC := "：，；（）【】、　＝／％"
+const _DST := ":,;()[], =/%"
+
 
 ## 没有全角标点时原样返回（不额外分配字符串）
 static func half(s: String) -> String:
 	var need := false
-	for k in MAP.keys():
-		if s.contains(k):
+	for i in _SRC.length():
+		if s.contains(_SRC[i]):
 			need = true
 			break
 	if not need:
 		return s
-	for k in MAP.keys():
-		if s.contains(k):
-			s = s.replace(k, MAP[k])
+	for i in _SRC.length():
+		var c := _SRC[i]
+		if s.contains(c):
+			s = s.replace(c, _DST[i])
 	return s

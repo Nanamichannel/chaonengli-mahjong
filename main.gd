@@ -444,6 +444,8 @@ var _voice_sent_seat := -99             # 已经告诉服务端的座位（-99 =
 var _voice_try_ms := 0                  # 上次尝试上报的时间（失败重试用）
 var _ui_ready := false                  # _ready 跑完了没有（没跑完不许 add_child 建层）
 var _round_info_probe := 0.0            # 右上角开关探测计时
+var _hud_raw := ""                      # 四行信息的原始文本（变了才做全角→半角）
+var _hud_raw_show := ""
 var _round_info_hot: TextureButton = null   # 真正接点击的透明热区按钮（Sprite2D 没有输入）
 # ★ 同一次点按只切一次：按下时 _input 的「兜底命中」先切了，抬手时热区按钮的 pressed
 #   不能再切（手机上就是一按两下：按下打开、松开又关上）。
@@ -631,9 +633,11 @@ func _round_hud_sync(st: Dictionary) -> void:
 				rows.append("[%s]发动了[%s]" % [who, nm])
 		if not rows.is_empty():
 			txt += "\n" + "\n".join(rows)
-	var _txt_show := Txt.half(txt)          # 服务端下发的中文标点也一起归一
-	if _round_hud.text != _txt_show:
-		_round_hud.text = _txt_show
+	if txt != _hud_raw:
+		_hud_raw = txt
+		_hud_raw_show = Txt.half(txt)       # 服务端下发的中文标点也一起归一（变了才整形）
+	if _round_hud.text != _hud_raw_show:
+		_round_hud.text = _hud_raw_show
 
 
 func _round_hud_ensure() -> void:
@@ -18466,6 +18470,15 @@ func _process(delta: float) -> void:
 	_net_in_tick()              # 先收网络结果（早退也不影响）
 	_audio_dev_tick(delta)      # F9 切输出设备的收尾（平时直接 return）
 	_lat_test_tick()            # F10 延迟自测的节拍（平时直接 return）
+	# ★ 响应急诊：_act_pending 有记录，但非阻塞通道上「根本没有东西在飞」——
+	#   说明那一发已经死了（连接被 _reset_conn 掐掉 / 响应被 _bg_drain 收走却塞不进
+	#   _bg_lost / 服务端没回）。这种情况下 bg_busy() 是 false，_net_in_tick 就不再
+	#   poll，_act_pending 永远落不了地 → srv_busy 一直挂着，玩家看到「内部状态卡在」。
+	#   这里一帧内就认出来并自愈，不用等 12 秒兜底。
+	# ★ 2026-11-15 停用：这里原来「一发现 _act_pending 还在、bg 不忙，就**同步**
+	#   拉一次 state」。同步请求会阻塞 30~70ms，而且和下面「12 秒超时兜底」功能重复；
+	#   在牌桌里被误触发时会变成「每帧卡一下」（用户实测整套牌桌卡成幻灯片）。
+	#   真要救死链交给 12s 兜底（它会 toast + 拉一次），不要放在 _process 每帧的路径上。
 	# ★ 非阻塞动作的兜底：一发超过 12 秒还没回来（断网 / 服务端不响应）→ 别卡死。
 	#   必须放在所有提前 return 之前：和牌播报一盖住界面 _process 就早退了，
 	#   这一发不在最前面清掉会一直挂着。

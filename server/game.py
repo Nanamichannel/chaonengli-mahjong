@@ -2621,7 +2621,8 @@ class Game:
         finally:
             self.c43s1_win.discard(s)
         if res is None:
-            res = self._yiding_fallback(s, True)
+            # 没役就是不能和（不再造 1 番 30 符兜底）
+            raise RuleError("【NO MISS】：这个牌型没有役，不能和")
         self._finish(s, None, "tsumo", res)
         return self._event("tsumo", {"seat": s, "card": 43, "skill": 1,
                                      "yaku": res["yaku"], "han": res["han"],
@@ -12341,6 +12342,11 @@ class Game:
         s = int(seat)
         self.yiding.discard(s)
         self.yiding_src.pop(s, None)
+        # ★ 2026-11-15：作废也必须撤掉「武装」状态，否则这局里
+        #   「别人手里有这张就必须打」还会继续生效。
+        self.yiding_armed.discard(s)
+        self.yiding_kind.pop(s, None)
+        self.guobiao_armed.discard(s)
         self._advance_after_discard(s)          # 刚那张牌已经进牌河，轮到下家摸
         self.save_flags()
         return self._event("yiding_void", {"seat": s, "reason": str(reason)})
@@ -12358,11 +12364,9 @@ class Game:
         """
         return bool(self.nongwu_blocks(int(seat)))
 
-    def _yiding_fallback(self, seat: int, tsumo: bool) -> dict:
-        pays = score.payments(1, 30, is_dealer=(int(seat) == self.dealer),
-                              tsumo=tsumo, yakuman=0, kiriage_mangan=False)
-        return {"yaku": [{"name": "一定和牌", "han": 1}], "han": 1, "fu": 30,
-                "pays": pays, "fu_items": [("一定和牌", 30)]}
+    # ★ 2026-11-15 删除：原来这里会**造一个叫「一定和牌」的役**（1 番 30 符），
+    #   等于绕过和牌判定（无役也和）。用户口径：一定和牌只保证「牌一定送到你手上」，
+    #   和牌本身必须由正常判定给出番种；没有役就是不能和。
 
     # ─── 一定和牌（主动宣言，立直式）────────────────────────────
     def yiding_waits(self, seat: int) -> set[str]:
@@ -12609,9 +12613,13 @@ class Game:
             s, int(src[0]), int(src[1]),
             "【%s】玩家发动了一定和牌，听牌【%s】" % (_wind, tile_cn(k)))
         self.save_flags()
-        # 用户口径 2026-11-09：一定和牌的**结算就在宣言这一刻**（切牌前），
-        #   不再「等玩家切一张 → 牌山换张 → 下一圈再和」。
-        return self._yiding_settle(s, want_tile=k)
+        # ★ 2026-11-15 改回 2026-11-07 定稿的链路（test_yiding.py 就是规格）：
+        #   宣言**不结算** —— 只记 armed/牌种；之后
+        #   ① 我自己切牌必须仍听这张（`_yiding_cut_ok`）
+        #   ② 别家手里有这张就必须打（`_yiding_force_kind`，立直家豁免）
+        #   ③ 轮到我摸牌前，牌山里最近的一张和牌张换到下一张（`_yiding_pre_swap`）
+        #   和牌走正常判定，绝不绕过，也绝不造「一定和牌」这种役。
+        return {"seat": s, "kind": k}
 
     def _maybe_grant_yiding(self, seat: int) -> None:
         """听牌就给权限：21S2 馈赠（听牌即得，替代原来「手切 12 张」）、15S2 上钩（三副露听牌）。"""
@@ -12654,7 +12662,7 @@ class Game:
             if res is None:
                 res = self._judge_best_kind(s, tsumo=False, judge_opts=judge_opts)
             if res is None:
-                res = self._yiding_fallback(s, tsumo=False)
+                return self._yiding_void_apply(s, "没有成立的和牌（判定未通过）")
             if self._c28s1_blocks(self.settle_preview(
                     s, payer, "ron", self._res_clone(res), dry_run=True)):
                 return self._yiding_void_apply(s, "【满贯】：结算番数不到满贯")
@@ -12693,7 +12701,7 @@ class Game:
             if res is None:
                 res = self._judge_best_kind(s, tsumo=True, judge_opts=judge_opts)
         if res is None:
-            res = self._yiding_fallback(s, tsumo=True)
+            return self._yiding_void_apply(s, "没有成立的和牌（判定未通过）")
         if self._c28s1_blocks(self.settle_preview(
                 s, None, "tsumo", self._res_clone(res), dry_run=True)):
             return self._yiding_void_apply(s, "【满贯】：结算番数不到满贯")

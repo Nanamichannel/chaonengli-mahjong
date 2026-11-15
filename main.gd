@@ -15594,7 +15594,9 @@ func _declare_yiding(kind: String) -> void:
 		_toast(String(r.get("error", "一定和牌：发动失败")))
 		_pull_state()
 		return
-	_toast("一定和牌：听牌【%s】，结算中…" % kind)
+	# 宣言只是「武装」：之后别家手里有这张必须打，都没有就摸牌前换给你；
+	# 和牌由正常判定给出番种（不会凭空造一个「一定和牌」的役）。
+	_toast("一定和牌：已宣言听牌【%s】——别人手里有就必须打，没有就摸牌前换给你" % kind)
 	srv_apply_state(r.get("state"), r.get("events"))
 	_ensure_result()
 

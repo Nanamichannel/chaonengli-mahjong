@@ -143,6 +143,9 @@ def main() -> int:
     check("SkillPanel 取消回调", "func _do_cancel() -> void:" in sp)
     proj = io.open(PROJECT, encoding="utf-8").read()
     check("长按=右键 已移除", "mobile_input" not in proj)
+    rs = io.open(os.path.join(ROOT, "real_start.gd"), encoding="utf-8").read()
+    check("大厅长按只对空白生效（按在按钮上不算长按）",
+          "gui_get_hovered_control()" in rs and "if hov is BaseButton:" in rs)
     ks = io.open(KANSHOU, encoding="utf-8").read()
     check("鉴赏右上角跳过按钮", "SKIP_TEX" in ks and "func _make_skip_ui() -> void:" in ks)
     check("鉴赏放大态点空白缩回", "_big.get_global_rect().has_point(mp)" in ks)

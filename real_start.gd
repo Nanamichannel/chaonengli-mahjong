@@ -645,6 +645,11 @@ func _hold_tick(dt: float) -> void:
 	var fo := get_viewport().gui_get_focus_owner()
 	if fo != null and (fo is LineEdit or fo is TextEdit):
 		return
+	# ★ 手指按在按钮上（房间的「开始/确认」、卡片、「跳过」…）→ 那是「按住按钮」，
+	#   不是长按→右键。否则会先触发一次右键退回，再把抬手补的那下左键吞掉（按钮没反应）。
+	var hov := get_viewport().gui_get_hovered_control()
+	if hov is BaseButton:
+		return
 	_hold_t += dt
 	if _hold_t >= HOLD_SEC:
 		_hold_used = true

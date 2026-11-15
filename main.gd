@@ -11172,6 +11172,7 @@ var c38_hand: Array = []
 var c38_picks: Array = []            # [{"kind":"dora","i":0} / {"kind":"hand","seq":n}]
 var c38_nodes := {}                  # key -> TextureButton
 var c38_ok: TextureButton = null
+var c38_cancel: TextureButton = null   # 「取消」（发动后变灰）
 var c38_sent := false                 # 已经点过「确认」→ 这次发动不可撤销（用户口径 2026-11-15）
 
 
@@ -11310,11 +11311,17 @@ func _c38s1_make_ui() -> void:
 		c38_ui.add_child(b)
 		c38_nodes["h%d" % j] = b
 	# ── 确认 / 取消（贴图，不叠字）──
-	c38_ok = ui_btn("ok", 150.0)               # 并排：两个同尺寸
+	# ★ 用户口径 2026-11-15：重整是「独立选牌 UI」，两个按钮并排但要**缩小**
+	#   （原来 150px 宽太大），并排间距同理；发动后取消会变灰。
+	var bw := 150.0 * PAIR_SCALE
+	c38_ok = ui_btn("ok", bw)
 	c38_ok.pressed.connect(_c38s1_confirm)
 	c38_ui.add_child(c38_ok)
-	# ★ 用户口径 2026-11-15：重整**没有取消**（发动后不可取消）→ 只留确认，居中
-	c38_ok.position = Vector2(vp.x * 0.5 - c38_ok.size.x * 0.5, 470.0 - c38_ok.size.y * 0.5)
+	var cancel := ui_btn("pass", bw)
+	cancel.pressed.connect(_c38s1_close)
+	c38_ui.add_child(cancel)
+	c38_cancel = cancel
+	_place_btn_pair(c38_ok, cancel, vp.x * 0.5, 470.0, 26.0 * PAIR_SCALE)
 
 
 func _c38s1_refresh() -> void:
@@ -11342,6 +11349,9 @@ func _c38s1_refresh() -> void:
 				num.text = ""
 	if c38_ok != null and is_instance_valid(c38_ok):
 		c38_ok.disabled = c38_sent or c38_picks.size() != 3
+	if c38_cancel != null and is_instance_valid(c38_cancel):
+		c38_cancel.disabled = c38_sent                  # 发动后不可取消
+		c38_cancel.modulate = Color(1, 1, 1, 0.35) if c38_sent else Color(1, 1, 1, 1)
 
 
 func _c38_toggle(pick: Dictionary) -> void:
@@ -11409,6 +11419,7 @@ func _c38s1_close() -> void:
 	c38_picks.clear()
 	c38_nodes.clear()
 	c38_ok = null
+	c38_cancel = null
 	c38_sent = false
 	if c38_ui != null and is_instance_valid(c38_ui):
 		c38_ui.queue_free()

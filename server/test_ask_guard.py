@@ -135,9 +135,9 @@ def main() -> int:
     check("SkillPanel 仍是原尺寸（不缩小）",
           'host.call("place_cancel_btn", cbtn)' in sp2
           and "place_prompt_pair" not in sp2)
-    check("重整没有取消按钮 + 发动后不可撤销",
-          "c38_cancel" not in src and "var c38_sent := false" in src
-          and "if c38_active and c38_sent:" in src)
+    check("重整：确认+取消并排缩小，发动后不可撤销",
+          "var c38_sent := false" in src and "c38_cancel.disabled = c38_sent" in src
+          and "if c38_active and c38_sent:" in src and "150.0 * PAIR_SCALE" in src)
     check("强制态灰按钮", "if not enabled:\n\t\tb.disabled = true" in src)
     sp = io.open(SKILLPANEL, encoding="utf-8").read()
     check("SkillPanel 内置取消按钮", "var cbtn: TextureButton" in sp and "mk_cancel_btn" in sp)

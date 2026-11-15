@@ -1033,56 +1033,23 @@ func _c33_cancel() -> void:
 	c33_panel.close()
 
 
-# 并排两个按钮的 rect：[确认, 取消]
-#   · 两个都缩到 PAIR_SCALE（原来各占一整张牌高，挡手牌）
-#   · 取消永远在确认**右侧**（右边放不下就叠到左边，绝不出屏）
-#   · 竖直方向**底部对齐**原来确认按钮的底边（往上缩，不往下压手牌）
-func prompt_pair_rects(aspect_conf: float, aspect_cancel: float) -> Array:
-	var base := prompt_btn_rect(aspect_conf)
-	var h := base.size.y * PAIR_SCALE
-	var w := base.size.x * PAIR_SCALE
-	var pos := base.position + prompt_btn_offset + Vector2(0.0, base.size.y - h)
-	var conf := Rect2(pos, Vector2(w, h))
-	var cw := h / maxf(aspect_cancel, 0.05)
-	var cancel := Rect2(Vector2(conf.position.x + conf.size.x + CANCEL_GAP, conf.position.y),
-		Vector2(cw, h))
+# 取消按钮的 rect = 确认按钮**右侧**、**同一尺寸**（用户口径 2026-11-15：
+#   「两个按钮在手牌右边并排」不算挡手牌，不用缩）
+func cancel_btn_rect(aspect: float) -> Rect2:
+	var otex := btn_tex("ok")
+	var caspect := 974.0 / 894.0
+	if otex != null and otex.get_width() > 0:
+		caspect = float(otex.get_height()) / float(otex.get_width())
+	var conf := prompt_btn_rect(caspect)
+	conf.position += prompt_btn_offset
+	var r := Rect2(conf.position + Vector2(conf.size.x + CANCEL_GAP, 0.0), conf.size)
 	var vp := get_viewport_rect().size
-	if cancel.position.x + cancel.size.x > vp.x - 8.0:
-		cancel.position.x = maxf(8.0, conf.position.x - cancel.size.x - CANCEL_GAP)
-	return [conf, cancel]
+	if r.position.x + r.size.x > vp.x - 8.0:
+		r.position.x = maxf(8.0, conf.position.x - r.size.x - CANCEL_GAP)
+	return r
 
 
-# 摆「确认 + 取消」这一对
-#   ★ 只有「取消」真的显示时才并排缩小；否则确认按钮按原样摆（状态切换那套完全不变）
-func place_prompt_pair(btn: TextureButton, cbtn: TextureButton) -> void:
-	var has_cb := cbtn != null and is_instance_valid(cbtn) and cbtn.visible
-	var aspect_conf := 70.0 / 220.0
-	if btn != null and is_instance_valid(btn) and btn.texture_normal != null \
-			and btn.texture_normal.get_width() > 0:
-		aspect_conf = float(btn.texture_normal.get_height()) / float(btn.texture_normal.get_width())
-	var aspect_c := aspect_conf
-	if has_cb and cbtn.texture_normal != null and cbtn.texture_normal.get_width() > 0:
-		aspect_c = float(cbtn.texture_normal.get_height()) / float(cbtn.texture_normal.get_width())
-	var rs: Array = prompt_pair_rects(aspect_conf, aspect_c)
-	var r0: Rect2 = rs[0]
-	var r1: Rect2 = rs[1]
-	if btn != null and is_instance_valid(btn) and btn.visible:
-		if not has_cb:
-			r0 = prompt_btn_rect(aspect_conf)
-			r0.position += prompt_btn_offset
-		_fit_btn(btn, r0)
-	if has_cb:
-		if btn == null or not is_instance_valid(btn) or not btn.visible:
-			# 确认还没出现（没选够牌）→ 取消占「确认那一格」，单独缩到同一尺寸
-			var solo := prompt_btn_rect(aspect_c)
-			var h2 := solo.size.y * PAIR_SCALE
-			_fit_btn(cbtn, Rect2(
-				solo.position + prompt_btn_offset + Vector2(0.0, solo.size.y - h2),
-				Vector2(h2 / maxf(aspect_c, 0.05), h2)))
-		else:
-			_fit_btn(cbtn, r1)
-
-
+# 把按钮摆到 rect（尺寸 + 全局位置），有变化才写
 func _fit_btn(btn: TextureButton, r: Rect2) -> void:
 	if btn == null or not is_instance_valid(btn):
 		return
@@ -1092,17 +1059,6 @@ func _fit_btn(btn: TextureButton, r: Rect2) -> void:
 		btn.global_position = r.position
 
 
-# 只要取消按钮那一格（并排口径）
-func cancel_btn_rect(aspect: float) -> Rect2:
-	var otex := btn_tex("ok")
-	var caspect := 974.0 / 894.0
-	if otex != null and otex.get_width() > 0:
-		caspect = float(otex.get_height()) / float(otex.get_width())
-	var arr: Array = prompt_pair_rects(caspect, aspect)
-	return arr[1]
-
-
-# 造一枚「取消」按钮（enabled=false = 强制发动：灰掉、点不动）
 func mk_cancel_btn(nm: String, cb: Callable, enabled := true) -> TextureButton:
 	var b := TextureButton.new()
 	b.name = nm
@@ -16013,8 +15969,6 @@ func _sync_prompt_btns() -> void:
 		var btn := b as Control
 		if btn == null or not is_instance_valid(btn) or not btn.visible:
 			continue
-		if btn == c30_panel.start_btn or btn == c32_panel.start_btn:
-			continue                     # 这两个要和「取消」并排摆（见函数末尾）
 		var tb := btn as TextureButton
 		var aspect := 70.0 / 220.0                       # 贴图默认比例（220×70）
 		if tb != null and tb.texture_normal != null and tb.texture_normal.get_width() > 0:
@@ -16027,8 +15981,8 @@ func _sync_prompt_btns() -> void:
 			btn.size = r.size
 		if btn.global_position.distance_to(r.position) > 0.5:
 			btn.global_position = r.position
-	place_prompt_pair(c30_panel.start_btn, c30_panel.cancel_btn)    # 向听：确认+取消并排
-	place_prompt_pair(c32_panel.start_btn, c32_panel.cancel_btn)    # 新手运
+	place_cancel_btn(c30_panel.cancel_btn)         # 向听：取消在确认右侧（原尺寸）
+	place_cancel_btn(c32_panel.cancel_btn)         # 新手运
 
 
 # 复制一张模板牌的形象（Node2D + Sprite2D）

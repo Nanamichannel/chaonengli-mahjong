@@ -127,10 +127,9 @@ def main() -> int:
     check("ESC = 全局取消", "if _k.keycode == KEY_ESCAPE:" in src)
     check("强制态闸门 _force_busy", "func _force_busy() -> bool:" in src)
     check("取消按钮在确认右侧", "func cancel_btn_rect(aspect: float) -> Rect2:" in src)
-    check("并排缩小只给有独立选牌 UI 的技能",
-          "const PAIR_SCALE := 0.62" in src and "func place_prompt_pair(" in src
-          and "place_prompt_pair(c30_panel.start_btn" in src
-          and "place_prompt_pair(c32_panel.start_btn" in src)
+    check("只有「按钮在屏幕中间、会压自己的手牌行」的才缩小（重整）",
+          "const PAIR_SCALE := 0.62" in src and "150.0 * PAIR_SCALE" in src
+          and "func place_prompt_pair(" not in src)
     sp2 = io.open(SKILLPANEL, encoding="utf-8").read()
     check("SkillPanel 仍是原尺寸（不缩小）",
           'host.call("place_cancel_btn", cbtn)' in sp2

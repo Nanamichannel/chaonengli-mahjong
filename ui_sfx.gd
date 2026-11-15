@@ -93,6 +93,8 @@ static func _stream(sfx: String) -> AudioStream:
 
 ## 给一棵子树里**所有** BaseButton 挂「按按钮」音效（幂等：靠 meta 标记）。
 ## 用法：场景 _ready 末尾 UiSfx.hook_buttons(self)；之后动态新建的按钮再调一次。
+## ★ 例外：选卡界面那 46 张牌（CardBank 下的 Card01..Card46）**不挂** ——
+##   用户口径 2026-11-15「开始选卡后就不要有按按钮音效了」（选一张响一下太吵）。
 static func hook_buttons(root: Node, volume_db := -8.0) -> void:
 	if root == null or not root.is_inside_tree():
 		return
@@ -100,8 +102,24 @@ static func hook_buttons(root: Node, volume_db := -8.0) -> void:
 		var b := n as BaseButton
 		if b == null or b.has_meta("ui_sfx_hooked"):
 			continue
+		if _is_card_face(b):
+			b.set_meta("ui_sfx_hooked", true)      # 标记掉，免得以后换个入口又被挂上
+			continue
 		b.set_meta("ui_sfx_hooked", true)
 		b.pressed.connect(func() -> void: play("press", volume_db))
+
+
+## 这张按钮是不是「选卡界面的牌」（card_button.gd：TextureButton + card_clicked 信号，
+## 挂在 Lobby/CardBank 下）。点它们不出声，交给选中动画自己表达。
+static func _is_card_face(b: BaseButton) -> bool:
+	if b.has_signal("card_clicked") and b.get("card_no") != null:
+		return true
+	var p: Node = b.get_parent()
+	while p != null:
+		if String(p.name).begins_with("CardBank"):
+			return true
+		p = p.get_parent()
+	return false
 
 
 ## 预热：开局就把播放器和四个音频读进内存（第一次 play 不再有读盘/解码那一下）

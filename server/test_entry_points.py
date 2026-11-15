@@ -167,7 +167,7 @@ def main() -> int:
     _mgd = io.open(os.path.join(_root, "main.gd"), encoding="utf-8",
                    errors="replace").read()
     check("客户端认 c46_pending", '_ev == "c46_pending"' in _mgd, True)
-    check("NO MISS 提示「点自摸」", "NO MISS：换成了和牌形" in _mgd, True)
+    check("NO MISS 提示「点自摸」", "NO MISS:换成了和牌形" in _mgd, True)
     check("客户端有 _win_pending_card", "func _win_pending_card(" in _mgd, True)
     check("再点 NO MISS 图标 = 取消", 'c == 43 and i == 0 and _win_pending_card() == 43' in _mgd, True)
     check("再点恶听图标 = 取消", 'c == 46 and i == 0 and _win_pending_card() == 46' in _mgd, True)

@@ -77,23 +77,23 @@ func _build_ui() -> void:
 	margin.add_child(root)
 
 	var title := Label.new()
-	title.text = "役种判定测试台　（输入牌型 → 算番 / 符 / 点）"
+	title.text = "役种判定测试台 (输入牌型 → 算番 / 符 / 点)"
 	title.add_theme_font_size_override("font_size", 26)
 	root.add_child(title)
 
 	var hint := Label.new()
-	hint.text = ("写法：万m 筒p 索s，赤 5 写 0m/0p/0s，字牌 1z~7z = 东南西北白发中；"
-		+ "和牌张也可以写 中 / dong。副露写 chi:234p、pon:555z、minkan:1111m、ankan:1111m、kakan:1111m")
+	hint.text = ("写法:万m 筒p 索s,赤 5 写 0m/0p/0s,字牌 1z~7z = 东南西北白发中;"
+		+ "和牌张也可以写 中 / dong。副露写 chi:234p,pon:555z,minkan:1111m,ankan:1111m,kakan:1111m")
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.modulate = Color(0.72, 0.76, 0.8)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root.add_child(hint)
 
-	f_hand = _row(root, "手　牌", "123m456m789m234p55s")
-	f_win = _row(root, "和牌张", "2p  （也可以只写这张，手牌留 13 张）")
-	f_melds = _row(root, "副　露", "（可空）如 pon:111z 或 chi:234p,pon:555z")
-	f_dora = _row(root, "宝牌牌", "（可空）宝牌指示牌，如 1s；多张连着写 1s5p")
-	f_ura = _row(root, "里宝牌", "（可空）里宝牌指示牌（立直时才算）")
+	f_hand = _row(root, "手 牌", "123m456m789m234p55s")
+	f_win = _row(root, "和牌张", "2p  (也可以只写这张,手牌留 13 张)")
+	f_melds = _row(root, "副 露", "(可空)如 pon:111z 或 chi:234p,pon:555z")
+	f_dora = _row(root, "宝牌牌", "(可空)宝牌指示牌,如 1s;多张连着写 1s5p")
+	f_ura = _row(root, "里宝牌", "(可空)里宝牌指示牌(立直时才算)")
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
@@ -117,13 +117,13 @@ func _build_ui() -> void:
 	root.add_child(btns)
 
 	var go := Button.new()
-	go.text = "　判　定　"
+	go.text = " 判 定 "
 	go.add_theme_font_size_override("font_size", 20)
 	go.pressed.connect(_judge)
 	btns.add_child(go)
 
 	var ex_label := Label.new()
-	ex_label.text = "例子："
+	ex_label.text = "例子:"
 	btns.add_child(ex_label)
 	for e in EXAMPLES:
 		var b := Button.new()
@@ -194,7 +194,7 @@ func _fill(e: Dictionary) -> void:
 func _judge() -> void:
 	var py := _find_python()
 	if py == "":
-		out.text = "找不到 python，没法调用规则引擎。\n（装个 Python 3 并加到 PATH，或者改脚本里的 _find_python）"
+		out.text = "找不到 python,没法调用规则引擎。\n(装个 Python 3 并加到 PATH,或者改脚本里的 _find_python)"
 		return
 	var args := PackedStringArray()
 	args.append(ProjectSettings.globalize_path(CLI))
@@ -243,13 +243,13 @@ func _judge() -> void:
 	if text.strip_edges() == "":
 		text = "\n".join(lines)
 	if text.strip_edges() == "":
-		out.text = ("拿不到判定结果（退出码 %d）。\n请确认能手动跑：\n%s --hand %s"
+		out.text = ("拿不到判定结果(退出码 %d)。\n请确认能手动跑:\n%s --hand %s"
 			% [code, ProjectSettings.globalize_path(CLI), f_hand.text])
 		tip.text = "调用规则引擎失败"
 		return
 	var data = JSON.parse_string(text)
 	if typeof(data) != TYPE_DICTIONARY:
-		out.text = "返回的不是 JSON，原始输出：\n" + text
+		out.text = "返回的不是 JSON,原始输出:\n" + text
 		return
 	_render(data)
 
@@ -265,53 +265,53 @@ func _find_python() -> String:
 func _render(r: Dictionary) -> void:
 	var L := PackedStringArray()
 	var mode := "自摸" if r.get("tsumo") else "荣和"
-	var head := "手牌：%s　（%s %s）" % [r.get("hand", "?"), mode, r.get("win", "?")]
+	var head := "手牌:%s (%s %s)" % [r.get("hand", "?"), mode, r.get("win", "?")]
 	if r.get("melds") and r["melds"].size() > 0:
-		head += "　副露：" + "、".join(PackedStringArray(r["melds"]))
+		head += " 副露:" + ",".join(PackedStringArray(r["melds"]))
 	L.append(head)
 	L.append("")
 
 	if not r.get("ok"):
-		L.append("✗ 判定不了：" + str(r.get("error", "?")))
+		L.append("✗ 判定不了:" + str(r.get("error", "?")))
 		if r.get("try_waits") and r["try_waits"].size() > 0:
-			L.append("　提示：这副牌现在听 " + "、".join(PackedStringArray(r["try_waits"])))
+			L.append(" 提示:这副牌现在听 " + ",".join(PackedStringArray(r["try_waits"])))
 		out.text = "\n".join(L)
-		tip.text = "判定失败：看看牌写对没有（牌数一共要 14 张）"
+		tip.text = "判定失败:看看牌写对没有(牌数一共要 14 张)"
 		return
 
 	var yakus := PackedStringArray()
 	for y in r.get("yaku", []):
 		yakus.append("%s %d番" % [y["name"], y["han"]])
-	L.append("役种：" + "、".join(yakus))
+	L.append("役种:" + ",".join(yakus))
 	if int(r.get("yakuman", 0)) > 0:
-		L.append("番数：役满 ×%d" % int(r["yakuman"]))
+		L.append("番数:役满 ×%d" % int(r["yakuman"]))
 	else:
-		L.append("番数：%d 番　　符数：%d 符" % [int(r.get("han", 0)), int(r.get("fu", 0))])
+		L.append("番数:%d 番  符数:%d 符" % [int(r.get("han", 0)), int(r.get("fu", 0))])
 		var items := PackedStringArray()
 		var total := 0
 		for it in r.get("fu_items", []):
 			items.append("%s %d" % [it[0], int(it[1])])
 			total += int(it[1])
 		if items.size() > 0:
-			L.append("符数明细：" + " + ".join(items) + " → %d 符" % int(r.get("fu", 0)))
+			L.append("符数明细:" + " + ".join(items) + " → %d 符" % int(r.get("fu", 0)))
 
 	var p: Dictionary = r.get("points", {})
 	if r.get("tsumo"):
 		if p.has("from_dealer") and p.has("from_other") and int(p["from_dealer"]) != int(p["from_other"]):
-			L.append("点数：自摸　亲付 %d / 子付 %d（共 %d）"
+			L.append("点数:自摸 亲付 %d / 子付 %d(共 %d)"
 				% [int(p["from_dealer"]), int(p["from_other"]), int(p["total"])])
 		else:
-			L.append("点数：自摸 %d 点all（共 %d）" % [int(p.get("each", 0)), int(p.get("total", 0))])
+			L.append("点数:自摸 %d 点all(共 %d)" % [int(p.get("each", 0)), int(p.get("total", 0))])
 	else:
-		L.append("点数：荣和 %d 点（放铳者付 %d）" % [int(p.get("total", 0)), int(p.get("total", 0))])
+		L.append("点数:荣和 %d 点(放铳者付 %d)" % [int(p.get("total", 0)), int(p.get("total", 0))])
 	if str(p.get("limit", "")) != "":
-		L.append("段位：" + str(p["limit"]))
+		L.append("段位:" + str(p["limit"]))
 
 	if r.get("sets_text") and r["sets_text"].size() > 0:
 		var wait_cn := {"ryanmen": "两面", "kanchan": "嵌张", "penchan": "边张",
 			"tanki": "单骑", "shanpon": "双碰", "none": "—"}
-		L.append("拆解：" + "、".join(PackedStringArray(r["sets_text"]))
-			+ "　雀头 " + str(r.get("pair_text", ""))
-			+ "　听牌形 " + str(wait_cn.get(str(r.get("wait", "")), str(r.get("wait", "")))))
+		L.append("拆解:" + ",".join(PackedStringArray(r["sets_text"]))
+			+ " 雀头 " + str(r.get("pair_text", ""))
+			+ " 听牌形 " + str(wait_cn.get(str(r.get("wait", "")), str(r.get("wait", "")))))
 	out.text = "\n".join(L)
-	tip.text = "判定完成（数据来自 server/judge_cli.py）"
+	tip.text = "判定完成(数据来自 server/judge_cli.py)"

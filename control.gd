@@ -11,7 +11,7 @@ func _ready() -> void:
 		print("[检查] 没找到 AnimationPlayer")
 		return
 
-	print("[检查] 动画列表：", ap.get_animation_list())
+	print("[检查] 动画列表:", ap.get_animation_list())
 	for nm in ap.get_animation_list():
 		var a: Animation = ap.get_animation(nm)
 		print("  ", nm, "  长度=", a.length, "  loop=", a.loop_mode, "  轨道=", a.get_track_count())
@@ -21,7 +21,7 @@ func _ready() -> void:
 	print("[检查] 开始播 intro")
 
 func _on_finished(nm: String) -> void:
-	print("[检查] 播完了：", nm)
+	print("[检查] 播完了:", nm)
 	if nm == "intro":
 		ap.call_deferred("play", "idle")
 

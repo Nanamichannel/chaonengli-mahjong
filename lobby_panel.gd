@@ -92,7 +92,7 @@ func _ready() -> void:
 func begin(room: String) -> void:
 	visible = true
 	if srv == null or srv.net == null:
-		_set_hint("单机模式：没有房间")
+		_set_hint("单机模式:没有房间")
 		return
 	var want := room.strip_edges()
 	if want == "":
@@ -394,14 +394,14 @@ func _handle_join(r: Dictionary) -> void:
 	if not bool(r.get("ok", false)):
 		var why := String(r.get("error", "未知错误"))
 		if why.find("已满") >= 0:
-			_set_hint("房间已满（4/4）—— 有人退出后会自动加入")
+			_set_hint("房间已满(4/4)—— 有人退出后会自动加入")
 		else:
 			var why2 := _net_why(r)
 			_set_hint(why2)
 			_net_badge_show(why2)
 		if why != _last_join_err:
 			_last_join_err = why
-			print("initial_menu: 加入大厅失败，稍后自动重试：", why)
+			print("initial_menu: 加入大厅失败,稍后自动重试:", why)
 		return
 	_last_join_err = ""
 	_set_hint("")

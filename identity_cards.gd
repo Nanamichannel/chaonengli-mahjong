@@ -117,14 +117,14 @@ func _load_cover_tex() -> Texture2D:
 	if ext != "":
 		var img := Image.load_from_file(ext)
 		if img != null and not img.is_empty():
-			print("identity_cards: 遮罩 = %s（外部）" % ext)
+			print("identity_cards: 遮罩 = %s(外部)" % ext)
 			return ImageTexture.create_from_image(img)
 	var node := get_node_or_null(COVER_NODE_PATH)
 	if node != null and node is TextureRect:
 		var t := (node as TextureRect).texture
 		if t != null:
 			return t
-	push_warning("identity_cards: 场景里找不到 UI/CardCover（人物卡遮罩贴图缺失）")
+	push_warning("identity_cards: 场景里找不到 UI/CardCover(人物卡遮罩贴图缺失)")
 	return null
 
 

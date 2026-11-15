@@ -16,7 +16,7 @@ func _bench(url: String, tag: String) -> void:
 	_write_cfg(url, "ka_test")
 	var n = load("res://server_net.gd").new()
 	if not n.enabled:
-		print("[T] ", tag, " 未启用：", n.last_error)
+		print("[T] ", tag, " 未启用:", n.last_error)
 		return
 	var times: Array = []
 	for i in range(6):

@@ -60,7 +60,8 @@ const WinConfirmButton := preload("res://win_confirm_button.gd")
 const HandPick := preload("res://hand_pick.gd")   # 统一「选手牌」界面
 const SkillPanel := preload("res://skill_panel.gd")  # 统一「技能选牌面板」
 const C30Panel := preload("res://c30_panel.gd")      # Card30 S1「向听」专用面板
-const UiSfx := preload("res://ui_sfx.gd")         # UI 音效（出现按钮 / 悬浮手牌）
+const UiSfx := preload("res://ui_sfx.gd")
+const Txt := preload("res://txt.gd")            # 显示层：全角标点 → 半角         # UI 音效（出现按钮 / 悬浮手牌）
 
 var hand_pick := HandPick.new()
 
@@ -287,7 +288,7 @@ const SRV_FROM_SEAT := {"B": 3, "C": 2, "D": 1}      # 上家/对家/下家 → 
 # 牌「飞」的速度（打牌飞进牌河 / 摸牌飞进手牌 / 鸣牌飞过去）。只影响牌位动画，
 # 不影响和牌播报的长条、也不影响立直棒淡入等其它动画。
 #   1.0 = 原速；2.0 = 快一倍；0.5 = 慢一半；0 = 关掉（牌直接瞬移到位）
-@export_category("牌飞行（打牌 / 摸牌 / 鸣牌的牌位动画）")
+@export_category("牌飞行(打牌 / 摸牌 / 鸣牌的牌位动画)")
 @export_range(0.0, 4.0, 0.05) var tile_fly_speed := 1.0
 
 @export_category("和牌播报")
@@ -591,7 +592,7 @@ func _round_hud_sync(st: Dictionary) -> void:
 	var up := srv_nick_of((my_seat + 3) % 4)
 	var opp := srv_nick_of((my_seat + 2) % 4)
 	var low := srv_nick_of((my_seat + 1) % 4)
-	var txt := "上家：%s\n对家：%s\n下家：%s\n%s%s局　%d 本场" % [
+	var txt := "上家:%s\n对家:%s\n下家:%s\n%s%s局 %d 本场" % [
 		up, opp, low, w, _num_cn(n), h]
 	# ── 本小局技能流水（用户口径 2026-11-04）────────────────────────────
 	#   接在上面几行白字下面：从新到旧、从上往下，格式【玩家】发动了【技能】。
@@ -625,13 +626,14 @@ func _round_hud_sync(st: Dictionary) -> void:
 				if head == who or head in ["东", "南", "西", "北"]:
 					rows.append(tx)
 				else:
-					rows.append("【%s】%s" % [who, tx])
+					rows.append("[%s]%s" % [who, tx])
 			else:
-				rows.append("【%s】发动了【%s】" % [who, nm])
+				rows.append("[%s]发动了[%s]" % [who, nm])
 		if not rows.is_empty():
 			txt += "\n" + "\n".join(rows)
-	if _round_hud.text != txt:
-		_round_hud.text = txt
+	var _txt_show := Txt.half(txt)          # 服务端下发的中文标点也一起归一
+	if _round_hud.text != _txt_show:
+		_round_hud.text = _txt_show
 
 
 func _round_hud_ensure() -> void:
@@ -1401,7 +1403,7 @@ func srv_request(req: Dictionary) -> Dictionary:
 	if srv == null:
 		srv = ServerBridge.new()
 		if not srv.available:
-			push_warning("main.gd: 找不到 python，规则退回本地兜底")
+			push_warning("main.gd: 找不到 python,规则退回本地兜底")
 			srv_note = "找不到 python"
 			return {}
 	# 真动作（不是轮询）→ 开 1.5 秒快轮询，别让结算等下一次慢轮询
@@ -1495,7 +1497,7 @@ func srv_kangpo_blocked(r: Dictionary) -> bool:
 	if not bool(r.get("need_kangpo", false)):
 		return false
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("已确认，等对方决定是否拦截…")
+	_toast("已确认,等对方决定是否拦截…")
 	return true
 
 
@@ -1638,9 +1640,9 @@ func _load_background() -> void:
 			_bg_tex = ImageTexture.create_from_image(eimg)
 			beijing.texture = _bg_tex
 			_fit_background()
-			print("main.gd: 背景 = %s（外部）" % ep)
+			print("main.gd: 背景 = %s(外部)" % ep)
 			return
-		push_warning("main.gd: 外部背景读不了，改用包里的：" + ep)
+		push_warning("main.gd: 外部背景读不了,改用包里的:" + ep)
 	# ② 包里的 board_teal.png：**直接 load**
 	#    ★ 导出成 exe 后 DirAccess 枚举 res:// 目录会拿不到（pck 里的文件列表为空），
 	#      以前就是这里失败 → 保留场景默认那张动漫背景（联机玩家看到的「桌布不对」）。
@@ -1652,7 +1654,7 @@ func _load_background() -> void:
 			_bg_tex = pt
 			beijing.texture = _bg_tex
 			_fit_background()
-			print("main.gd: 背景 = %s（OK）" % BG_PREFER)
+			print("main.gd: 背景 = %s(OK)" % BG_PREFER)
 			return
 	# ③ 兜底：目录扫描（编辑器里能用，导出版可能为空）
 	var files := _bg_files()
@@ -1673,7 +1675,7 @@ func _load_background() -> void:
 	if _bg_tex != null:
 		beijing.texture = _bg_tex
 	_fit_background()
-	print("main.gd: 背景 = %s（%s）" % [String(files[0]), "OK" if _bg_tex != null else "加载失败"])
+	print("main.gd: 背景 = %s(%s)" % [String(files[0]), "OK" if _bg_tex != null else "加载失败"])
 
 
 func _fit_background() -> void:
@@ -1708,7 +1710,7 @@ func _audio_log() -> void:
 	var _dev := AudioServer.get_output_device()
 	if _dev == "Default" or _dev.to_lower().contains("voicemeeter") \
 			or _dev.to_lower().contains("vb-audio"):
-		print("[audio] 提示：当前走 Voicemeeter 虚拟声卡（多一层引擎缓冲）。按 F9 可切到直连设备。")
+		print("[audio] 提示:当前走 Voicemeeter 虚拟声卡(多一层引擎缓冲)。按 F9 可切到直连设备。")
 
 
 # ── 音频输出设备（2026-11-14）：F9 轮换，跳过 Voicemeeter 那一层 ─────────────
@@ -1753,7 +1755,7 @@ func _audio_dev_tick(delta: float) -> void:
 		return
 	if _audio_dev_wait <= 0.0:
 		_audio_dev_want = ""
-		_toast("切不过去，还是：%s" % now)
+		_toast("切不过去,还是:%s" % now)
 
 
 func _audio_dev_save(name: String) -> void:
@@ -1795,7 +1797,7 @@ func _lat_test_start() -> void:
 	_lat_flash_rect().modulate.a = 0.0
 	_lat_step = 1
 	_lat_t = 0.8
-	_toast("延迟自测：盯住白闪、听「咔」——共 8 下")
+	_toast("延迟自测:盯住白闪,听「咔」——共 8 下")
 
 
 # 每帧推一下（不看 delta 也不 await：暂停/掉帧都不会把流程挂死）
@@ -1812,7 +1814,7 @@ func _lat_test_tick() -> void:
 	if _lat_step > 8:
 		_lat_step = 0
 		r.modulate.a = 0.0
-		_toast("自测完：闪白和「咔」差了多少？「几乎同时 / 差一丁点 / 差一大截」就够")
+		_toast("自测完:闪白和「咔」差了多少？「几乎同时 / 差一丁点 / 差一大截」就够")
 		return
 	# ★ 同一帧：先闪白，再出声（差的就是「听到」比「发出」多出来的全部延迟）
 	r.modulate.a = 1.0
@@ -1875,7 +1877,7 @@ func _ready() -> void:
 
 	pai = get_node_or_null("Pai")
 	if pai == null:
-		push_error("main.gd: 找不到 Pai 节点（牌模板库），手牌无法显示")
+		push_error("main.gd: 找不到 Pai 节点(牌模板库),手牌无法显示")
 		return
 	pai.visible = false          # 模板库只在运行时被复制，不直接显示
 	_measure_tile_size()
@@ -2013,7 +2015,7 @@ func _build_wall_stacks() -> void:
 		_layout_wall_nodes()
 		return
 	if art_sprite("牌背", "b_04") == null:
-		push_warning("main.gd: 找不到 牌背/b_04 节点（牌山摆不出来）")
+		push_warning("main.gd: 找不到 牌背/b_04 节点(牌山摆不出来)")
 		return
 	# 老办法：按参数现场新建（只在「预置节点不可用」时跑）
 	# 先把上一次摆的收掉（改接口数值时会重摆）
@@ -2444,7 +2446,7 @@ func srv_join_seat(seat: int, quiet := false, render := true,
 		srv_humans = r.get("humans")
 	_update_seat_label()
 	if not quiet:
-		print("main.gd: 本窗口 = %s（有窗口的座位 %s）" % [_seat_text(), _humans_text()])
+		print("main.gd: 本窗口 = %s(有窗口的座位 %s)" % [_seat_text(), _humans_text()])
 	if render and typeof(r.get("state")) == TYPE_DICTIONARY:
 		# 换了视角：牌面有关的缓存全部清掉，整块按新座位重画
 		_reset_view_for_new_round()
@@ -2462,7 +2464,7 @@ func srv_new_round() -> void:
 	var r := srv_request({"op": "next", "seat": my_seat, "f2": true})
 	if r.is_empty():
 		return
-	print("main.gd: 下一局（本窗口 = %d 号位）" % my_seat)
+	print("main.gd: 下一局(本窗口 = %d 号位)" % my_seat)
 	_reset_view_for_new_round()
 	dealing = true
 	game_phase = PHASE_DEAL
@@ -2647,7 +2649,7 @@ func _reset_view_for_new_round() -> void:
 func _apply_round_start(r: Dictionary) -> void:
 	var st = r.get("state")
 	if typeof(st) != TYPE_DICTIONARY:
-		push_error("main.gd: 服务端没给状态，配牌停止。")
+		push_error("main.gd: 服务端没给状态,配牌停止。")
 		dealing = false
 		return
 	srv_state = st
@@ -2670,13 +2672,13 @@ func _seat_text() -> String:
 		nm = "%d 号位" % my_seat
 	match my_seat:
 		0:
-			return "%s（屏幕下方 · 自己）" % nm
+			return "%s(屏幕下方 · 自己)" % nm
 		1:
-			return "%s（屏幕右侧 · 下家）" % nm
+			return "%s(屏幕右侧 · 下家)" % nm
 		2:
-			return "%s（屏幕上方 · 对家）" % nm
+			return "%s(屏幕上方 · 对家)" % nm
 		3:
-			return "%s（屏幕左侧 · 上家）" % nm
+			return "%s(屏幕左侧 · 上家)" % nm
 	return nm
 
 
@@ -2808,12 +2810,12 @@ func start_deal() -> void:
 							wf.store_string(JSON.stringify(own))
 	var st = r.get("state")
 	if typeof(st) != TYPE_DICTIONARY:
-		push_error("main.gd: 连不上服务端、开不了桌，配牌停止。")
+		push_error("main.gd: 连不上服务端,开不了桌,配牌停止。")
 		dealing = false
 		return
 	_reset_view_for_new_round()
 	_apply_round_start(r)
-	print("main.gd: 本窗口 = %s（%s；有窗口的座位 %s）"
+	print("main.gd: 本窗口 = %s(%s;有窗口的座位 %s)"
 		% [_seat_text(), "开了新的一局" if bool(r.get("created", false)) else "接上现有的一局",
 			_humans_text()])
 	if not bool(r.get("created", false)):
@@ -2841,7 +2843,7 @@ func start_deal() -> void:
 	first_stack = int(st.get("first_stack", 0))
 	wall_start_side = String(st.get("start_side", ""))
 
-	print("[配牌] 骰子 %s ＝ 第 %d 墩 → %s 面开始编号，从第 %d 墩开始拿"
+	print("[配牌] 骰子 %s = 第 %d 墩 → %s 面开始编号,从第 %d 墩开始拿"
 		% [str(dice), first_stack, wall_start_side, first_stack])
 	# 每家 0 张
 	hand_tiles.clear()
@@ -3151,7 +3153,7 @@ func _deal_step() -> void:
 	var r := srv_request({"op": "deal_step", "seat": my_seat})
 	var st = r.get("state")
 	if typeof(st) != TYPE_DICTIONARY:
-		push_error("main.gd: 配牌失败（服务端不在？），停止配牌。")
+		push_error("main.gd: 配牌失败(服务端不在？),停止配牌。")
 		dealing = false
 		return
 	srv_state = st
@@ -3184,7 +3186,7 @@ func _deal_step() -> void:
 		dealing = false
 		game_phase = PHASE_PLAY
 		draw_tile()                    # 摸牌按钮取消：配牌一结束就自动开始摸打
-		print("[配牌] 配牌结束，我手上 %d 张（台上 %d 张）"
+		print("[配牌] 配牌结束,我手上 %d 张(台上 %d 张)"
 			% [display_tiles().size(), opp_hands.get("B", []).size()])
 		return
 	get_tree().create_timer(_bs_delay(DEAL_STEP_WAIT)).timeout.connect(_deal_step)
@@ -3411,7 +3413,7 @@ func _perf_init() -> void:
 		if f != null:
 			f.store_line("# perf probe start")
 			f.close()
-		print("[PERF] 采样开启：120 秒内每 5 秒一行 → user://perf.log")
+		print("[PERF] 采样开启:120 秒内每 5 秒一行 → user://perf.log")
 
 
 # ── 角色语音包（吃/碰/杠/立直/荣和/自摸）────────────────────────────
@@ -3691,7 +3693,7 @@ func srv_act(action: String, extra: Dictionary = {}) -> Dictionary:
 	if r.is_empty():
 		# 请求失败（超时 / 断线）：以前这里直接 return，界面就再无动静 —— 看着像卡死。
 		# 现在提示一句并拉一次最新状态，能自己爬起来。
-		_toast(_srv_err("动作没发出去，正在重新同步…"))
+		_toast(_srv_err("动作没发出去,正在重新同步…"))
 		_pull_state()
 		return {}
 	if not bool(r.get("ok", false)) and String(r.get("error", "")) != "":
@@ -3749,7 +3751,7 @@ func _act_tail(r: Dictionary, _action: String = "") -> void:
 	_poll_hold_until = Time.get_ticks_msec() + 220
 	if r.is_empty():
 		# 请求失败（超时 / 断线）：提示一句并拉一次最新状态，能自己爬起来
-		_toast(_srv_err("动作没发出去，正在重新同步…"))
+		_toast(_srv_err("动作没发出去,正在重新同步…"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)) and String(r.get("error", "")) != "":
@@ -3984,7 +3986,9 @@ func _score_label_sync(st: Dictionary) -> void:
 
 # 点数变化时轻轻闪一下，不闪瞎眼
 func _score_label_flash(lb: Label) -> void:
-	var old = lb.get_meta("flash_tw", null)
+	# ★ Godot 4 的 get_meta(name, default)：default 传 null 等于没传，照样报错
+	#   （"The object does not have any 'meta' values..."）。必须走 has_meta 判一次。
+	var old = lb.get_meta("flash_tw") if lb.has_meta("flash_tw") else null
 	if old is Tween and (old as Tween).is_valid():
 		(old as Tween).kill()
 	lb.modulate = Color(1.45, 1.30, 0.92, 1.0)
@@ -4080,7 +4084,7 @@ func _skill_cancel_if_busy(card_no: int, index: int) -> bool:
 		_toast("已取消「一发」")
 		return true
 	if c == 24 and i == 1 and future_active:
-		_toast("未来：已经发动了，不能跳过 —— 把 5 张排好点「确认」")
+		_toast("未来:已经发动了,不能跳过 —— 把 5 张排好点「确认」")
 		return true
 	if c == 4 and i == 0 and flow_active:
 		_flow_cancel()
@@ -4105,12 +4109,12 @@ func _skill_cancel_if_busy(card_no: int, index: int) -> bool:
 		return true
 	if c == 11 and i == 0 and c11_active:
 		_card11_close()
-		_toast("已取消「魔术」（还没有和服务端确认，不用回滚）")
+		_toast("已取消「魔术」(还没有和服务端确认,不用回滚)")
 		return true
 	if c == 30 and i == 0 and c30_panel.active and c30_panel.mode == "arm":
 		c30_panel.close()
 		c30_key = ""
-		_toast("向听：已收起（还没发动，不用回滚）")
+		_toast("向听:已收起(还没发动,不用回滚)")
 		return true
 	if c == 22 and i == 1 and sf_active and sf_mode == "youyin":
 		_sf_close()                        # 友引段2 是主动技能：再点一次 = 收起
@@ -4119,19 +4123,19 @@ func _skill_cancel_if_busy(card_no: int, index: int) -> bool:
 	# NO MISS / 恶听：面板还开着 → 收起；已经换完/切完、等着按自摸 → 叫服务端撤销
 	if c == 43 and i == 0 and c43_panel.active:
 		c43_panel.close()
-		_toast("已取消「NO MISS」（还没和服务端确认，牌没动）")
+		_toast("已取消「NO MISS」(还没和服务端确认,牌没动)")
 		return true
 	if c == 46 and i == 0 and c46_panel.active:
 		c46_panel.close()
-		_toast("已取消「恶听」（还没切牌）")
+		_toast("已取消「恶听」(还没切牌)")
 		return true
 	if c == 43 and i == 0 and _win_pending_card() == 43:
 		if _srv_skill_cancel("c43s1"):
-			_toast("已取消「NO MISS」：这次不和（换过的牌保留，接着打牌）")
+			_toast("已取消「NO MISS」:这次不和(换过的牌保留,接着打牌)")
 		return true
 	if c == 46 and i == 0 and _win_pending_card() == 46:
 		if _srv_skill_cancel("c46s1"):
-			_toast("已取消「恶听」：这次不和，轮到下家")
+			_toast("已取消「恶听」:这次不和,轮到下家")
 		return true
 
 	return false
@@ -4141,7 +4145,7 @@ func _skill_cancel_if_busy(card_no: int, index: int) -> bool:
 func _srv_skill_cancel(what: String) -> bool:
 	var r := srv_request({"op": "skill_cancel", "seat": my_seat, "what": what})
 	if r.is_empty():
-		_toast(_srv_err("取消技能失败：服务端没有回应"))
+		_toast(_srv_err("取消技能失败:服务端没有回应"))
 		return false
 	srv_apply_state(r.get("state"), r.get("events"))
 	return true
@@ -4151,7 +4155,7 @@ func _flow_cancel() -> void:
 	if not _srv_skill_cancel("fengshen"):
 		return
 	_flow_close()
-	_toast("已取消「风神」：已经换出去/换进来的牌不会退回去")
+	_toast("已取消「风神」:已经换出去/换进来的牌不会退回去")
 
 
 func _wind_cancel() -> void:
@@ -4172,7 +4176,7 @@ func _c05_hide_cancel() -> void:
 	if not _srv_skill_cancel("card05_hide"):
 		return
 	_c05_hide_close()
-	_toast("已取消盖牌（这次手牌会被看到）")
+	_toast("已取消盖牌(这次手牌会被看到)")
 
 
 # ── Card07 Skill1「降神」──────────────────────────────────────────────
@@ -4205,7 +4209,7 @@ func _oracle_on_clicked() -> void:
 		_oracle_toggle()                     # 其它时候：开 / 关
 		return
 	if String(srv_state.get("phase", "")) != "deal_skill":
-		_toast("「降神」只能在配牌阶段发动（掷一次骰子定花色）")
+		_toast("「降神」只能在配牌阶段发动(掷一次骰子定花色)")
 		return
 	_oracle_activate()
 
@@ -4216,7 +4220,7 @@ func _oracle_activate() -> void:
 	var r := srv_request({"op": "deal_skill", "seat": my_seat,
 		"action": "use", "card": 7, "skill": 1})
 	if r.is_empty():
-		_toast(_srv_err("「降神」发动失败：服务端没有回应"))
+		_toast(_srv_err("「降神」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -4229,30 +4233,30 @@ func _oracle_activate() -> void:
 	if idn != null and idn.has_method("collapse_skills"):
 		idn.call("collapse_skills", 7)
 	var o: Dictionary = dr.get("oracle", {})
-	_toast("「降神」：掷出 %d 点 → 本局花色【%s】"
+	_toast("「降神」:掷出 %d 点 → 本局花色[%s]"
 		% [int(dr.get("dice", 0)), String(o.get("suit_cn", ""))])
 
 
 # Card07 Skill2「恶灵」：被动。发动过「降神」之后，本局只能门清自摸和。
 func _evil_tip() -> void:
 	if bool(srv_state.get("oracle_lock", false)):
-		_toast("「恶灵」正在生效：发动过降神 → 这一局只能门清自摸和（不能荣和、不能有副露）")
+		_toast("「恶灵」正在生效:发动过降神 → 这一局只能门清自摸和(不能荣和,不能有副露)")
 	else:
-		_toast("「恶灵」不用发动：一旦发动过「降神」，这一局就只能门清自摸和")
+		_toast("「恶灵」不用发动:一旦发动过「降神」,这一局就只能门清自摸和")
 
 
 func _oracle_toggle() -> void:
 	var r := srv_request({"op": "oracle_toggle", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("「降神」开关失败：服务端没有回应"))
+		_toast(_srv_err("「降神」开关失败:服务端没有回应"))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	var d: Dictionary = r.get("oracle", {})
 	var o: Dictionary = d.get("oracle", {})
 	if bool(o.get("on", false)):
-		_toast("「降神」已打开：每次摸牌前可以指定一张【%s】" % String(o.get("suit_cn", "")))
+		_toast("「降神」已打开:每次摸牌前可以指定一张[%s]" % String(o.get("suit_cn", "")))
 	else:
-		_toast("「降神」已关闭（再点一次可以重新打开）")
+		_toast("「降神」已关闭(再点一次可以重新打开)")
 
 
 # 摸牌前拦一道：降神开着就先弹选牌界面。返回 true = 这次别摸牌。
@@ -4332,7 +4336,7 @@ func _oracle_open(suit: String) -> void:
 
 	var cn := String({"m": "万", "p": "筒", "s": "条"}.get(suit, "万"))
 	var title := Label.new()
-	title.text = "降神：摸牌前指定一张【%s】（单击选中 / 再点取消）" % cn
+	title.text = "降神:摸牌前指定一张[%s](单击选中 / 再点取消)" % cn
 	title.add_theme_font_size_override("font_size", 30)
 	title.add_theme_color_override("font_color", Color(1.0, 0.96, 0.8))
 	title.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -4410,11 +4414,11 @@ func _oracle_confirm() -> void:
 	_busy_set("_oracle_confirm")          # 挡住 srv_apply_state 里的自动摸牌，下面自己摸
 	var r := srv_request({"op": "oracle_pick", "seat": my_seat, "tile": tile})
 	if r.is_empty():
-		_toast(_srv_err("「降神」指定失败：服务端没有回应"))
+		_toast(_srv_err("「降神」指定失败:服务端没有回应"))
 	elif bool(r.get("need_kangpo", false)):
 		# 看破：对方还没决定 → 这次交换先不结算，也别摸牌（放行后服务端会照原样执行）
 		oracle_skip_ask = ""            # 还没定：被看破作废时还能重新选
-		_toast("「降神」已确认：等对方决定是否看破…")
+		_toast("「降神」已确认:等对方决定是否看破…")
 		_busy_clear()
 		return
 	else:
@@ -4422,7 +4426,7 @@ func _oracle_confirm() -> void:
 		var d: Dictionary = r.get("oracle", {})
 		var sw: Array = d.get("swaps", [])
 		if (sw as Array).is_empty():
-			_toast("「降神」：没有别人拿着 %s" % tile)
+			_toast("「降神」:没有别人拿着 %s" % tile)
 		else:
 			var who := []
 			for s in sw:
@@ -4430,7 +4434,7 @@ func _oracle_confirm() -> void:
 					who.append("%s→%s" % [
 						_rel_seat_name(int((s as Dictionary).get("seat", -1))),
 						String((s as Dictionary).get("with", ""))])
-			_toast("「降神」：%s" % "、".join(who))
+			_toast("「降神」:%s" % ",".join(who))
 	_busy_clear()
 	draw_tile()
 
@@ -4465,8 +4469,8 @@ var duel_selecting := false              # 正在选东南西北
 func _duel_mark_tip() -> void:
 	var n := int(srv_state.get("duel_counter", 0))
 	var m := int(srv_state.get("duel_marks", 0))
-	var mine := "（我也有标记）" if bool(srv_state.get("duel_marked", false)) else ""
-	_toast("「决斗标记」：场上 %d 个标记%s，计数器 %d —— 别人和牌 +%d，我和牌 +%d 番"
+	var mine := "(我也有标记)" if bool(srv_state.get("duel_marked", false)) else ""
+	_toast("「决斗标记」:场上 %d 个标记%s,计数器 %d —— 别人和牌 +%d,我和牌 +%d 番"
 		% [m, mine, n, m, n])
 
 
@@ -4475,17 +4479,17 @@ func _duel_on_clicked() -> void:
 	if typeof(d) == TYPE_DICTIONARY:
 		var tg := int((d as Dictionary).get("target", -1))
 		if bool((d as Dictionary).get("mine", false)):
-			_toast("决斗中：对手是%s" % _rel_seat_name(tg))
+			_toast("决斗中:对手是%s" % _rel_seat_name(tg))
 		else:
-			_toast("你被卷进了决斗：只能摸切（暗置打出），也看不到自己摸的牌")
+			_toast("你被卷进了决斗:只能摸切(暗置打出),也看不到自己摸的牌")
 		return
 	if not bool(srv_state.get("deal_done", false)):
 		return
 	if not bool(srv_state.get("duel_can", false)):
-		_toast("「决斗」要第六巡之后、自己摸完牌才能发动")
+		_toast("「决斗」要第六巡之后,自己摸完牌才能发动")
 		return
 	duel_selecting = true
-	_seat_pick_begin("duel", "决斗：选一个对手")
+	_seat_pick_begin("duel", "决斗:选一个对手")
 
 
 func _duel_start(target: int) -> void:
@@ -4496,7 +4500,7 @@ func _duel_start(target: int) -> void:
 		return
 	var r := srv_request({"op": "duel_start", "seat": my_seat, "target": int(target)})
 	if r.is_empty():
-		_toast(_srv_err("「决斗」发动失败：服务端没有回应"))
+		_toast(_srv_err("「决斗」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -4505,7 +4509,7 @@ func _duel_start(target: int) -> void:
 	var idn := get_node_or_null("Identity")
 	if idn != null and idn.has_method("collapse_skills"):
 		idn.call("collapse_skills", 8)
-	_toast("「决斗」开始：对手是%s —— 另外两家只能摸切（暗置）" % _rel_seat_name(int(target)))
+	_toast("「决斗」开始:对手是%s —— 另外两家只能摸切(暗置)" % _rel_seat_name(int(target)))
 
 
 # 被决斗限制的那家：摸完牌自动打出去（他看不到自己摸的牌，也没得选）
@@ -4719,10 +4723,10 @@ func _card09_gate_before_draw() -> bool:
 
 func _card09_on_clicked(skill: int) -> void:
 	if _srv_kangpo_wait():
-		_toast("有人正在决定是否看破，稍等…")
+		_toast("有人正在决定是否看破,稍等…")
 		return
 	if _hand_locked():
-		_toast("已经立直了：手牌锁定，不能用间合")
+		_toast("已经立直了:手牌锁定,不能用间合")
 		return
 	if c09_active:
 		_card09_close()                      # 再点一次 = 取消
@@ -4734,7 +4738,7 @@ func _card09_on_clicked(skill: int) -> void:
 		return
 	var nxt := int(srv_state.get("card09_next", 0))
 	if int(skill) != 0 and nxt != 0 and nxt != int(skill):
-		_toast("上一次用的是 Skill%d，这一次只能用 Skill%d" % [3 - nxt, nxt])
+		_toast("上一次用的是 Skill%d,这一次只能用 Skill%d" % [3 - nxt, nxt])
 		return
 	c09_active = true
 	c09_skill = int(skill)
@@ -4743,9 +4747,9 @@ func _card09_on_clicked(skill: int) -> void:
 	hand_pick.begin(c09_picks, 1, {"on_change": _refresh_c09_btn})
 	_apply_entity_states(srv_state)
 	if int(skill) == 0:
-		_toast("09：选 1 张手牌 → 点自己牌河（间合守）或别家牌河（间合攻）→ 开始")
+		_toast("09:选 1 张手牌 → 点自己牌河(间合守)或别家牌河(间合攻)→ 开始")
 	else:
-		_toast("09：选 1 张手牌 → 再点%s牌河里的明牌 → 开始"
+		_toast("09:选 1 张手牌 → 再点%s牌河里的明牌 → 开始"
 			% ("自己" if int(skill) == 1 else "别家"))
 
 
@@ -4789,7 +4793,7 @@ func _card09_confirm() -> void:
 	if not c09_active:
 		return
 	if not bool(srv_state.get("card09_can", false)):
-		_toast("这一手已经过了（间合只能在自己摸牌前发动）")
+		_toast("这一手已经过了(间合只能在自己摸牌前发动)")
 		_card09_close()
 		return
 	if c09_picks.is_empty() and c09_seq < 0:
@@ -4820,13 +4824,13 @@ func _card09_confirm() -> void:
 	elif bool(r.get("need_kangpo", false)):
 		# 看破：对方还没决定 → 这次先不结算，也别摸牌（放行后服务端照原样执行）
 		srv_apply_state(r.get("state"), r.get("events"))
-		_toast("间合：已确认，等对方决定是否看破…")
+		_toast("间合:已确认,等对方决定是否看破…")
 		c09_hint_key = ""            # 万一被看破，这一巡还能再问一次
 		return
 	else:
 		srv_apply_state(r.get("state"), r.get("events"))
 		var d: Dictionary = r.get("card09", {})
-		_toast("09 换牌：用 %s 换到 %s（下一次只能用 Skill%d）"
+		_toast("09 换牌:用 %s 换到 %s(下一次只能用 Skill%d)"
 			% [hand, String(d.get("got", "")), int(d.get("next", 1))])
 	draw_tile()                              # 技能结算完，照常摸牌
 
@@ -4876,11 +4880,11 @@ func _c10_on_clicked() -> void:
 		_toast("已取消「鬼门」")
 		return
 	if not bool(srv_state.get("card10_can", false)):
-		_toast("「鬼门」要摸牌之后、打牌之前才能发动")
+		_toast("「鬼门」要摸牌之后,打牌之前才能发动")
 		return
 	var used: Array = srv_state.get("card10_used", [])
 	if (used as Array).has("dong") and (used as Array).has("bei"):
-		_toast("「鬼门」这一局东、北都换过了")
+		_toast("「鬼门」这一局东,北都换过了")
 		return
 	_c10_open()
 
@@ -4927,7 +4931,7 @@ func _c10_open() -> void:
 	_c10_make_start_btn(get_viewport_rect().size.y - 330.0)
 	var vp := get_viewport_rect().size
 	var tip := Label.new()
-	tip.text = "鬼门：彩框选 6 张（3 手牌 + 牌河 3 张东/北）
+	tip.text = "鬼门:彩框选 6 张(3 手牌 + 牌河 3 张东/北)
 或选 7/8 张（我的一组副露 + 别家东/北的刻子/杠）→ 开始"
 	tip.add_theme_font_size_override("font_size", 24)
 	tip.add_theme_color_override("font_color", Color(1.0, 0.96, 0.8))
@@ -4942,7 +4946,7 @@ func _c10_open() -> void:
 	_apply_entity_states(srv_state)
 	_c10_refresh_frames()
 	_refresh_c10_btn()
-	_toast("鬼门：点手牌 / 牌河 / 副露 选或取消（彩框）；再点技能图标取消")
+	_toast("鬼门:点手牌 / 牌河 / 副露 选或取消(彩框);再点技能图标取消")
 
 
 # 把牌桌上的副露整理成「可整组选」的字典
@@ -5005,7 +5009,7 @@ func _c10_toggle_meld(seat: int, group: int) -> void:
 				_toast("别家只能选东/北的刻子或杠")
 				return
 		if c10_sel.size() >= 2:
-			_toast("鬼门：副露最多选 2 组（再点一次可取消）")
+			_toast("鬼门:副露最多选 2 组(再点一次可取消)")
 			return
 		# 一组自己的 + 一组别家的，各只能一个（否则点「开始」也换不了）
 		for k in c10_sel:
@@ -5014,7 +5018,7 @@ func _c10_toggle_meld(seat: int, group: int) -> void:
 				continue
 			if (int((r0 as Dictionary).get("seat", -1)) == my_seat) \
 					== (int(seat) == my_seat):
-				_toast("鬼门：要一组自己的 + 一组别家的")
+				_toast("鬼门:要一组自己的 + 一组别家的")
 				return
 		if not c10_picks.is_empty() or not c10_rivers.is_empty():
 			c10_picks.clear()
@@ -5117,7 +5121,7 @@ func _c10_confirm() -> void:
 
 func _c10_confirm_hand() -> void:
 	if c10_picks.size() != 3 or c10_rivers.size() != 3:
-		_toast("鬼门：甲要 3 张手牌 + 牌河 3 张东/北")
+		_toast("鬼门:甲要 3 张手牌 + 牌河 3 张东/北")
 		return
 	var tiles := display_tiles()
 	var picks: Array = []
@@ -5143,10 +5147,10 @@ func _c10_confirm_hand() -> void:
 	var r := srv_request({"op": "card10_hand", "seat": my_seat,
 		"kind": kind, "tiles": picks, "rivers": seqs})
 	if r.is_empty():
-		_toast(_srv_err("「鬼门」换牌失败：服务端没有回应"))
+		_toast(_srv_err("「鬼门」换牌失败:服务端没有回应"))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("鬼门：用 %s 换到牌河里的东/北" % "、".join(picks))
+	_toast("鬼门:用 %s 换到牌河里的东/北" % ",".join(picks))
 
 
 func _c10_confirm_meld() -> void:
@@ -5161,7 +5165,7 @@ func _c10_confirm_meld() -> void:
 		else:
 			theirs = String(k)
 	if mine == "" or theirs == "":
-		_toast("鬼门：副露要一组自己的 + 一组别家的")
+		_toast("鬼门:副露要一组自己的 + 一组别家的")
 		return
 	var mr: Dictionary = c10_groups[mine]
 	var tr: Dictionary = c10_groups[theirs]
@@ -5176,10 +5180,10 @@ func _c10_confirm_meld() -> void:
 	var r := srv_request({"op": "card10_meld", "seat": my_seat, "kind": kind,
 		"my_meld": my_id, "target": tg, "their_meld": tg_id})
 	if r.is_empty():
-		_toast(_srv_err("「鬼门」换副露失败：服务端没有回应"))
+		_toast(_srv_err("「鬼门」换副露失败:服务端没有回应"))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("鬼门：换了一组副露（对方可能因此无役）")
+	_toast("鬼门:换了一组副露(对方可能因此无役)")
 
 
 func _c10_close() -> void:
@@ -5276,23 +5280,23 @@ var c11_frames: Array = []               # 指示牌上的彩框
 func _card10s2_on_clicked() -> void:
 	var cnt := int(srv_state.get("card10s2_count", 0))
 	if bool(srv_state.get("card10s2_ready", false)):
-		_toast("「四喜」已经就绪：这一次自摸就是小四喜")
+		_toast("「四喜」已经就绪:这一次自摸就是小四喜")
 		return
 	if cnt > 0 or not (srv_state.get("card10s2_reveal", []) as Array).is_empty():
-		_toast("「四喜」已发动：还差 %d 张摸牌" % maxi(0, 5 - cnt))
+		_toast("「四喜」已发动:还差 %d 张摸牌" % maxi(0, 5 - cnt))
 		return
 	if not bool(srv_state.get("card10s2_can", false)):
-		_toast("「四喜」要摸牌后发动，而且手里/副露里要有 3 张东 + 3 张北")
+		_toast("「四喜」要摸牌后发动,而且手里/副露里要有 3 张东 + 3 张北")
 		return
 	var r := srv_request({"op": "card10s2_activate", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("「四喜」发动失败：服务端没有回应"))
+		_toast(_srv_err("「四喜」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("「四喜」发动：第 5 张摸到的牌直接按小四喜自摸结算（期间不能打东/北）")
+	_toast("「四喜」发动:第 5 张摸到的牌直接按小四喜自摸结算(期间不能打东/北)")
 # 这张卡是不是被【看破 / 封堵】本小局剔除了
 func _skill_voided(card: int) -> bool:
 	for c in (srv_state.get("poked_cards", []) as Array):
@@ -5318,9 +5322,9 @@ func _card11_on_clicked() -> void:
 		if _skill_used_once(11, 1):
 			_toast("「魔术」本小局已经用过了")
 		elif _skill_voided(11):
-			_toast("「魔术」本小局被【看破/封堵】剔除了（换了别人来拦也一样）")
+			_toast("「魔术」本小局被[看破/封堵]剔除了(换了别人来拦也一样)")
 		else:
-			_toast("「魔术」要摸牌之后、打牌之前发动")
+			_toast("「魔术」要摸牌之后,打牌之前发动")
 		return
 	if (dora_indicators as Array).is_empty():
 		_toast("场上还没有翻开的宝牌指示牌")
@@ -5330,7 +5334,7 @@ func _card11_on_clicked() -> void:
 	_make_c11_ui()
 	hand_pick.begin(c11_picks, 1, {"on_change": _refresh_c11_btn})
 	_apply_entity_states(srv_state)
-	_toast("魔术：选 1 张手牌 + 1 张宝牌指示牌 → 开始")
+	_toast("魔术:选 1 张手牌 + 1 张宝牌指示牌 → 开始")
 
 
 func _make_c11_ui() -> void:
@@ -5369,7 +5373,7 @@ func _make_c11_ui() -> void:
 		f.visible = false
 		c11_frames.append(f)
 	var hint := Label.new()
-	hint.text = "点一张宝牌指示牌（彩框）"
+	hint.text = "点一张宝牌指示牌(彩框)"
 	hint.add_theme_font_size_override("font_size", 22)
 	hint.add_theme_color_override("font_color", Color(1, 1, 1))
 	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -5423,7 +5427,7 @@ func _card11_confirm() -> void:
 	_card11_close()
 	var r := srv_request({"op": "card11_swap", "seat": my_seat, "hand": hand, "idx": ind})
 	if r.is_empty():
-		_toast(_srv_err("「魔术」发动失败：服务端没有回应"))
+		_toast(_srv_err("「魔术」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -5434,7 +5438,7 @@ func _card11_confirm() -> void:
 	var ds := ""
 	for k in dl:
 		ds += String(k) + " "
-	_toast("魔术：用【%s】换了指示牌【%s】→ 宝牌指示牌现在是：%s"
+	_toast("魔术:用[%s]换了指示牌[%s]→ 宝牌指示牌现在是:%s"
 		% [hand, String(d.get("got", "")), ds])
 	refresh_hand()
 
@@ -5487,9 +5491,9 @@ func _card11s2_on_clicked() -> void:
 		if _skill_used_once(11, 2):
 			_toast("「快手」本小局已经用过了")
 		elif _skill_voided(11):
-			_toast("「快手」本小局被【看破/封堵】剔除了")
+			_toast("「快手」本小局被[看破/封堵]剔除了")
 		else:
-			_toast("「快手」要摸牌之前发动；别家牌河第一列/第六列要还有明牌")
+			_toast("「快手」要摸牌之前发动;别家牌河第一列/第六列要还有明牌")
 		return
 	c11s2_active = true
 	c11s2_seq = -1
@@ -5497,7 +5501,7 @@ func _card11s2_on_clicked() -> void:
 	c11s2_by_seq = {}
 	_make_c11s2_ui()
 	_apply_entity_states(srv_state)
-	_toast("快手：点一张别家牌河第 1 / 6 列的明牌（彩框） → 开始")
+	_toast("快手:点一张别家牌河第 1 / 6 列的明牌(彩框) → 开始")
 
 
 func _c11s2_ok(seq: int) -> bool:
@@ -5577,14 +5581,14 @@ func _card11s2_confirm() -> void:
 	var r := srv_request({"op": "card11s2_swap", "seat": my_seat, "river": seq,
 		"ts": ts, "slot": sl})
 	if r.is_empty():
-		_toast(_srv_err("「快手」发动失败：服务端没有回应"))
+		_toast(_srv_err("「快手」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 
 	srv_apply_state(r.get("state"), r.get("events"))
 	var d: Dictionary = r.get("card11s2", {})
-	_toast("快手：拿走牌河的【%s】，本来要摸的【%s】暗置过去了"
+	_toast("快手:拿走牌河的[%s],本来要摸的[%s]暗置过去了"
 		% [String(d.get("got", "")), String(d.get("gave", ""))])
 	refresh_hand()
 
@@ -5625,16 +5629,16 @@ func _cold_kinds() -> Array:
 
 func _sf_shenshan_toggle() -> void:
 	if not bool(srv_state.get("shenshan_can", false)):
-		_toast("深山：切出第 12 张牌之后才能开")
+		_toast("深山:切出第 12 张牌之后才能开")
 		return
 	var r := srv_request({"op": "shenshan_toggle", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("深山开关失败：服务端没有回应"))
+		_toast(_srv_err("深山开关失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("深山：%s" % ("开（别人摸牌都会报给你）"
+	_toast("深山:%s" % ("开(别人摸牌都会报给你)"
 		if bool(r.get("state", {}).get("shenshan_on", false)) else "关"))
 
 
@@ -5645,7 +5649,7 @@ func _sf_ignite() -> void:
 	var r := srv_request({"op": "deal_skill", "seat": my_seat, "action": "use",
 		"card": 14, "skill": 1})
 	if typeof(r) != TYPE_DICTIONARY or (r as Dictionary).is_empty():
-		_toast(_srv_err("点燃发动失败：服务端没有回应"))
+		_toast(_srv_err("点燃发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -5659,42 +5663,42 @@ func _sf_ignite() -> void:
 	if dc.size() > 1:
 		b = str(int(dc[1]))
 	if bool(d.get("success", false)):
-		_toast("点燃：骰子【%s】【%s】→ 成功，本局可以先点炸裂了" % [a, b])
+		_toast("点燃:骰子[%s][%s]→ 成功,本局可以先点炸裂了" % [a, b])
 	else:
-		_toast("点燃：骰子【%s】【%s】→ 失败，本局炸裂不能发动" % [a, b])
+		_toast("点燃:骰子[%s][%s]→ 失败,本局炸裂不能发动" % [a, b])
 
 
 func _sf_ignite_again() -> void:
 	var r := srv_request({"op": "ignite", "seat": my_seat})
 	if typeof(r) != TYPE_DICTIONARY or (r as Dictionary).is_empty():
-		_toast(_srv_err("点燃发动失败：服务端没有回应"))
+		_toast(_srv_err("点燃发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	var d: Dictionary = r.get("ignite", {})
-	_toast("点燃：骰子 %s → %s" % [str(d.get("dice", [])),
-		"成功，本局炸裂随便用" if bool(d.get("success", false)) else "失败，下次再多 1 点修正"])
+	_toast("点燃:骰子 %s → %s" % [str(d.get("dice", [])),
+		"成功,本局炸裂随便用" if bool(d.get("success", false)) else "失败,下次再多 1 点修正"])
 
 
 func _sf_nongwu() -> void:
 	if not bool(srv_state.get("nongwu_can", false)):
-		_toast("浓雾：摸牌后发动，一场只能放一次")
+		_toast("浓雾:摸牌后发动,一场只能放一次")
 		return
 	var r := srv_request({"op": "nongwu", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("浓雾失败：服务端没有回应"))
+		_toast(_srv_err("浓雾失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("浓雾：接下来 4 巡别家不能自摸")
+	_toast("浓雾:接下来 4 巡别家不能自摸")
 
 
 func _sf_qianlu() -> void:
 	if not bool(srv_state.get("qianlu_can", false)):
-		_toast("前路：打出 3 张牌之后才能预言")
+		_toast("前路:打出 3 张牌之后才能预言")
 		return
 	ql_picks.clear()
 	_sf_open_kind_grid()
@@ -5704,7 +5708,7 @@ func _sf_qianlu() -> void:
 #   用户口径 2026-11-06：可以**重复选**同一种牌；每选一次下方就多一张，
 #   依次往后排；点下方已经选上的那张牌 = 取消它（后面的往前补）。
 func _sf_open_kind_grid() -> void:
-	_cg_show_kind_grid("前路：选接下来打出的 3 张牌（已选 %d / 3）" % ql_picks.size())
+	_cg_show_kind_grid("前路:选接下来打出的 3 张牌(已选 %d / 3)" % ql_picks.size())
 	cg_qianlu = true			# 必须放在 _cg_show_kind_grid() 之后：它内部先 _cg_close() 清状态
 	_cg_refresh_grid()
 
@@ -5714,12 +5718,12 @@ func _sf_head_refresh() -> void:
 		return
 	var head := cg_ui.get_node_or_null("Head") as Label
 	if head != null:
-		head.text = "前路：选接下来打出的 3 张牌（已选 %d / 3）" % ql_picks.size()
+		head.text = "前路:选接下来打出的 3 张牌(已选 %d / 3)" % ql_picks.size()
 
 
 func _sf_pick_kind_add(k: String) -> void:
 	if ql_picks.size() >= 3:
-		_toast("前路：最多预言 3 张（点下方已选的牌可以取消）")
+		_toast("前路:最多预言 3 张(点下方已选的牌可以取消)")
 		return
 	ql_picks.append(k)			# 同一种牌可以选多次（再点不是取消，是再加一张）
 	_cg_refresh_grid()
@@ -5736,21 +5740,21 @@ func _sf_pick_remove(i: int) -> void:
 
 func _sf_pick_kind_next() -> void:
 	if ql_picks.size() < 3:
-		_toast("前路：还要再选 %d 张" % (3 - ql_picks.size()))
+		_toast("前路:还要再选 %d 张" % (3 - ql_picks.size()))
 		return
 	var r := srv_request({"op": "qianlu", "seat": my_seat, "tiles": ql_picks.duplicate()})
 	if r.is_empty():
-		_toast(_srv_err("前路失败：服务端没有回应"))
+		_toast(_srv_err("前路失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 	if not bool(r.get("ok", true)):
 		var why := String(r.get("error", ""))
-		_toast(why if why != "" else "前路：发动失败了")
+		_toast(why if why != "" else "前路:发动失败了")
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("前路：预言了【%s】【%s】【%s】" % [String(ql_picks[0]),
+	_toast("前路:预言了[%s][%s][%s]" % [String(ql_picks[0]),
 		String(ql_picks[1]), String(ql_picks[2])])
 	ql_picks.clear()
 	_cg_close()			# 网格必须关掉，否则 cg_kind 挂着 → _skill_input_busy() 恒 true = 卡死
@@ -5759,7 +5763,7 @@ func _sf_pick_kind_next() -> void:
 func _sf_ganzhi() -> void:
 	var r := srv_request({"op": "ganzhi", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("感知失败：服务端没有回应"))
+		_toast(_srv_err("感知失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -5767,35 +5771,35 @@ func _sf_ganzhi() -> void:
 	srv_apply_state(r.get("state"), r.get("events"))
 	var v: Array = r.get("ganzhi", {}).get("view", [])
 	if (v as Array).is_empty():
-		_toast("感知：现在没有人听牌")
+		_toast("感知:现在没有人听牌")
 		return
 	var txt := ""
 	for it in v:
-		txt += "%s：%s　" % [srv_name_of(int(it.get("seat", 0))),
+		txt += "%s:%s " % [srv_name_of(int(it.get("seat", 0))),
 			" ".join(PackedStringArray(it.get("tiles", [])))]
-	_toast("感知：" + txt)
+	_toast("感知:" + txt)
 
 
 func _sf_gift() -> void:
 	if bool(srv_state.get("gift_used", false)):
-		_toast("馈赠2：换牌这一局已经用过了（一定和牌看另一条链路）")
+		_toast("馈赠2:换牌这一局已经用过了(一定和牌看另一条链路)")
 		return
 	if not bool(srv_state.get("gift_swap_can", false)):
-		_toast("馈赠2：手切满 8 张、摸牌前才能换牌")
+		_toast("馈赠2:手切满 8 张,摸牌前才能换牌")
 		return
 	_sf_open("gift")
 
 
 func _sf_xianfu() -> void:
 	if not bool(srv_state.get("xianfu_can", false)):
-		_toast("先负：别人立直的一发巡、自己打牌前才能用")
+		_toast("先负:别人立直的一发巡,自己打牌前才能用")
 		return
 	_sf_open("xianfu")
 
 
 func _sf_heat() -> void:
 	if not bool(srv_state.get("heat_can", false)):
-		_toast("加热：配牌阶段发动，一局一次")
+		_toast("加热:配牌阶段发动,一局一次")
 		return
 	_cg_heat_grid()
 
@@ -5813,7 +5817,7 @@ func _cg_heat_grid() -> void:
 	cg_ui.position = Vector2.ZERO
 	cg_active = true
 	var head := Label.new()
-	head.text = "加热：点一张冷系牌（四张全变赤宝）"
+	head.text = "加热:点一张冷系牌(四张全变赤宝)"
 	head.add_theme_font_size_override("font_size", 22)
 	head.add_theme_color_override("font_color", Color(1, 1, 0.85))
 	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -5853,13 +5857,13 @@ func _cg_heat_pick(kind: String) -> void:
 func _sf_heat_use(k: String) -> void:
 	var r := srv_request({"op": "heat", "seat": my_seat, "kind": k})
 	if r.is_empty():
-		_toast(_srv_err("加热失败：服务端没有回应"))
+		_toast(_srv_err("加热失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("加热：%s 的四张全部变赤宝" % k)
+	_toast("加热:%s 的四张全部变赤宝" % k)
 
 
 # 友引（22S2）：
@@ -5871,15 +5875,15 @@ func _sf_youyin() -> void:
 		if srv_kangpo_blocked(r):
 			return
 		if r.is_empty() or not bool(r.get("ok", false)):
-			_toast(_srv_err(String(r.get("error", "友引：现在不能发动"))))
+			_toast(_srv_err(String(r.get("error", "友引:现在不能发动"))))
 			return
 		srv_apply_state(r.get("state"), r.get("events"))
-		_toast("友引：准备好了 —— 现在点吃/碰，副露完再把手里的面子一起摊出来")
+		_toast("友引:准备好了 —— 现在点吃/碰,副露完再把手里的面子一起摊出来")
 		return
 	if bool(srv_state.get("youyin_can", false)):
 		_sf_open("youyin")
 		return
-	_toast("友引：要正好出现吃/碰按钮；或者四副露之后刚摸完牌")
+	_toast("友引:要正好出现吃/碰按钮;或者四副露之后刚摸完牌")
 
 
 # ─── 22S2 段1：摊面子（选 3/6/9 张，必须都是完整面子）─────────────
@@ -5895,7 +5899,7 @@ func _ym_open() -> void:
 		"close_on_confirm": false,    # 可能还要继续摊，先不关
 		"on_confirm": _ym_confirm,
 	})
-	_toast("友引：选 1 组面子（3 张 或 4 张杠）→ 开始（不能跳过）")
+	_toast("友引:选 1 组面子(3 张 或 4 张杠)→ 开始(不能跳过)")
 
 
 func _ym_confirm(picks: Array, rivers: Array) -> void:
@@ -5909,7 +5913,7 @@ func _ym_confirm(picks: Array, rivers: Array) -> void:
 		ym_panel.close()
 		return
 	if r.is_empty():
-		_toast(_srv_err("友引：服务端没有回应"))
+		_toast(_srv_err("友引:服务端没有回应"))
 		ym_panel.close()
 		return
 	if not bool(r.get("ok", false)):
@@ -5922,10 +5926,10 @@ func _ym_confirm(picks: Array, rivers: Array) -> void:
 	refresh_hand()
 	if bool(d.get("more", false)):
 		_ym_open()                    # 手里还有面子 → 清空继续摊
-		_toast("友引：还有面子，继续摊（全部明置）")
+		_toast("友引:还有面子,继续摊(全部明置)")
 		return
 	ym_panel.close()
-	_toast("友引：摊完了，正常打牌")
+	_toast("友引:摊完了,正常打牌")
 
 
 func _ym_sync(st: Dictionary) -> void:
@@ -5951,13 +5955,13 @@ func _sf_open(mode: String) -> void:
 	_apply_entity_states(srv_state)
 	match mode:
 		"shenshan":
-			_toast("深山：选一张手牌 + 开始 = 换他摸的牌；不选直接开始 = 跳过")
+			_toast("深山:选一张手牌 + 开始 = 换他摸的牌;不选直接开始 = 跳过")
 		"xianfu":
-			_toast("先负：选一张手牌 + 牌河一张 → 开始（换完必须立直）")
+			_toast("先负:选一张手牌 + 牌河一张 → 开始(换完必须立直)")
 		"gift":
-			_toast("馈赠2：选一张手牌 + 彩框选牌河一张 → 开始（不选直接开始 = 跳过）")
+			_toast("馈赠2:选一张手牌 + 彩框选牌河一张 → 开始(不选直接开始 = 跳过)")
 		"youyin":
-			_toast("友引：选一张手牌 + 彩框选牌河一张 → 开始（互换）")
+			_toast("友引:选一张手牌 + 彩框选牌河一张 → 开始(互换)")
 
 
 func _make_sf_ui() -> void:
@@ -6049,7 +6053,7 @@ func _sf_confirm() -> void:
 			payload["river"] = seq
 	var r := srv_request(payload.merged({"op": op}))
 	if r.is_empty():
-		_toast(_srv_err("发动失败：服务端没有回应"))
+		_toast(_srv_err("发动失败:服务端没有回应"))
 		_sf_close()
 		return
 	if srv_kangpo_blocked(r):
@@ -6066,25 +6070,25 @@ func _sf_confirm() -> void:
 		"shenshan":
 			var d: Dictionary = r.get("shenshan", {})
 			if bool(d.get("skipped", false)):
-				_toast("深山：跳过这次")
+				_toast("深山:跳过这次")
 			else:
-				_toast("深山：用【%s】换了 %s 的【%s】"
+				_toast("深山:用[%s]换了 %s 的[%s]"
 					% [tile_cn_of(String(d.get("gave", ""))), srv_name_of(int(d.get("from", 0))),
 					   tile_cn_of(String(d.get("got", "")))])
 		"xianfu":
 			# 手牌变了：立直按钮由 state 里的 legal 决定，这里只提示
-			_toast("先负：换好了，现在去立直（不能振听）")
+			_toast("先负:换好了,现在去立直(不能振听)")
 		"gift":
 			var dg: Dictionary = r.get("gift", {})
 			if bool(dg.get("skipped", false)):
-				_toast("馈赠2：跳过这次（下次摸牌前还会问）")
+				_toast("馈赠2:跳过这次(下次摸牌前还会问)")
 			else:
-				_toast("馈赠2：用【%s】换了牌河的【%s】"
+				_toast("馈赠2:用[%s]换了牌河的[%s]"
 					% [String(dg.get("gave", "")), String(dg.get("got", ""))])
 		"youyin":
 			var d2: Dictionary = r.get("youyin", {})
-			_toast("友引：%s" % ("跳过" if bool(d2.get("skipped", false))
-				else "把【%s】纳入手牌" % String(d2.get("got", ""))))
+			_toast("友引:%s" % ("跳过" if bool(d2.get("skipped", false))
+				else "把[%s]纳入手牌" % String(d2.get("got", ""))))
 
 
 func _sf_close() -> void:
@@ -6122,7 +6126,7 @@ func _sf_sync(st: Dictionary) -> void:
 	if sf_active and sf_mode == "xianfu":
 		if int(st.get("xianfu_armed", -1)) == my_seat:
 			_sf_close()
-			_toast("先负：换好了，现在去立直（不能振听）")
+			_toast("先负:换好了,现在去立直(不能振听)")
 			return
 		if not bool(st.get("xianfu_can", false)):
 			_sf_close()
@@ -6133,14 +6137,14 @@ func _sf_sync(st: Dictionary) -> void:
 		if is_skill_muted(19, 1):
 			return                       # 深山图标盖着遮罩 → 不再自动询问
 		_sf_open("shenshan")
-		_toast("深山：%s 摸到【%s】" % [srv_name_of(int(so.get("from", 0))),
+		_toast("深山:%s 摸到[%s]" % [srv_name_of(int(so.get("from", 0))),
 			tile_cn_of(String(so.get("tile", "")))])
 		return
 	if typeof(go) == TYPE_DICTIONARY and not sf_active:
 		if is_skill_muted(21, 2):
 			return                       # 馈赠图标盖着遮罩 → 不再自动询问
 		_sf_open("gift")
-		_toast("馈赠2：要换牌吗？（选一张手牌 + 牌河一张；不选直接开始 = 跳过）")
+		_toast("馈赠2:要换牌吗？(选一张手牌 + 牌河一张;不选直接开始 = 跳过)")
 		return
 	# 【友引】两个效果都是**主动**技能（点图标才发动），没有 offer，也没有自动询问：
 	#   段1 = 吃/碰按钮出现时点图标 → arm；段2 = 四副露摸完牌点图标 → 换牌面板。
@@ -6187,7 +6191,7 @@ func _masked_auto_pass(st: Dictionary) -> void:
 		_auto_skip_sig = key
 		if key != _auto_note_sig:             # 只在第一次提示，别每帧刷
 			_auto_note_sig = key
-			_toast("这个技能的所有拦截方式都被你屏蔽了 → 自动放行（再点图标可恢复询问）")
+			_toast("这个技能的所有拦截方式都被你屏蔽了 → 自动放行(再点图标可恢复询问)")
 		if not _masked_pass_queued:
 			_masked_pass_queued = true
 			# 不能在 srv_apply_state 的调用栈里再跑一次 srv_apply_state（会重入）→ 挪到帧末
@@ -6303,9 +6307,9 @@ func _asks_show(arr: Array) -> void:
 		var nm := String(d.get("name", ""))
 		var card := int(d.get("card", 0))
 		var is_counter := String(d.get("kind", "skill")) != "skill"
-		var txt := "%s 发动了【%s】—— 要拦下来吗？" % [srv_name_of(actor), nm]
+		var txt := "%s 发动了[%s]—— 要拦下来吗？" % [srv_name_of(actor), nm]
 		if is_counter:
-			txt = "%s 的【%s】正在拦别人的技能 —— 要反制吗？" % [srv_name_of(actor), nm]
+			txt = "%s 的[%s]正在拦别人的技能 —— 要反制吗？" % [srv_name_of(actor), nm]
 		var lb := Label.new()
 		lb.text = txt
 		lb.add_theme_font_size_override("font_size", 22)
@@ -6338,7 +6342,7 @@ func _asks_show(arr: Array) -> void:
 		if ctex != null and ctex.get_width() > 0:
 			cw = sh * float(ctex.get_width()) / float(ctex.get_height())
 		cb2.size = Vector2(cw, ch)
-		cb2.tooltip_text = "%s 的【%s】→ 点这张卡用「%s」拦下来" % [
+		cb2.tooltip_text = "%s 的[%s]→ 点这张卡用「%s」拦下来" % [
 			srv_name_of(actor), nm, String(ACT_KIND_CN.get(ks, ks))]
 		cb2.position = Vector2(col_x, y + 30.0)
 		cb2.pressed.connect(_kp_answer.bind(aid, ks))
@@ -6421,10 +6425,10 @@ func _kp_answer(aid: int, kind: String) -> void:
 	var r := srv_request({"op": "act_answer", "seat": my_seat, "aid": int(aid),
 		"kind": String(kind)})
 	if r.is_empty():
-		_toast(_srv_err("拦截：服务端没有回应"))
+		_toast(_srv_err("拦截:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "拦截：失败")))
+		_toast(String(r.get("error", "拦截:失败")))
 		_pull_state()
 		return
 	kp_sig = ""
@@ -6432,7 +6436,7 @@ func _kp_answer(aid: int, kind: String) -> void:
 	if String(kind) == "pass":
 		_toast("放行")
 	else:
-		_toast("已发动【%s】" % String(ACT_KIND_CN.get(String(kind), kind)))
+		_toast("已发动[%s]" % String(ACT_KIND_CN.get(String(kind), kind)))
 
 
 
@@ -6512,12 +6516,12 @@ func _c31_on_clicked(skill: int) -> void:
 		muted_skills.erase(key)
 		_save_muted()
 		_skill_mute_apply()
-		_toast("%s：恢复自动询问" % ("封堵" if int(skill) == 1 else "阻止"))
+		_toast("%s:恢复自动询问" % ("封堵" if int(skill) == 1 else "阻止"))
 		return
 	muted_skills[key] = true
 	_save_muted()
 	_skill_mute_apply()
-	_toast("%s：已屏蔽自动询问（再点一次恢复）" % ("封堵" if int(skill) == 1 else "阻止"))
+	_toast("%s:已屏蔽自动询问(再点一次恢复)" % ("封堵" if int(skill) == 1 else "阻止"))
 
 
 
@@ -6722,7 +6726,7 @@ func _cg_show_cards(title: String, lst: Array, cb: Callable) -> void:
 		sk_h = sk_w * float(sk_tex.get_height()) / float(sk_tex.get_width())
 	cl.size = Vector2(sk_w, sk_h)
 	cl.position = Vector2(40, 90.0 + float((i + 5) / 6) * 215.0 + 10.0)
-	cl.tooltip_text = "跳过（不传承）"
+	cl.tooltip_text = "跳过(不传承)"
 	cl.pressed.connect(_cg_close)
 	cg_ui.add_child(cl)
 
@@ -6855,7 +6859,7 @@ func _cg_refresh_grid() -> void:
 		var b := cg_ui.get_node_or_null("K%s" % kind) as TextureButton
 		if b == null:
 			continue
-		var f = b.get_meta("frame", null)
+		var f = b.get_meta("frame") if b.has_meta("frame") else null
 		var nums: Array = []
 		for j in range(ql_picks.size()):
 			if String(ql_picks[j]) == kind:
@@ -6866,7 +6870,7 @@ func _cg_refresh_grid() -> void:
 		if num != null:
 			var txt := ""
 			for j in range(nums.size()):
-				txt += ("，" if j > 0 else "") + String(nums[j])
+				txt += ("," if j > 0 else "") + String(nums[j])
 			num.text = txt
 	# 下方已选的牌：按选择顺序从左到右排（点它 = 取消）
 	var vp := get_viewport_rect().size
@@ -6896,9 +6900,9 @@ func _cg_fire(cb: Callable) -> void:
 func _cg_inherit() -> void:
 	var lst: Array = srv_state.get("chuancheng_list", [])
 	if not bool(srv_state.get("chuancheng_can", false)) or lst.is_empty():
-		_toast("传承：摸牌后发动；要这半庄有人宣告过技能")
+		_toast("传承:摸牌后发动;要这半庄有人宣告过技能")
 		return
-	_cg_show_cards("传承：选一个我宣告过的技能", lst, func(card, sk, nm):
+	_cg_show_cards("传承:选一个我宣告过的技能", lst, func(card, sk, nm):
 		_cg_inherit_use(card, sk, nm))
 
 
@@ -6906,21 +6910,21 @@ func _cg_inherit_use(card: int, sk: int, nm: String) -> void:
 	var r := srv_request({"op": "chuancheng", "seat": my_seat,
 		"card": card, "skill": sk})
 	if r.is_empty():
-		_toast(_srv_err("传承失败：服务端没有回应"))
+		_toast(_srv_err("传承失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 
 	srv_apply_state(r.get("state"), r.get("events"))
 	cg_copied = {"card": int(card), "skill": int(sk), "name": nm}
-	_toast("传承：本小局把【%s】当成我的技能（再点这个图标就是发动它）" % nm)
+	_toast("传承:本小局把[%s]当成我的技能(再点这个图标就是发动它)" % nm)
 
 
 func _cg_research() -> void:
 	if int(srv_state.get("yanjiu_seat", -1)) >= 0:
 		# 已经有了查看权：把看到的手牌念出来
 		var ts: Array = srv_state.get("yanjiu_tiles", [])
-		_toast("研究：%s 的手牌 %s" % [srv_name_of(int(srv_state.get("yanjiu_seat", 0))),
+		_toast("研究:%s 的手牌 %s" % [srv_name_of(int(srv_state.get("yanjiu_seat", 0))),
 			" ".join(PackedStringArray(ts))])
 		return
 	# 配牌阶段：走和降神/风神同一套 deal_skill 窗口
@@ -6929,7 +6933,7 @@ func _cg_research() -> void:
 	var r := srv_request({"op": "deal_skill", "seat": my_seat, "action": "use",
 		"card": 17, "skill": 1})
 	if typeof(r) != TYPE_DICTIONARY or (r as Dictionary).is_empty():
-		_toast(_srv_err("研究失败：服务端没有回应"))
+		_toast(_srv_err("研究失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -6937,7 +6941,7 @@ func _cg_research() -> void:
 	var d: Dictionary = r.get("yanjiu", {})
 	var dc: Array = d.get("dice", [])
 	var ts2: Array = d.get("tiles", [])
-	_toast("研究：骰子【%s】【%s】 → 本局可以查看 %s 的手牌：%s"
+	_toast("研究:骰子[%s][%s] → 本局可以查看 %s 的手牌:%s"
 		% [String(dc[0]) if dc.size() > 0 else "?",
 		   String(dc[1]) if dc.size() > 1 else "?",
 		   srv_name_of(int(d.get("target", 0))),
@@ -6948,7 +6952,7 @@ func _cg_research() -> void:
 func _cg_show_skills(kind: String, target: int) -> void:
 	var lst: Array = srv_state.get("kangpo_list", [])
 	if (lst as Array).is_empty():
-		_toast("看破：%s 现在没有可以剔除的技能" % srv_name_of(target))
+		_toast("看破:%s 现在没有可以剔除的技能" % srv_name_of(target))
 		return
 	_cg_close()
 	var host: Node = get_parent()
@@ -6973,7 +6977,7 @@ func _cg_show_skills(kind: String, target: int) -> void:
 	cg_active = true
 	cg_kind = kind
 	var head := Label.new()
-	head.text = "看破：剔除 %s 的哪个技能？" % srv_name_of(target)
+	head.text = "看破:剔除 %s 的哪个技能？" % srv_name_of(target)
 	head.add_theme_font_size_override("font_size", 24)
 	head.add_theme_color_override("font_color", Color(1, 1, 0.85))
 	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -7013,10 +7017,10 @@ func _cg_sight_use(target: int, card: int, sk: int, nm: String) -> void:
 	var r := srv_request({"op": "kangpo", "seat": my_seat, "target": target,
 		"card": card, "skill": sk})
 	if r.is_empty():
-		_toast(_srv_err("看破失败：服务端没有回应"))
+		_toast(_srv_err("看破失败:服务端没有回应"))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("看破：%s 的【%s】本小局剔除（代价：本局我不能和牌）"
+	_toast("看破:%s 的[%s]本小局剔除(代价:本局我不能和牌)"
 		% [srv_name_of(target), nm])
 
 
@@ -7031,11 +7035,11 @@ func _cg_shackle() -> void:
 		_cg_shackle_grid()
 		return
 	if not bool(srv_state.get("jiasuo_can", false)):
-		_toast("枷锁：配牌时才能发动，一局只能一次")
+		_toast("枷锁:配牌时才能发动,一局只能一次")
 		return
 	var r := srv_request({"op": "jiasuo_apply", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("枷锁失败：服务端没有回应"))
+		_toast(_srv_err("枷锁失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return                          # 有人要看破：等结果，_cg_shackle_sync 会补开数字盘
@@ -7114,10 +7118,10 @@ func _cg_shackle_skip() -> void:
 	# ★ 用户口径 2026-11-07：选完（或放弃）番数才算这一家配牌结完 → 要告诉服务端
 	var r := srv_request({"op": "jiasuo", "seat": my_seat, "han": 0})
 	if r.is_empty():
-		_toast(_srv_err("枷锁失败：服务端没有回应"))
+		_toast(_srv_err("枷锁失败:服务端没有回应"))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("枷锁：这次不定番数（本局不会翻倍，里宝照看）")
+	_toast("枷锁:这次不定番数(本局不会翻倍,里宝照看)")
 
 
 func _cg_shackle_pick(n: int) -> void:
@@ -7128,21 +7132,21 @@ func _cg_shackle_pick(n: int) -> void:
 func _cg_shackle_set(n: int) -> void:
 	var r := srv_request({"op": "jiasuo", "seat": my_seat, "han": int(n)})
 	if r.is_empty():
-		_toast(_srv_err("枷锁失败：服务端没有回应"))
+		_toast(_srv_err("枷锁失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("枷锁：本局期待 %d 番（正好和到就翻倍）" % int(n))
+	_toast("枷锁:本局期待 %d 番(正好和到就翻倍)" % int(n))
 
 
 func _cg_link_pick() -> void:
 	if not bool(srv_state.get("link_can", false)):
-		_toast("连接：摸牌后发动，一局一次")
+		_toast("连接:摸牌后发动,一局一次")
 		return
 	cg_kind = "link_target"
-	_seat_pick_begin("link", "连接：选一位玩家，得点与他平分（互铳不算）")
+	_seat_pick_begin("link", "连接:选一位玩家,得点与他平分(互铳不算)")
 
 
 func _cg_link_use(target: int) -> void:
@@ -7154,18 +7158,18 @@ func _cg_link_use(target: int) -> void:
 		return
 	var r := srv_request({"op": "link", "seat": my_seat, "target": int(target)})
 	if r.is_empty():
-		_toast(_srv_err("连接失败：服务端没有回应"))
+		_toast(_srv_err("连接失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("连接：与 %s 连接，得点平分" % srv_name_of(int(target)))
+	_toast("连接:与 %s 连接,得点平分" % srv_name_of(int(target)))
 
 
 func _zl_on_clicked() -> void:
 	if _hand_locked():
-		_toast("已经立直了：手牌锁定，不能用炸裂")
+		_toast("已经立直了:手牌锁定,不能用炸裂")
 		return
 	if zl_active:
 		_zl_close()
@@ -7173,7 +7177,7 @@ func _zl_on_clicked() -> void:
 		_toast("已取消「炸裂」")
 		return
 	if not bool(srv_state.get("zhalie_can", false)):
-		_toast("炸裂：摸牌前发动；别家牌河要有 6~9 的明牌")
+		_toast("炸裂:摸牌前发动;别家牌河要有 6~9 的明牌")
 		return
 	_zl_open_now()
 
@@ -7188,7 +7192,7 @@ func _zl_open_now() -> void:
 	_make_zl_ui()
 	hand_pick.begin(zl_picks, 1, {"on_change": _refresh_zl_btn})
 	_apply_entity_states(srv_state)
-	_toast("炸裂：选一张手牌 + 别家牌河 6~9 的一张（彩框）→ 开始（会先摇点燃的骰子）")
+	_toast("炸裂:选一张手牌 + 别家牌河 6~9 的一张(彩框)→ 开始(会先摇点燃的骰子)")
 
 
 func _make_zl_ui() -> void:
@@ -7240,7 +7244,7 @@ func _zl_confirm() -> void:
 	if not zl_active:
 		return
 	if not bool(srv_state.get("zhalie_can", false)):
-		_toast("这一手已经过了（炸裂只能在自己摸牌前发动）")
+		_toast("这一手已经过了(炸裂只能在自己摸牌前发动)")
 		_zl_close()
 		return
 	if zl_seq < 0 or zl_picks.is_empty():
@@ -7264,17 +7268,17 @@ func _zl_confirm() -> void:
 	# 点燃改版后：本小局能不能炸在配牌阶段就定了，这里不再摇骰子。
 	if bool(r.get("need_kangpo", false)):
 		srv_apply_state(r.get("state"), r.get("events"))
-		_toast("炸裂：已确认，等对方决定是否看破…")
+		_toast("炸裂:已确认,等对方决定是否看破…")
 		zl_ask_key = ""
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	var z: Dictionary = r.get("zhalie", {})
 	if not bool(z.get("ok", false)):
-		_toast("炸裂：这张换不了")
+		_toast("炸裂:这张换不了")
 		zl_ask_key = ""
 		draw_tile()
 		return
-	_toast("炸裂：换走了【%s】" % String(z.get("got", "")))
+	_toast("炸裂:换走了[%s]" % String(z.get("got", "")))
 	draw_tile()
 
 
@@ -7301,16 +7305,16 @@ func _dy_on_clicked() -> void:
 		return
 	if not bool(srv_state.get("diaoyu_can", false)):
 		if bool(srv_state.get("diaoyu_locked", false)):
-			_toast("钓鱼：本小局已经锁住了（吃到/碰上家的牌才会解锁）")
+			_toast("钓鱼:本小局已经锁住了(吃到/碰上家的牌才会解锁)")
 		else:
-			_toast("钓鱼：要刚摸完牌，而且有一家手里有我能吃/碰/杠/和的牌")
+			_toast("钓鱼:要刚摸完牌,而且有一家手里有我能吃/碰/杠/和的牌")
 		return
 	if int(srv_state.get("diao_target", -1)) >= 0:
 		_dy_open_panel(int(srv_state.get("diao_target")))
 		return
 	dy_active = true
 	dy_target = -1
-	_seat_pick_begin("dy", "钓鱼：先选一家，再选让他打出的牌")
+	_seat_pick_begin("dy", "钓鱼:先选一家,再选让他打出的牌")
 
 
 func _dy_open_panel(target: int) -> void:
@@ -7401,7 +7405,7 @@ func _dy_confirm() -> void:
 	var r := srv_request({"op": "diaoyu_force", "seat": my_seat,
 		"target": t, "tile": kind})
 	if r.is_empty():
-		_toast(_srv_err("钓鱼失败：服务端没有回应"))
+		_toast(_srv_err("钓鱼失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -7409,10 +7413,10 @@ func _dy_confirm() -> void:
 	srv_apply_state(r.get("state"), r.get("events"))
 	var d: Dictionary = r.get("diaoyu", {})
 	if not bool(d.get("ok", true)):
-		_toast("钓鱼：%s 手里没有【%s】→ 发动失败（本小局锁住）"
+		_toast("钓鱼:%s 手里没有[%s]→ 发动失败(本小局锁住)"
 			% [srv_name_of(t), kind])
 		return
-	_toast("钓鱼：强制 %s 打出【%s" + "】" % [srv_name_of(t), kind])
+	_toast("钓鱼:强制 %s 打出[%s" + "]" % [srv_name_of(t), kind])
 
 
 func _dy_close() -> void:
@@ -7440,7 +7444,7 @@ func _pofa_sync(st: Dictionary) -> void:
 			pofa_picks.clear()
 			_make_pofa_ui()
 			hand_pick.begin(pofa_picks, 1, {"on_change": _refresh_pofa_btn})
-			_toast("破发：副露完成——暗置打出一张手牌")
+			_toast("破发:副露完成——暗置打出一张手牌")
 		_refresh_pofa_btn()
 		return
 	if stage == "ask":
@@ -7457,14 +7461,14 @@ func _pofa_sync(st: Dictionary) -> void:
 
 func _pofa_on_clicked() -> void:
 	if _hand_locked():
-		_toast("已经立直了：手牌锁定，不能用破发")
+		_toast("已经立直了:手牌锁定,不能用破发")
 		return
 	if pofa_active:
 		_pofa_close()
 		_toast("已取消「破发」")
 		return
 	if not bool(srv_state.get("pofa_can", false)):
-		_toast("破发：要在别人宣布立直之后发动")
+		_toast("破发:要在别人宣布立直之后发动")
 		return
 	pofa_active = true
 	pofa_seq = -1
@@ -7472,7 +7476,7 @@ func _pofa_on_clicked() -> void:
 	_make_pofa_ui()
 	hand_pick.begin(pofa_picks, 3, {"on_change": _refresh_pofa_btn})  # 选 2 张（吃碰）或 3 张（杠）
 	_apply_entity_states(srv_state)
-	_toast("破发：点河里一张明牌（彩框）+ 选 3 张手牌（前 2 张当搭子，第 3 张暗置放回牌河）")
+	_toast("破发:点河里一张明牌(彩框)+ 选 3 张手牌(前 2 张当搭子,第 3 张暗置放回牌河)")
 
 
 func _make_pofa_ui() -> void:
@@ -7538,10 +7542,10 @@ func _pofa_confirm() -> void:
 		_pofa_close()
 		var rd := srv_request({"op": "pofa_discard", "seat": my_seat, "tile": dt})
 		if rd.is_empty():
-			_toast(_srv_err("破发：暗置打出失败"))
+			_toast(_srv_err("破发:暗置打出失败"))
 			return
 		srv_apply_state(rd.get("state"), rd.get("events"))
-		_toast("破发：暗置打出【%s】（不造成振听）" % dt)
+		_toast("破发:暗置打出[%s](不造成振听)" % dt)
 		refresh_hand()
 		return
 	if pofa_seq < 0 or pofa_picks.size() < 2:
@@ -7568,7 +7572,7 @@ func _pofa_confirm() -> void:
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	var d: Dictionary = r.get("pofa", {})
-	_toast("破发：用【%s】+ 手牌 %d 张副露——现在暗置打出一张"
+	_toast("破发:用[%s]+ 手牌 %d 张副露——现在暗置打出一张"
 		% [String(d.get("called", "")), got.size()])
 	refresh_hand()
 
@@ -7590,29 +7594,29 @@ func _pofa_close() -> void:
 
 func _hs_on_clicked() -> void:
 	if _srv_kangpo_wait():
-		_toast("有人正在决定是否看破，稍等…（就在这个配牌窗口里）")
+		_toast("有人正在决定是否看破,稍等…(就在这个配牌窗口里)")
 		return
 	if hs_active:
 		if hs_mode == "swap":
 			_hs_close()
 			_hs_drop_ask()
 			_pre_draw_resume()
-			_toast("已取消海神挪宝（直接摸牌）")
+			_toast("已取消海神挪宝(直接摸牌)")
 		else:
-			_toast("海神：必须选一张手牌交换（不能取消）")    # 借牌不能跳过
+			_toast("海神:必须选一张手牌交换(不能取消)")    # 借牌不能跳过
 		return
 	var ph := String(srv_state.get("phase", ""))
 	if ph == "deal_skill":
 		var r := srv_request({"op": "haishin_start", "seat": my_seat})
 		if bool(r.get("need_kangpo", false)):
 			srv_apply_state(r.get("state"), r.get("events"))
-			_toast("海神：已提出开启，等对方决定是否看破…（开成功会再提示一次）")
+			_toast("海神:已提出开启,等对方决定是否看破…(开成功会再提示一次)")
 			return
 		if r.is_empty():
-			_toast(_srv_err("海神：配牌开启失败"))
+			_toast(_srv_err("海神:配牌开启失败"))
 			return
 		srv_apply_state(r.get("state"), r.get("events"))
-		_toast("海神：本小局开启——之后别人摸到万子/红中都会强制换牌")
+		_toast("海神:本小局开启——之后别人摸到万子/红中都会强制换牌")
 		return
 	var offer = srv_state.get("haishin_offer")
 	if typeof(offer) == TYPE_DICTIONARY:
@@ -7623,9 +7627,9 @@ func _hs_on_clicked() -> void:
 		_hs_open("swap")
 		return
 	if bool(srv_state.get("haishin_on", false)):
-		_toast("海神：本小局已开启；等别人摸到万子/红中时才会问")
+		_toast("海神:本小局已开启;等别人摸到万子/红中时才会问")
 		return
-	_toast("海神：这是配牌技能——配牌时没开就不能用了")
+	_toast("海神:这是配牌技能——配牌时没开就不能用了")
 
 
 func _hs_open(mode: String) -> void:
@@ -7647,24 +7651,24 @@ func _hs_open(mode: String) -> void:
 		var _who := srv_nick_of(of)
 		if _who == "":
 			_who = "对方"
-		var _txt := "海神：选一张手牌还给他（换走他摸到的牌）"
+		var _txt := "海神:选一张手牌还给他(换走他摸到的牌)"
 		if ot != "":
-			_txt = "【%s】摸到 %s —— 选一张手牌换走它" % [_who, ot]
+			_txt = "[%s]摸到 %s —— 选一张手牌换走它" % [_who, ot]
 		if hs_hint != null and is_instance_valid(hs_hint):
 			hs_hint.text = _txt
 			hs_hint.position = Vector2(0, hs_btn.position.y - 46)
 			hs_hint.size = Vector2(get_viewport_rect().size.x, 36)
 			hs_hint.visible = true
-		_toast("海神：选一张手牌还给他（换走他摸到的牌）")
+		_toast("海神:选一张手牌还给他(换走他摸到的牌)")
 	else:
 		var step := int(srv_state.get("haishin_step", 0))
 		var nm0: String = ["里宝", "杠宝", "杠里宝"][clampi(step, 0, 2)]
 		if hs_hint != null and is_instance_valid(hs_hint):
-			hs_hint.text = "海神·挪宝：选一张万子/红中，换【%s】指示牌" % nm0
+			hs_hint.text = "海神·挪宝:选一张万子/红中,换[%s]指示牌" % nm0
 			hs_hint.position = Vector2(0, hs_btn.position.y - 46)
 			hs_hint.size = Vector2(get_viewport_rect().size.x, 36)
 			hs_hint.visible = true
-		_toast("海神：选一张万子/红中，换【%s】指示牌" % nm0)
+		_toast("海神:选一张万子/红中,换[%s]指示牌" % nm0)
 
 
 func _make_hs_ui() -> void:
@@ -7727,7 +7731,7 @@ func _hs_confirm() -> void:
 	var mode := hs_mode
 	hs_picks.clear()
 	if mode == "give" and hand == "":
-		_toast("海神：必须选一张手牌交换（不能跳过）")
+		_toast("海神:必须选一张手牌交换(不能跳过)")
 		hand_pick.begin(hs_picks, 1, {"on_change": _refresh_hs_btn})
 		return
 	if mode == "swap" and hand == "":
@@ -7758,20 +7762,20 @@ func _hs_confirm() -> void:
 			_hs_close()                     # 这笔询问已经结束了：关面板、对局继续
 			return
 		if String(d.get("got", "")) == "":
-			_toast("海神：这次没换成（再选一张试试）")
+			_toast("海神:这次没换成(再选一张试试)")
 			hs_picks.clear()
 			hand_pick.begin(hs_picks, 1, {"on_change": _refresh_hs_btn})
 			return
 		_hs_close()
 		srv_apply_state(r.get("state"), r.get("events"))
-		_toast("海神：借到【%s】，给出【%s】" % [String(d.get("got", "")), hand])
+		_toast("海神:借到[%s],给出[%s]" % [String(d.get("got", "")), hand])
 		refresh_hand()
 		return
 	# 挪宝：一次换一张，最多 3 次
 	var r2 := srv_request({"op": "haishin_swap", "seat": my_seat, "hand": hand})
 	if r2.is_empty():
 		# 服务端拒绝（手里没有这张 / 这一回合已经换过 …）→ 保留面板，让玩家重选
-		_toast(_srv_err("海神挪宝失败：服务端没有回应"))
+		_toast(_srv_err("海神挪宝失败:服务端没有回应"))
 		var st1 := srv_request({"op": "state", "seat": my_seat})
 		if not st1.is_empty():
 			srv_apply_state(st1.get("state"), [])
@@ -7791,19 +7795,19 @@ func _hs_confirm() -> void:
 	refresh_hand()
 	if nxt >= 3:
 		_hs_close()
-		_toast("海神：里宝/杠宝/杠里宝都换完了，可以正常和牌")
+		_toast("海神:里宝/杠宝/杠里宝都换完了,可以正常和牌")
 		return
 	if not next_ready:
 		# 一回合只能换一张：这一张换完就收面板，先摸牌。
 		# 下一次自己摸牌前还能再换（换成「杠宝」，再下一次「杠里宝」）。
 		_hs_close()
-		_toast("海神：换到【%s】；一回合只能换一张，先摸牌吧（下次摸牌前可换【%s】）"
+		_toast("海神:换到[%s];一回合只能换一张,先摸牌吧(下次摸牌前可换[%s])"
 			% [String(d2.get("got", "")), ["里宝", "杠宝", "杠里宝"][clampi(nxt, 0, 2)]])
 		return
 	var nm2: String = ["里宝", "杠宝", "杠里宝"][clampi(nxt, 0, 2)]
 	hand_pick.begin(hs_picks, 1, {"on_change": _refresh_hs_btn})
 	_refresh_hs_btn()
-	_toast("海神：换到【%s】；下一步换【%s】（不换了就再点技能取消）"
+	_toast("海神:换到[%s];下一步换[%s](不换了就再点技能取消)"
 		% [String(d2.get("got", "")), nm2])
 
 
@@ -7889,10 +7893,10 @@ func _xn_on_clicked() -> void:
 		_toast("已取消「X神」")
 		return
 	if not bool(srv_state.get("xn_can", false)):
-		_toast("X神要摸牌之后、打牌之前发动")
+		_toast("X神要摸牌之后,打牌之前发动")
 		return
 	xn_selecting = true
-	_seat_pick_begin("xn", "X神：选一位其他玩家，让他跳过 2 次摸切")
+	_seat_pick_begin("xn", "X神:选一位其他玩家,让他跳过 2 次摸切")
 
 
 func _xn_start(target: int) -> void:
@@ -7902,13 +7906,13 @@ func _xn_start(target: int) -> void:
 		return
 	var r := srv_request({"op": "xn_activate", "seat": my_seat, "target": int(target)})
 	if r.is_empty():
-		_toast(_srv_err("X神发动失败：服务端没有回应"))
+		_toast(_srv_err("X神发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("X神：%s 接下来 2 次摸切被跳过" % srv_name_of(int(target)))
+	_toast("X神:%s 接下来 2 次摸切被跳过" % srv_name_of(int(target)))
 
 
 # ── 技能图标遮罩：点一下盖住（不再自动询问），再点一下取消 ──────────────
@@ -8050,23 +8054,23 @@ func _skill_mute_apply() -> void:
 
 # 被动技能：没有「发动」这个动作，点图标只给一句说明（用户口径 2026-11-06）
 const PASSIVE_TIP := {
-	"13-2": "渣和：被动生效 —— 无役也能和；无役时按 30 符 1 番算（不计手牌宝牌、无视【满贯】）",
-	"16-2": "多面：以三面/四面牌型和牌时，得点按 2 倍/3 倍结算",
-	"23-2": "暖气：和牌时冷系牌 ≤3 张 → 双倍得点；一张冷系都没有 → 三倍",
-	"25-2": "宝牌的集合：别人摸到宝牌必须跟你换非宝牌；每开一次杠 +4 番",
-	"28-2": "蜕变：打点进档就再升一档（满贯→跳满、跳满→倍满…）",
-	"29-2": "精算：副露和牌时，役种和符数按门清重算（四暗刻除外）",
-	"32-2": "无知：对对和当四暗刻、索子清一色（或只带发）当绿一色，可叠成双倍役满",
-	"35-2": "鸣牌：别人和牌时，只要有人副露过 → 得点减半",
-	"38-2": "逆袭：点数低于原点时，和牌得点双倍结算",
-	"44-1": "弃子：被飞时不支付 16000 以上的失点",
-	"46-2": "赤里：立直后和牌，和到的那张视为新里宝牌；和到 5 万/5 饼/5 索再 +1 番",
-	"8-2": "拨枪：指定决斗对象后，他拿一个决斗标记（别人和牌时按标记加番）",
-	"18-2": "连接：与一名玩家连接，他的得点与你平分（互铳无效）",
-	"12-2": "X神：让一位其他玩家跳过摸切阶段 2 次（摸牌后、打牌前点图标）",
-	"24-2": "未来：观看并调整接下来 3 枚牌山（发动后才亮牌排序）",
-	"15-1": "钓鱼：强制一家打出一张牌，并被你吃/碰/杠/和",
-	"17-1": "研究：摇骰子决定看上家还是下家的手牌（单数上家 / 双数下家）",
+	"13-2": "渣和:被动生效 —— 无役也能和;无役时按 30 符 1 番算(不计手牌宝牌,无视[满贯])",
+	"16-2": "多面:以三面/四面牌型和牌时,得点按 2 倍/3 倍结算",
+	"23-2": "暖气:和牌时冷系牌 ≤3 张 → 双倍得点;一张冷系都没有 → 三倍",
+	"25-2": "宝牌的集合:别人摸到宝牌必须跟你换非宝牌;每开一次杠 +4 番",
+	"28-2": "蜕变:打点进档就再升一档(满贯→跳满,跳满→倍满…)",
+	"29-2": "精算:副露和牌时,役种和符数按门清重算(四暗刻除外)",
+	"32-2": "无知:对对和当四暗刻,索子清一色(或只带发)当绿一色,可叠成双倍役满",
+	"35-2": "鸣牌:别人和牌时,只要有人副露过 → 得点减半",
+	"38-2": "逆袭:点数低于原点时,和牌得点双倍结算",
+	"44-1": "弃子:被飞时不支付 16000 以上的失点",
+	"46-2": "赤里:立直后和牌,和到的那张视为新里宝牌;和到 5 万/5 饼/5 索再 +1 番",
+	"8-2": "拨枪:指定决斗对象后,他拿一个决斗标记(别人和牌时按标记加番)",
+	"18-2": "连接:与一名玩家连接,他的得点与你平分(互铳无效)",
+	"12-2": "X神:让一位其他玩家跳过摸切阶段 2 次(摸牌后,打牌前点图标)",
+	"24-2": "未来:观看并调整接下来 3 枚牌山(发动后才亮牌排序)",
+	"15-1": "钓鱼:强制一家打出一张牌,并被你吃/碰/杠/和",
+	"17-1": "研究:摇骰子决定看上家还是下家的手牌(单数上家 / 双数下家)",
 }
 
 func _on_identity_skill(seat: int, card_no: int, index: int,
@@ -8078,19 +8082,19 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 	copy_hint = ("%d-%d" % [card_no, index + 1]) if is_copy else ""
 	# 协战卡被遮罩 → 这张卡的技能一律不发动（服务端也会拒，这里先给个说明）
 	if _card_is_support_muted(int(card_no)):
-		_toast("这张协战卡已经遮罩（长按人物卡可以取消）")
+		_toast("这张协战卡已经遮罩(长按人物卡可以取消)")
 		return
 	# 【厄运】静默期：其他三家不能使用任何技能（含看破/封堵/阻止）
 	var _c34 = srv_state.get("c34")
 	if typeof(_c34) == TYPE_DICTIONARY and bool((_c34 as Dictionary).get("muted", false)):
-		_toast("【厄运】期间不能使用技能")
+		_toast("[厄运]期间不能使用技能")
 		return
 	# 【理论战】(42-1)：本局所有技能封死（42-1 自己除外）→ 直接拒，
 	#   别等服务端回绝（客户端的图标本来也该压暗，见 _skill_mute_apply）
 	var _c42 = srv_state.get("c42")
 	if typeof(_c42) == TYPE_DICTIONARY and bool((_c42 as Dictionary).get("on", false)) \
 			and not (int(card_no) == 42 and int(index) == 0):
-		_toast("【理论战】：本局谁都不能发动技能")
+		_toast("[理论战]:本局谁都不能发动技能")
 		return
 	# 【海底】(34-2) 是**自动**技能，没有「手动发动」这一步 ——
 	# 点图标 = 问服务端「现在为什么没发动」（只读诊断，不改状态）。
@@ -8120,7 +8124,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		muted_skills[key] = true
 		_save_muted()
 		_skill_mute_apply()
-		_toast("看破：已屏蔽自动询问（再点一次恢复）")
+		_toast("看破:已屏蔽自动询问(再点一次恢复)")
 		return
 	# 【加速】也是「服务端会主动问我」的技能：图标 = 遮罩开关
 	if int(card_no) == 29 and int(index) == 0:
@@ -8128,7 +8132,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_save_muted()
 		_skill_mute_apply()
 		_c29s1_masked_skip(srv_state)
-		_toast("加速：已屏蔽自动询问（再点一次恢复）")
+		_toast("加速:已屏蔽自动询问(再点一次恢复)")
 		return
 	# 这个技能已经在选牌了（图标亮着、手牌变暗）→ 再点一次 = 取消这次发动
 	if _skill_cancel_if_busy(card_no, index):
@@ -8138,7 +8142,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		muted_skills[key] = true
 		_save_muted()
 		_skill_mute_apply()
-		_toast("现在不是发动时机：已屏蔽这个技能的自动询问（再点一次取消）")
+		_toast("现在不是发动时机:已屏蔽这个技能的自动询问(再点一次取消)")
 		return
 	if int(card_no) == 1 and int(index) == 0:
 		_cg_guobiao()                      # Card01 Skill1「国标」：挂牌子 → 点自摸结算
@@ -8168,9 +8172,9 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		if srv_c25s2_can():
 			_c25s2_auto_arm()               # 万一自动那一次没发出去，点图标补一次
 		elif srv_c25s2_on():
-			_toast("宝牌的集合：本小局已开启（别人摸到宝牌会来问）")
+			_toast("宝牌的集合:本小局已开启(别人摸到宝牌会来问)")
 		else:
-			_toast("宝牌的集合：宝牌运发动之后才会紧接开启")
+			_toast("宝牌的集合:宝牌运发动之后才会紧接开启")
 		return
 	if int(card_no) == 4 and int(index) == 1:
 		_self_wind_tip()                   # Card04 Skill2「自风」：自动技能，只提示
@@ -8224,7 +8228,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_sf_ganzhi()                       # Card20 S2「感知」
 		return
 	if int(card_no) == 21 and int(index) == 0:
-		_toast("迷途之家：被动技能 —— 手切 4 / 8 / 12 张自动累积馈赠")
+		_toast("迷途之家:被动技能 —— 手切 4 / 8 / 12 张自动累积馈赠")
 		return
 	if int(card_no) == 21 and int(index) == 1:
 		if bool(srv_state.get("yiding_can", false)):
@@ -8273,7 +8277,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		if String(srv_state.get("phase", "")) == "deal_skill":
 			_sf_ignite()                   # 点燃：配牌阶段摇一次
 		elif bool(srv_state.get("ignite_done", false)):
-			_toast("点燃本小局已经摇过了（只在配牌阶段摇一次）")
+			_toast("点燃本小局已经摇过了(只在配牌阶段摇一次)")
 		else:
 			_toast("点燃只能在配牌阶段发动")
 		return
@@ -8332,7 +8336,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_c32s1_activate()                  # Card32 S1「新手运」：配牌要每家一张幺九
 		return
 	if int(card_no) == 32 and int(index) == 1:
-		_toast("无知：和牌时对对被算成四暗刻、索子清一色/只有发字牌的混一色被算成绿一色（可叠成双倍役满）")
+		_toast("无知:和牌时对对被算成四暗刻,索子清一色/只有发字牌的混一色被算成绿一色(可叠成双倍役满)")
 		return
 	if int(card_no) == 33 and int(index) == 0:
 		_c33_start()                       # 染手：3 张手牌 ⇄ 牌河一组面子
@@ -8368,7 +8372,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_c44s2_arm()                       # 电报：宣言明牌 → 和牌按 30 符 1 番
 		return
 	if int(card_no) == 43 and int(index) == 1:
-		_toast("免疫：被动 —— 别人发动「指向你」的技能时会问你要不要免疫（本局 2 次）")
+		_toast("免疫:被动 —— 别人发动「指向你」的技能时会问你要不要免疫(本局 2 次)")
 		return
 	if int(card_no) == 43 and int(index) == 0:
 		_c43_start()                       # NO MISS：手牌搭子 ⇄ 牌河搭子
@@ -8382,7 +8386,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_save_muted()
 		_skill_mute_apply()
 		_c41_hint(false)
-		_toast("复制：已屏蔽自动询问（再点一次恢复）")
+		_toast("复制:已屏蔽自动询问(再点一次恢复)")
 		return
 	if int(card_no) == 40 and int(index) == 0:
 		_c40s1_open()                      # 透视：选一家看手牌
@@ -8397,7 +8401,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_c37s1_arm()                       # 岭上开花：自动杠开 + 换铳张 + 得点×2
 		return
 	if int(card_no) == 36 and int(index) == 0:
-		_toast("思路：被动 —— 别人宣告技能时自动看他的手牌，我打出一张牌后失效")
+		_toast("思路:被动 —— 别人宣告技能时自动看他的手牌,我打出一张牌后失效")
 		return
 	if int(card_no) == 36 and int(index) == 1:
 		_c36s2_arm()                       # 故意：开启 → 下一张打出去自动结算
@@ -8419,7 +8423,7 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 	if PASSIVE_TIP.has(_pk):
 		_toast(String(PASSIVE_TIP[_pk]))
 		return
-	_toast("这个技能还没有专属的发动界面（%d-%d），先不用点它" % [card_no, index + 1])
+	_toast("这个技能还没有专属的发动界面(%d-%d),先不用点它" % [card_no, index + 1])
 
 
 # ── Card03 Skill1「自信」──────────────────────────────────────────────
@@ -8435,7 +8439,7 @@ func _confidence_activate() -> void:
 		var r2 := srv_request({"op": "deal_skill", "seat": my_seat,
 			"action": "use", "card": 3, "skill": 1})
 		if r2.is_empty():
-			_toast(_srv_err("「自信」发动失败：服务端没有回应"))
+			_toast(_srv_err("「自信」发动失败:服务端没有回应"))
 			return
 		if srv_kangpo_blocked(r2):
 			return
@@ -8447,11 +8451,11 @@ func _confidence_activate() -> void:
 		var idn2 := get_node_or_null("Identity")
 		if idn2 != null and idn2.has_method("collapse_skills"):
 			idn2.call("collapse_skills", 3)
-		_toast("发动「自信」：本局和牌番数双倍；没和牌则失点双倍")
+		_toast("发动「自信」:本局和牌番数双倍;没和牌则失点双倍")
 		return
 	var r := srv_request({"op": "skill", "seat": my_seat, "card": 3, "skill": 1})
 	if r.is_empty():
-		_toast(_srv_err("「自信」发动失败：服务端没有回应"))
+		_toast(_srv_err("「自信」发动失败:服务端没有回应"))
 		return
 	if not bool(r.get("armed", false)):
 		_toast(String(r.get("reason", "只能在配牌阶段发动")))
@@ -8460,7 +8464,7 @@ func _confidence_activate() -> void:
 	var idn := get_node_or_null("Identity")
 	if idn != null and idn.has_method("collapse_skills"):
 		idn.call("collapse_skills", 3)
-	_toast("发动「自信」：本局和牌番数双倍；没和牌则失点双倍")
+	_toast("发动「自信」:本局和牌番数双倍;没和牌则失点双倍")
 
 
 # ── Card28 S1「满贯」────────────────────────────────────────────────
@@ -8468,15 +8472,15 @@ func _confidence_activate() -> void:
 #   （服务端直接不给和牌按钮）。特例：渣和无视满贯缚。
 func _c28s1_activate() -> void:
 	if bool(srv_state.get("c28s1_on", false)):
-		_toast("满贯：本小局已经发动过了（整局常开）")
+		_toast("满贯:本小局已经发动过了(整局常开)")
 		return
 	if String(srv_state.get("phase", "")) != "deal_skill":
-		_toast("满贯：只能在配牌阶段发动")
+		_toast("满贯:只能在配牌阶段发动")
 		return
 	var r := srv_request({"op": "deal_skill", "seat": my_seat,
 		"action": "use", "card": 28, "skill": 1})
 	if r.is_empty():
-		_toast(_srv_err("「满贯」发动失败：服务端没有回应"))
+		_toast(_srv_err("「满贯」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -8488,7 +8492,7 @@ func _c28s1_activate() -> void:
 	var idn := get_node_or_null("Identity")
 	if idn != null and idn.has_method("collapse_skills"):
 		idn.call("collapse_skills", 28)
-	_toast("发动【满贯】：本局任何人和牌，番数不到满贯都不予结算（渣和除外）")
+	_toast("发动[满贯]:本局任何人和牌,番数不到满贯都不予结算(渣和除外)")
 
 
 func _apply_skill_frames(st: Dictionary) -> void:
@@ -8548,7 +8552,7 @@ func _sw_activate() -> void:
 	var r := srv_request({"op": "deal_skill", "seat": my_seat,
 		"action": "use", "card": 6, "skill": 1})
 	if r.is_empty():
-		_toast(_srv_err("「南风」发动失败：服务端没有回应"))
+		_toast(_srv_err("「南风」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -8578,7 +8582,7 @@ func _sw_sync(st: Dictionary) -> void:
 			sw_stage = "kinds"
 			sw_hand_picks.clear()
 			_sw_open_picker()
-			_toast("南风：先在全部牌里指定两种牌")
+			_toast("南风:先在全部牌里指定两种牌")
 	elif stage == "hand":
 		if sw_stage != "hand":
 			sw_stage = "hand"
@@ -8591,7 +8595,7 @@ func _sw_sync(st: Dictionary) -> void:
 				_make_sw_hand_ui()
 				hand_pick.begin(sw_hand_picks, 2, {"on_change": _refresh_sw_hand_btn})
 			_refresh_sw_hand_btn()
-			_toast("南风：再选两张手牌，按 下家→对家→上家 的顺序换牌")
+			_toast("南风:再选两张手牌,按 下家→对家→上家 的顺序换牌")
 
 
 func _sw_open_picker() -> void:
@@ -8616,7 +8620,7 @@ func _sw_open_picker() -> void:
 	sw_ui.add_child(bg)
 
 	var title := Label.new()
-	title.text = "南风：指定两种牌（单击选中 / 再点取消），选好后点「开始」"
+	title.text = "南风:指定两种牌(单击选中 / 再点取消),选好后点「开始」"
 	title.add_theme_font_size_override("font_size", 30)
 	title.add_theme_color_override("font_color", Color(1.0, 0.96, 0.8))
 	title.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -8702,7 +8706,7 @@ func _sw_confirm_kinds() -> void:
 	var r := srv_request({"op": "south_wind_kinds", "seat": my_seat,
 		"kinds": sw_kinds.duplicate()})
 	if r.is_empty():
-		_toast(_srv_err("南风选牌失败：服务端没有回应"))
+		_toast(_srv_err("南风选牌失败:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
 		_toast(String(r.get("error", "南风选牌失败")))
@@ -8779,7 +8783,7 @@ func _sw_confirm_hand() -> void:
 		return
 	var r := srv_request({"op": "south_wind_swap", "seat": my_seat, "tiles": picked})
 	if r.is_empty():
-		_toast(_srv_err("南风换牌失败：服务端没有回应"))
+		_toast(_srv_err("南风换牌失败:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
 		_toast(String(r.get("error", "南风换牌失败")))
@@ -8796,9 +8800,9 @@ func _sw_confirm_hand() -> void:
 	_sw_close()
 	srv_apply_state(r.get("state"), r.get("events"))
 	if infos.is_empty():
-		_toast("南风：三家都没有指定的牌，技能结束")
+		_toast("南风:三家都没有指定的牌,技能结束")
 	else:
-		_toast("南风：换牌 %s" % "、".join(infos))
+		_toast("南风:换牌 %s" % ",".join(infos))
 
 
 func _sw_close() -> void:
@@ -8850,7 +8854,7 @@ func _c05_nuki() -> void:
 		return
 	var r := srv_request({"op": "card05_nuki", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("拔北失败：服务端没有回应"))
+		_toast(_srv_err("拔北失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -8859,7 +8863,7 @@ func _c05_nuki() -> void:
 		return
 	var nk: Dictionary = r.get("nuki", {})
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("拔北：补到 %s，继续切牌（本局拔北 %d 次，和牌 +%d 番）"
+	_toast("拔北:补到 %s,继续切牌(本局拔北 %d 次,和牌 +%d 番)"
 		% [String(nk.get("drawn", "")), int(nk.get("nuki", 0)), int(nk.get("nuki", 0))])
 
 
@@ -8888,20 +8892,20 @@ func _c05_skill() -> void:
 		_toast("「策略」这一回合已经发动过了")
 		return
 	if int(c.get("counter", 0)) <= 0:
-		_toast("「策略」计数是 0：要等别人用技能害你不能正常摸切")
+		_toast("「策略」计数是 0:要等别人用技能害你不能正常摸切")
 		return
 	var r := srv_request({"op": "card05_extra", "seat": my_seat})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("「策略」发动失败：服务端没有回应"))
+		_toast(_srv_err("「策略」发动失败:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
 		_toast(String(r.get("error", "「策略」发动失败")))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	var left: Dictionary = r.get("card05", {})
-	_toast("策略：本回合切牌后会再摸一张（剩 %d 次）" % int(left.get("counter", 0)))
+	_toast("策略:本回合切牌后会再摸一张(剩 %d 次)" % int(left.get("counter", 0)))
 
 
 # ── ③ 计数器显示 ─────────────────────────────────────────────
@@ -9002,7 +9006,7 @@ func _build_c05_dead_buttons() -> void:
 			b.focus_mode = Control.FOCUS_NONE
 			b.modulate = Color(1, 1, 1, 0.18)
 			b.size = _dead_btn_size(vis)
-			b.tooltip_text = "王牌（第 %d 墩）" % k
+			b.tooltip_text = "王牌(第 %d 墩)" % k
 			b.pressed.connect(_c05_choose_dead.bind(k))
 			c05_dead_layer.add_child(b)
 			b.global_position = (vis as Node2D).global_position - b.size * 0.5
@@ -9071,7 +9075,7 @@ func _c05_choose_dead(stack: int) -> void:
 	c05_choice.add_child(shade)
 
 	var hint := Label.new()
-	hint.text = "选上面 / 下面那张；点空白处取消"
+	hint.text = "选上面 / 下面那张;点空白处取消"
 	hint.add_theme_font_size_override("font_size", 26)
 	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
 	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -9197,7 +9201,7 @@ func _c05_confirm() -> void:
 		"half": String(c05_target.get("half", "top")),
 		"river": int(c05_target.get("seq", -1))})
 	if r.is_empty() or not bool(r.get("ok", false)):
-		_toast(_srv_err(String(r.get("error", "策略换牌失败：服务端没有回应"))))
+		_toast(_srv_err(String(r.get("error", "策略换牌失败:服务端没有回应"))))
 		# 不管失败原因，先把最新状态拉回来：换牌其实已经生效、或者机会已经作废，
 		# 界面都必须跟着关掉，不能把整个客户端卡在选牌界面里。
 		var st := srv_request({"op": "state", "seat": my_seat})
@@ -9210,7 +9214,7 @@ func _c05_confirm() -> void:
 	var got := String(sw.get("got", ""))
 	srv_apply_state(r.get("state"), r.get("events"))
 	_c05_close(false)
-	_toast("策略：用 %s 换到 %s" % [hand, got])
+	_toast("策略:用 %s 换到 %s" % [hand, got])
 
 
 func _c05_close(cancel: bool) -> void:
@@ -9253,7 +9257,7 @@ func _c05_sync(st: Dictionary) -> void:
 	_update_c05_view()
 	_refresh_c05_button()
 	var by := int((offer as Dictionary).get("by", -1))
-	_toast("%s 的技能动了你的手牌：选 1 张手牌，再选王牌 / 弃牌换一张"
+	_toast("%s 的技能动了你的手牌:选 1 张手牌,再选王牌 / 弃牌换一张"
 		% _rel_seat_name(by))
 
 
@@ -9312,14 +9316,14 @@ func _c05_hide_confirm() -> void:
 		return
 	var r := srv_request({"op": "card05_hide", "seat": my_seat, "tiles": picked})
 	if r.is_empty():
-		_toast(_srv_err("盖牌失败：服务端没有回应"))
+		_toast(_srv_err("盖牌失败:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
 		_toast(String(r.get("error", "盖牌失败")))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	_c05_hide_close()
-	_toast("策略：已盖住 %d 张手牌" % picked.size())
+	_toast("策略:已盖住 %d 张手牌" % picked.size())
 
 
 func _c05_hide_close() -> void:
@@ -9351,7 +9355,7 @@ func _c05_hide_sync(st: Dictionary) -> void:
 	_make_c05_hide_ui()
 	_update_c05_view()
 	_refresh_c05_hide_button()
-	_toast("有人要看你的手牌：选最多 3 张盖住不给他看")
+	_toast("有人要看你的手牌:选最多 3 张盖住不给他看")
 
 
 # ── Card04 Skill2「自风」──────────────────────────────────────────────
@@ -9368,7 +9372,7 @@ var wind_start_btn: TextureButton = null
 
 func _self_wind_tip() -> void:
 	if bool(srv_state.get("self_wind", false)):
-		_toast("「自风」已自动发动：别人摸到你的自风时会和你换一张手牌")
+		_toast("「自风」已自动发动:别人摸到你的自风时会和你换一张手牌")
 	else:
 		_toast("「自风」要发动过「风神」之后才会自动生效")
 
@@ -9376,9 +9380,9 @@ func _self_wind_tip() -> void:
 # Card06 Skill2「坚韧」：被动，不用点。东场里自己付的钱减半（向上取整到百位）。
 func _tenacity_tip() -> void:
 	if bool(srv_state.get("tenacity", false)):
-		_toast("「坚韧」正在生效：东场里你被自摸 / 放铳的失点减半")
+		_toast("「坚韧」正在生效:东场里你被自摸 / 放铳的失点减半")
 	else:
-		_toast("「坚韧」只在东场生效（南场没有这个技能）")
+		_toast("「坚韧」只在东场生效(南场没有这个技能)")
 
 
 func _make_wind_ui() -> void:
@@ -9445,7 +9449,7 @@ func _wind_sync(st: Dictionary) -> void:
 	_make_wind_ui()
 	_update_wind_view()
 	_refresh_wind_button()
-	_toast("%s 摸到了你的自风【%s】—— 选 1 张手牌交换"
+	_toast("%s 摸到了你的自风[%s]—— 选 1 张手牌交换"
 		% [_rel_seat_name(frm), String(WIND_TILE_CN.get(tile, tile))])
 
 
@@ -9458,12 +9462,12 @@ func _wind_confirm() -> void:
 	var tile := String(tiles[int(wind_picks[0])])
 	var r := srv_request({"op": "wind_swap", "seat": my_seat, "tile": tile})
 	if r.is_empty():
-		_toast(_srv_err("自风交换失败：服务端没有回应"))
+		_toast(_srv_err("自风交换失败:服务端没有回应"))
 		_wind_close()
 		return
 	var got := String((r.get("wind_swap", {}) as Dictionary).get("got", ""))
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("自风：用 %s 换到【%s】" % [tile, String(WIND_TILE_CN.get(got, got))])
+	_toast("自风:用 %s 换到[%s]" % [tile, String(WIND_TILE_CN.get(got, got))])
 
 
 func _wind_close() -> void:
@@ -9549,7 +9553,7 @@ func _dora_luck_activate() -> void:
 	var r := srv_request({"op": "deal_skill", "seat": my_seat,
 		"action": "use", "card": 25, "skill": 1})
 	if r.is_empty():
-		_toast(_srv_err("「宝牌运」发动失败：服务端没有回应"))
+		_toast(_srv_err("「宝牌运」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -9608,7 +9612,7 @@ func _c25_confirm_show(v: bool) -> void:
 
 func _c25_confirm_cancel() -> void:
 	_c25_confirm_show(false)
-	_toast("宝牌运：已取消，重新选一张要切的牌")
+	_toast("宝牌运:已取消,重新选一张要切的牌")
 
 
 func _deal_swap_activate() -> void:
@@ -9622,7 +9626,7 @@ func _deal_swap_activate() -> void:
 	var r := srv_request({"op": "deal_skill", "seat": my_seat,
 		"action": "use", "card": 4, "skill": 1})
 	if r.is_empty():
-		_toast(_srv_err("「风神」发动失败：服务端没有回应"))
+		_toast(_srv_err("「风神」发动失败:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
@@ -9641,7 +9645,7 @@ func _deal_swap_activate() -> void:
 #   配牌点图标 → 选两家（东南西北）→ 按 下家/对家/上家 顺序逐家交 2~3 张
 #   → 我彩框挑一张 + 选自己一张 → 互换 → 下一家。服务端不做超时兜底。
 func _w30s2_tip() -> void:
-	_toast("W立：立直一律算双立直（2 番）；立直和牌时若第 4 列已被摸过，里宝牌 +4 番")
+	_toast("W立:立直一律算双立直(2 番);立直和牌时若第 4 列已被摸过,里宝牌 +4 番")
 
 
 func _c30s1_activate() -> void:
@@ -9683,7 +9687,7 @@ func _c30_sync(st: Dictionary) -> void:
 	for t in picked:
 		picked_txt.append(String(t))
 	var key := "%s-%d-%d-%s" % [role, int(d.get("stage", 0)),
-		int(d.get("target", -1)), "、".join(picked_txt)]
+		int(d.get("target", -1)), ",".join(picked_txt)]
 	if role == "give":
 		if c30_key == key and String(c30_panel.mode) == "give":
 			return
@@ -9699,7 +9703,7 @@ func _c30_sync(st: Dictionary) -> void:
 			var _who := srv_nick_of(_tgt)
 			if _who == "":
 				_who = "%d 号位" % _tgt
-			_toast("向听：等待【%s】交牌…" % _who)
+			_toast("向听:等待[%s]交牌…" % _who)
 		return                              # 我这边在等对方交牌
 	if c30_key == key and String(c30_panel.mode) == "swap":
 		return
@@ -9721,12 +9725,12 @@ func _c32s1_activate() -> void:
 		return
 	var r := srv_request({"op": "c32s1_arm", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("新手运：服务端没有回应"))
+		_toast(_srv_err("新手运:服务端没有回应"))
 		return
 	if srv_kangpo_blocked(r):
 		return
 	if not bool(r.get("ok", false)):
-		_toast(_srv_err("新手运：%s" % String(r.get("error", "发动失败"))))
+		_toast(_srv_err("新手运:%s" % String(r.get("error", "发动失败"))))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	_srv_kick()
@@ -9734,7 +9738,7 @@ func _c32s1_activate() -> void:
 	if typeof(r.get("c32")) == TYPE_DICTIONARY:
 		ar = r.get("c32")
 	if bool(ar.get("armed", false)):
-		_toast("新手运：开始向他们各要一张幺九牌")
+		_toast("新手运:开始向他们各要一张幺九牌")
 
 
 func _c32_sync(st: Dictionary) -> void:
@@ -9770,7 +9774,7 @@ func _c32_sync(st: Dictionary) -> void:
 	var parts: Array = []
 	for t in picked:
 		parts.append(String(t))
-	var key2 := "swap-%d-%s" % [int(d.get("stage", 0)), "、".join(parts)]
+	var key2 := "swap-%d-%s" % [int(d.get("stage", 0)), ",".join(parts)]
 	# 面板被意外关掉也要能重新弹出来（幂等对齐，不是"变了才动"）
 	if c32_key == key2 and c32_panel.active and String(c32_panel.mode) == "swap":
 		return
@@ -9780,8 +9784,8 @@ func _c32_sync(st: Dictionary) -> void:
 	var _picked_cn: Array = []
 	for t in picked:
 		_picked_cn.append(tile_cn_of(String(t)))
-	_toast("新手运：%s 交了【%s】—— 点你自己的一张手牌，再点「确认」"
-		% [srv_name_of(int(d.get("target", -1))), "、".join(_picked_cn)])
+	_toast("新手运:%s 交了[%s]—— 点你自己的一张手牌,再点「确认」"
+		% [srv_name_of(int(d.get("target", -1))), ",".join(_picked_cn)])
 
 
 # ── Card33 S1【染手】─────────────────────────────────────────────────
@@ -9812,7 +9816,7 @@ func _c33_start() -> void:
 		"river_ok": _c33_river_ok,
 		"on_confirm": _c33_confirm,
 	})
-	_toast("染手：选 3 张手牌 + 牌河里一组面子（3 张）→ 点「开始」")
+	_toast("染手:选 3 张手牌 + 牌河里一组面子(3 张)→ 点「开始」")
 
 
 func _c33_river_ok(seq: int, seat: int, down: bool) -> bool:
@@ -9840,18 +9844,18 @@ func _c33_confirm(picks: Array, rivers: Array) -> void:
 		if int(i) >= 0 and int(i) < tiles.size():
 			picked.append(String(tiles[int(i)]))
 	if picked.size() != 3 or rivers.size() != 3:
-		_toast("染手：手牌 3 张 + 牌河 3 张")
+		_toast("染手:手牌 3 张 + 牌河 3 张")
 		return
 	var r := srv_request({"op": "c33s1_swap", "seat": my_seat,
 		"hand_tiles": picked, "river": rivers.duplicate()})
 	if srv_kangpo_blocked(r):
 		return                               # 等对方决定是否看破；面板在 confirm 时已关
 	if r.is_empty():
-		_toast(_srv_err("染手：服务端没有回应"))
+		_toast(_srv_err("染手:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "染手：发动失败")))
+		_toast(String(r.get("error", "染手:发动失败")))
 		_pull_state()
 		return
 	var got: Array = []
@@ -9861,8 +9865,8 @@ func _c33_confirm(picks: Array, rivers: Array) -> void:
 			got = d.get("got")
 	srv_apply_state(r.get("state"), r.get("events"))
 	refresh_hand()
-	_toast("染手：%s → %s（本次和牌只能混一色/清一色/字一色）"
-		% ["、".join(picked), "、".join(got)])
+	_toast("染手:%s → %s(本次和牌只能混一色/清一色/字一色)"
+		% [",".join(picked), ",".join(got)])
 
 
 # ── Card33 S2【记忆】─────────────────────────────────────────────────
@@ -9875,20 +9879,20 @@ func _c33s2_open() -> void:
 		return
 	var st = srv_state.get("c33s2")
 	if typeof(st) != TYPE_DICTIONARY:
-		_toast("记忆：服务端还没准备好")
+		_toast("记忆:服务端还没准备好")
 		return
 	var d: Dictionary = st
 	if bool(d.get("used", false)):
-		_toast("【记忆】本小局已经用过了")
+		_toast("[记忆]本小局已经用过了")
 		return
 	if not bool(d.get("can", false)):
-		_toast("【记忆】只能在自己的切牌状态发动")
+		_toast("[记忆]只能在自己的切牌状态发动")
 		return
 	var last = d.get("last", null)
-	var tip_txt := "输入上一局的和牌点数（满贯 8000 这种）"
+	var tip_txt := "输入上一局的和牌点数(满贯 8000 这种)"
 	if last == null:
-		tip_txt = "东一第一局：随便输一个数字就行"
-	_toast("记忆：" + tip_txt)
+		tip_txt = "东一第一局:随便输一个数字就行"
+	_toast("记忆:" + tip_txt)
 
 	var host: Node = get_parent()
 	if host == null:
@@ -10006,10 +10010,10 @@ func _c33s2_submit() -> void:
 		return
 	var txt := String(c33s2_edit.text).strip_edges()
 	if txt == "":
-		_toast("记忆：先输入一个数字")
+		_toast("记忆:先输入一个数字")
 		return
 	if not txt.is_valid_int():
-		_toast("记忆：只能输入数字")
+		_toast("记忆:只能输入数字")
 		return
 	var num := int(txt)
 	var r := srv_request({"op": "c33s2_try", "seat": my_seat, "number": num})
@@ -10017,17 +10021,17 @@ func _c33s2_submit() -> void:
 		_c33s2_close()                     # 等对方决定是否看破
 		return
 	if r.is_empty():
-		_toast(_srv_err("记忆：服务端没有回应"))
+		_toast(_srv_err("记忆:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "记忆：数字不对")))
+		_toast(String(r.get("error", "记忆:数字不对")))
 		if c33s2_edit != null and is_instance_valid(c33s2_edit):
 			c33s2_edit.select_all()        # 留在面板里，改一个再试
 		return
 	_c33s2_close()
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("记忆：发动了 —— 下一张打出的牌会暗置")
+	_toast("记忆:发动了 —— 下一张打出的牌会暗置")
 
 
 func _c33s2_close() -> void:
@@ -10051,21 +10055,21 @@ func _c34_arm() -> void:
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【厄运】只能在自己的切牌阶段发动")
+		_toast("[厄运]只能在自己的切牌阶段发动")
 		return
 	var r := srv_request({"op": "c34s1_arm", "seat": my_seat})
 	if srv_kangpo_blocked(r):
 		return                               # 厄运不能被看破，理论上走不到
 	if r.is_empty():
-		_toast(_srv_err("厄运：服务端没有回应"))
+		_toast(_srv_err("厄运:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "厄运：发动失败")))
+		_toast(String(r.get("error", "厄运:发动失败")))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("厄运：三巡内其他三家只能摸切、不能副露 / 和牌 / 使用技能")
+	_toast("厄运:三巡内其他三家只能摸切,不能副露 / 和牌 / 使用技能")
 
 
 # ── Card43 S2【免疫】───────────────────────────────────────────────
@@ -10095,7 +10099,7 @@ func _c43s2_sync(st: Dictionary) -> void:
 	var nm := String(a.get("name", ""))
 	var left := int((d as Dictionary).get("left", 0))
 	# 免疫 = 「确认(queren)」/「跳过(tiaoguo)」两张贴图，标题说明还剩几次
-	_cg_answer_pair("%s 对你发动了「%s」—— 要免疫吗？（还剩 %d 次）" % [who, nm, left],
+	_cg_answer_pair("%s 对你发动了「%s」—— 要免疫吗？(还剩 %d 次)" % [who, nm, left],
 		Callable(self, "_c43s2_answer").bind(true),
 		Callable(self, "_c43s2_answer").bind(false))
 
@@ -10103,18 +10107,18 @@ func _c43s2_sync(st: Dictionary) -> void:
 func _c43s2_answer(use: bool) -> void:
 	var r := srv_request({"op": "c43s2_answer", "seat": my_seat, "use": bool(use)})
 	if r.is_empty():
-		_toast(_srv_err("免疫：服务端没有回应"))
+		_toast(_srv_err("免疫:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "免疫：回答失败")))
+		_toast(String(r.get("error", "免疫:回答失败")))
 		_pull_state()
 		return
 	c43i_key = ""
 	srv_apply_state(r.get("state"), r.get("events"))
 	if bool(use):
-		_toast("免疫：这次发动作废，我以后免疫这个技能")
+		_toast("免疫:这次发动作废,我以后免疫这个技能")
 	else:
-		_toast("免疫：跳过了，这次照常发动")
+		_toast("免疫:跳过了,这次照常发动")
 
 
 # ── Card40 S2【同盟】───────────────────────────────────────────────
@@ -10131,13 +10135,13 @@ func _c40s2_open() -> void:
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【同盟】只能在自己的切牌前发动")
+		_toast("[同盟]只能在自己的切牌前发动")
 		return
 	var st = srv_state.get("c40s2")
 	if typeof(st) != TYPE_DICTIONARY or not bool((st as Dictionary).get("can", false)):
-		_toast("【同盟】现在不能发动（本局一次）")
+		_toast("[同盟]现在不能发动(本局一次)")
 		return
-	_seat_pick_begin("c40s2", "同盟：指定一名玩家（他的手牌会一直显示给你）")
+	_seat_pick_begin("c40s2", "同盟:指定一名玩家(他的手牌会一直显示给你)")
 
 
 func _c40s2_pick(t: int) -> void:
@@ -10145,14 +10149,14 @@ func _c40s2_pick(t: int) -> void:
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("同盟：服务端没有回应"))
+		_toast(_srv_err("同盟:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "同盟：发动失败")))
+		_toast(String(r.get("error", "同盟:发动失败")))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("同盟：已和 %s 结盟 —— 他的手牌一直显示，你打出的牌他能吃碰杠就自动副露"
+	_toast("同盟:已和 %s 结盟 —— 他的手牌一直显示,你打出的牌他能吃碰杠就自动副露"
 		% srv_name_of(int(t)))
 
 
@@ -10239,15 +10243,15 @@ func _c40b_do(kind: String, index: int) -> void:
 	var r := srv_request({"op": "c40s2_pick", "seat": my_seat,
 		"kind": String(kind), "index": int(index)})
 	if r.is_empty():
-		_toast(_srv_err("同盟：服务端没有回应"))
+		_toast(_srv_err("同盟:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "同盟：副露失败")))
+		_toast(String(r.get("error", "同盟:副露失败")))
 		_pull_state()
 		return
 	c40b_key = ""
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("同盟：副露完成（他自己不用操作）")
+	_toast("同盟:副露完成(他自己不用操作)")
 
 
 # ── Card42 S1【理论战】/ S2【夺目】───────────────────────────────────
@@ -10258,20 +10262,20 @@ func _c42s1_apply() -> void:
 		return
 	var st = srv_state.get("c42")
 	if typeof(st) != TYPE_DICTIONARY or not bool((st as Dictionary).get("s1_can", false)):
-		_toast("【理论战】只能在配牌阶段、自己当庄家时发动")
+		_toast("[理论战]只能在配牌阶段,自己当庄家时发动")
 		return
 	var r := srv_request({"op": "c42s1_apply", "seat": my_seat})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("理论战：服务端没有回应"))
+		_toast(_srv_err("理论战:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "理论战：发动失败")))
+		_toast(String(r.get("error", "理论战:发动失败")))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("理论战：已经发动过的配牌技能全部作废，之后谁都不能再用技能")
+	_toast("理论战:已经发动过的配牌技能全部作废,之后谁都不能再用技能")
 
 
 func _c42s2_open() -> void:
@@ -10279,9 +10283,9 @@ func _c42s2_open() -> void:
 		return
 	var st = srv_state.get("c42")
 	if typeof(st) != TYPE_DICTIONARY or not bool((st as Dictionary).get("s2_can", false)):
-		_toast("【夺目】只能在自己切牌前发动（本局一次）")
+		_toast("[夺目]只能在自己切牌前发动(本局一次)")
 		return
-	_seat_pick_begin("c42s2", "夺目：结算时把谁当庄家？（只影响点数）")
+	_seat_pick_begin("c42s2", "夺目:结算时把谁当庄家？(只影响点数)")
 
 
 func _c42s2_pick(t: int) -> void:
@@ -10289,14 +10293,14 @@ func _c42s2_pick(t: int) -> void:
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("夺目：服务端没有回应"))
+		_toast(_srv_err("夺目:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "夺目：发动失败")))
+		_toast(String(r.get("error", "夺目:发动失败")))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("夺目：本局结算时把 %s 当庄家（只影响点数）" % srv_name_of(int(t)))
+	_toast("夺目:本局结算时把 %s 当庄家(只影响点数)" % srv_name_of(int(t)))
 
 
 # 【夺目】(42S2) 的**结算前询问**（用户口径 2026-10-28）：
@@ -10326,21 +10330,21 @@ func _c42s2_sync(st: Dictionary) -> void:
 	var ev := "%s 自摸" % who
 	if String(d.get("result", "")) != "tsumo" and loser >= 0:
 		ev = "%s 铳给 %s" % [_feng_house_name(loser, _dl), who]
-	_seat_pick_begin("c42s2_ask", "夺目：%s —— 这次按谁的庄家算点数？" % ev)
+	_seat_pick_begin("c42s2_ask", "夺目:%s —— 这次按谁的庄家算点数？" % ev)
 
 
 func _c42s2_answer(t: int) -> void:
 	var r := srv_request({"op": "c42s2_answer", "seat": my_seat, "target": int(t)})
 	_c42s2_ask_sig = ""
 	if r.is_empty():
-		_toast(_srv_err("夺目：服务端没有回应"))
+		_toast(_srv_err("夺目:服务端没有回应"))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	if int(t) >= 0:
-		_toast("夺目：这次结算把 %s 当庄家（只影响点数）" % srv_name_of(int(t)))
+		_toast("夺目:这次结算把 %s 当庄家(只影响点数)" % srv_name_of(int(t)))
 	else:
-		_toast("夺目：这次按真庄家结算")
+		_toast("夺目:这次按真庄家结算")
 
 
 # ── Card39 S1【隐形】───────────────────────────────────────────────
@@ -10352,28 +10356,28 @@ func _c39s1_apply() -> void:
 	if bool(srv_state.get("c39s1_on", false)) \
 			or bool(((srv_state.get("c39", {}) as Dictionary)
 				if typeof(srv_state.get("c39")) == TYPE_DICTIONARY else {}).get("on", false)):
-		_toast("【隐形】本局已经开着了")
+		_toast("[隐形]本局已经开着了")
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【隐形】只能在自己摸牌后、打牌前发动")
+		_toast("[隐形]只能在自己摸牌后,打牌前发动")
 		return
 	var st = srv_state.get("c39")
 	if typeof(st) != TYPE_DICTIONARY or not bool((st as Dictionary).get("can", false)):
-		_toast("【隐形】自己牌河要满 7 张（摸牌后、打牌前）")
+		_toast("[隐形]自己牌河要满 7 张(摸牌后,打牌前)")
 		return
 	var r := srv_request({"op": "c39s1_apply", "seat": my_seat})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("隐形：服务端没有回应"))
+		_toast(_srv_err("隐形:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "隐形：发动失败")))
+		_toast(String(r.get("error", "隐形:发动失败")))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("隐形：这一局打出去的牌谁都不能吃碰杠荣，也不造成振听")
+	_toast("隐形:这一局打出去的牌谁都不能吃碰杠荣,也不造成振听")
 
 
 # ── Card46 S1【恶听】───────────────────────────────────────────────
@@ -10388,11 +10392,11 @@ func _c46_start() -> void:
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【恶听】只能在自己的切牌前发动")
+		_toast("[恶听]只能在自己的切牌前发动")
 		return
 	var st = srv_state.get("c46")
 	if typeof(st) != TYPE_DICTIONARY or not bool((st as Dictionary).get("can", false)):
-		_toast("【恶听】现在不能发动（要有一张打出去就听牌、且待牌在场上只剩 1 张的手牌）")
+		_toast("[恶听]现在不能发动(要有一张打出去就听牌,且待牌在场上只剩 1 张的手牌)")
 		return
 	if c46_panel.active:
 		c46_panel.close()
@@ -10404,17 +10408,17 @@ func _c46_start() -> void:
 		"cancel": true,
 		"on_confirm": _c46_confirm,
 	})
-	_toast("恶听：选 1 张「切出去就听牌、待牌只剩 1 张」的手牌 → 点「开始」（随后一定和牌）")
+	_toast("恶听:选 1 张「切出去就听牌,待牌只剩 1 张」的手牌 → 点「开始」(随后一定和牌)")
 
 
 func _c46_confirm(picks: Array, _rivers: Array) -> void:
 	if picks.is_empty():
-		_toast("恶听：先选 1 张手牌")
+		_toast("恶听:先选 1 张手牌")
 		return
 	var all := display_tiles()
 	var idx := int(picks[0])
 	if idx < 0 or idx >= all.size():
-		_toast("恶听：这张选不了")
+		_toast("恶听:这张选不了")
 		return
 	var tile := String(all[idx])
 	var st = srv_state.get("c46")
@@ -10424,16 +10428,16 @@ func _c46_confirm(picks: Array, _rivers: Array) -> void:
 		if typeof(ts) == TYPE_ARRAY:
 			ok = int_set(ts).size() > 0 and (tile in (ts as Array))
 	if not ok:
-		_toast("恶听：这张切出去不听牌（听的那几张可能都已经不在场上了）")
+		_toast("恶听:这张切出去不听牌(听的那几张可能都已经不在场上了)")
 		return
 	var r := srv_request({"op": "c46s1_apply", "seat": my_seat, "tile": tile})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("恶听：服务端没有回应"))
+		_toast(_srv_err("恶听:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "恶听：发动失败")))
+		_toast(String(r.get("error", "恶听:发动失败")))
 		_pull_state()
 		return
 	c46_panel.close()
@@ -10446,16 +10450,16 @@ func _c46_confirm(picks: Array, _rivers: Array) -> void:
 		d = raw_c46 as Dictionary
 	var _ev := String(d.get("event", ""))
 	if _ev == "c46_pending":
-		_toast("恶听：铳张「%s」→ 点「自摸」" % String(d.get("tile", "")))
+		_toast("恶听:铳张「%s」→ 点「自摸」" % String(d.get("tile", "")))
 	elif _ev == "yiding":
 		var frm := int(d.get("from", -1))
 		if frm >= 0:
-			_toast("恶听：%s 手里有你的铳张「%s」→ 他出铳"
+			_toast("恶听:%s 手里有你的铳张「%s」→ 他出铳"
 				% [srv_name_of(frm), String(d.get("tile", ""))])
 		else:
-			_toast("恶听：铳张「%s」不在任何人手里 → 按自摸结算" % String(d.get("tile", "")))
+			_toast("恶听:铳张「%s」不在任何人手里 → 按自摸结算" % String(d.get("tile", "")))
 	else:
-		_toast("恶听：%s" % String(d.get("reason", "结算完成")))
+		_toast("恶听:%s" % String(d.get("reason", "结算完成")))
 
 
 # ── Card45 S2【替身】───────────────────────────────────────────────
@@ -10476,19 +10480,19 @@ func _c45s2_start() -> void:
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【替身】只能在自己的切牌前发动")
+		_toast("[替身]只能在自己的切牌前发动")
 		return
 	var st = srv_state.get("c45s2")
 	if typeof(st) != TYPE_DICTIONARY or not bool((st as Dictionary).get("can", false)):
-		_toast("【替身】现在不能发动")
+		_toast("[替身]现在不能发动")
 		return
 	seat_pick_first = -1
-	_seat_pick_begin("c45s2a", "替身：先选第一位（被接管切牌的人）")
+	_seat_pick_begin("c45s2a", "替身:先选第一位(被接管切牌的人)")
 
 
 func _c45s2_first(a: int) -> void:
 	seat_pick_first = int(a)
-	_seat_pick_begin("c45s2b", "替身：再选第二位（可以选你自己）")
+	_seat_pick_begin("c45s2b", "替身:再选第二位(可以选你自己)")
 
 
 func _c45s2_second(a: int, b: int) -> void:
@@ -10497,14 +10501,14 @@ func _c45s2_second(a: int, b: int) -> void:
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("替身：服务端没有回应"))
+		_toast(_srv_err("替身:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "替身：发动失败")))
+		_toast(String(r.get("error", "替身:发动失败")))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("替身：已指定 %s 的切牌由 %s 决定"
+	_toast("替身:已指定 %s 的切牌由 %s 决定"
 		% [srv_name_of(int(a)), srv_name_of(int(b))])
 
 
@@ -10530,7 +10534,7 @@ func _c45s2_sync(st: Dictionary) -> void:
 			var k2 := "%d-%d" % [first, int(w2.get("second", -1))]
 			if k2 != c45b_asked:
 				c45b_asked = k2
-				_toast("替身：本回合由 %s 指定你切哪张"
+				_toast("替身:本回合由 %s 指定你切哪张"
 					% srv_name_of(int(w2.get("second", -1))))
 		return
 	var tiles: Array = w2.get("tiles", [])
@@ -10565,7 +10569,7 @@ func _c45b_make(first: int, tiles: Array) -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	c45b_ui.add_child(bg)
 	var head := Label.new()
-	head.text = "替身：请指定 %s 切哪张（点一张即可）" % srv_name_of(int(first))
+	head.text = "替身:请指定 %s 切哪张(点一张即可)" % srv_name_of(int(first))
 	head.add_theme_font_size_override("font_size", 22)
 	head.add_theme_color_override("font_color", Color(1, 1, 0.85))
 	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -10596,16 +10600,16 @@ func _c45b_make(first: int, tiles: Array) -> void:
 func _c45b_pick(tile: String) -> void:
 	var r := srv_request({"op": "c45s2_pick", "seat": my_seat, "tile": String(tile)})
 	if r.is_empty():
-		_toast(_srv_err("替身：服务端没有回应"))
+		_toast(_srv_err("替身:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "替身：指定失败")))
+		_toast(String(r.get("error", "替身:指定失败")))
 		_pull_state()
 		return
 	_c45b_close()
 	c45b_sig = ""
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("替身：已指定「%s」" % String(tile))
+	_toast("替身:已指定「%s」" % String(tile))
 
 
 func _c45b_close() -> void:
@@ -10648,11 +10652,11 @@ func _c45s1_start() -> void:
 	if c45_panel.active:
 		c45_panel.close()                # 再点一次 = 跳过这一巡
 		_pre_draw_resume()
-		_toast("神境：跳过了（下次摸牌前还会问）")
+		_toast("神境:跳过了(下次摸牌前还会问)")
 		return
 	var st = srv_state.get("c45")
 	if typeof(st) != TYPE_DICTIONARY or not bool((st as Dictionary).get("can", false)):
-		_toast("【神境】只能在自己摸牌前发动（自己牌河要够 12 张、手牌 13 张）")
+		_toast("[神境]只能在自己摸牌前发动(自己牌河要够 12 张,手牌 13 张)")
 		return
 	c45_panel.begin({
 		"name": "神境",
@@ -10664,7 +10668,7 @@ func _c45s1_start() -> void:
 		"river_ok": _c45_river_ok,
 		"on_confirm": _c45_confirm,
 	})
-	_toast("神境：手牌 + 牌河一共选 13 张（可以 13 张全选牌河）→ 点「开始」")
+	_toast("神境:手牌 + 牌河一共选 13 张(可以 13 张全选牌河)→ 点「开始」")
 
 
 func _c45_river_ok(seq: int, _seat: int, _down: bool) -> bool:
@@ -10689,24 +10693,24 @@ func _c45_confirm(picks: Array, rivers: Array) -> void:
 	for seq in rivers:
 		rs.append(int(seq))
 	if picked.size() + rs.size() != 13:
-		_toast("神境：手牌 + 牌河一共要选 13 张")
+		_toast("神境:手牌 + 牌河一共要选 13 张")
 		return
 	var r := srv_request({"op": "c45s1_apply", "seat": my_seat,
 		"hand_tiles": picked, "river": rs})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("神境：服务端没有回应"))
+		_toast(_srv_err("神境:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "神境：发动失败")))
+		_toast(String(r.get("error", "神境:发动失败")))
 		_pull_state()
 		return
 	c45_panel.close()
 	srv_apply_state(r.get("state"), r.get("events"))
 	c45_key = "%d-%d" % [int(srv_state.get("live_left", 0)),
 		int(srv_state.get("turn", 0))]
-	_toast("神境：13 张已换好 —— 之后只能摸切，和牌只能自摸（得点有上限）")
+	_toast("神境:13 张已换好 —— 之后只能摸切,和牌只能自摸(得点有上限)")
 	draw_tile()
 
 
@@ -10721,11 +10725,11 @@ func _c43_start() -> void:
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【NO MISS】只能在自己的切牌前发动")
+		_toast("[NO MISS]只能在自己的切牌前发动")
 		return
 	var st = srv_state.get("c43")
 	if typeof(st) != TYPE_DICTIONARY or not bool((st as Dictionary).get("can", false)):
-		_toast("NO MISS：手牌里得有一组搭子，牌河里也得有一个搭子")
+		_toast("NO MISS:手牌里得有一组搭子,牌河里也得有一个搭子")
 		return
 	if c33_panel.active:
 		c33_panel.close()
@@ -10737,7 +10741,7 @@ func _c43_start() -> void:
 		"river_ok": _c43_river_ok,
 		"on_confirm": _c43_confirm,
 	})
-	_toast("NO MISS：选 2 张手牌 + 牌河 2 张（都要是搭子）→ 点「开始」")
+	_toast("NO MISS:选 2 张手牌 + 牌河 2 张(都要是搭子)→ 点「开始」")
 
 
 func _c43_river_ok(seq: int, _seat: int, down: bool) -> bool:
@@ -10761,32 +10765,32 @@ func _c43_confirm(picks: Array, rivers: Array) -> void:
 		if int(i) >= 0 and int(i) < all.size():
 			picked.append(String(all[int(i)]))
 	if picked.size() != 2:
-		_toast("NO MISS：要选 2 张手牌")
+		_toast("NO MISS:要选 2 张手牌")
 		return
 	var rs: Array = []
 	for seq in rivers:
 		rs.append(int(seq))
 	if rs.size() != 2:
-		_toast("NO MISS：要选 2 张牌河")
+		_toast("NO MISS:要选 2 张牌河")
 		return
 	var r := srv_request({"op": "c43s1_apply", "seat": my_seat,
 		"hand_tiles": picked, "river": rs})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("NO MISS：服务端没有回应"))
+		_toast(_srv_err("NO MISS:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "NO MISS：发动失败")))
+		_toast(String(r.get("error", "NO MISS:发动失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("c43", {})
 	c43_panel.close()
 	srv_apply_state(r.get("state"), r.get("events"))
 	if bool(d.get("win", false)):
-		_toast("NO MISS：换成了和牌形 → 点「自摸」")
+		_toast("NO MISS:换成了和牌形 → 点「自摸」")
 	else:
-		_toast("NO MISS：换完了，接着打牌")
+		_toast("NO MISS:换完了,接着打牌")
 
 
 # ── 左侧「复制品图标条」：复制（Card41，可多个）+ 传承（Card16，一个）──────────
@@ -10854,13 +10858,13 @@ func _copied_icons_refresh(st: Dictionary) -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.size = ICON
 		b.position = base + Vector2(0, -float(idx) * (ICON.y + 6.0))
-		b.tooltip_text = "%s来的技能：Card%02d-%d（点一下就用）" % [
+		b.tooltip_text = "%s来的技能:Card%02d-%d(点一下就用)" % [
 			"传承" if host_card == 16 else "复制", card_no, sk]
 		# 复制品自己那一份配额用掉了 → 这一格单独变灰（原技能那份不受影响）
 		if cu.has("%d-%d-%d" % [card_no, sk, my_seat]):
 			b.disabled = true
 			b.modulate = Color(0.42, 0.42, 0.42, 1.0)
-			b.tooltip_text += "（这一份已经用过了）"
+			b.tooltip_text += "(这一份已经用过了)"
 		b.pressed.connect(func(): _on_identity_skill(my_seat, card_no, sk - 1, true))
 		b.set_meta("mute_key", _skill_key(card_no, sk))
 		c41_layer.add_child(b)
@@ -10938,7 +10942,7 @@ func _c41_sync(st: Dictionary) -> void:
 				var tgt := int((it as Dictionary).get("target", -1))
 				var cd := int((it as Dictionary).get("card", 0))
 				var sk := int((it as Dictionary).get("skill", 0))
-				items.append({"label": "复制【%s】（%s 发动）" % [nm, srv_name_of(tgt)],
+				items.append({"label": "复制[%s](%s 发动)" % [nm, srv_name_of(tgt)],
 					"cb": Callable(self, "_c41_do_copy2").bind(cd, sk)})
 			c41_pool = pool
 			# ★ 用户口径 2026-11-01：只在本局第一次自动弹；用过之后只闪图标，
@@ -10946,7 +10950,7 @@ func _c41_sync(st: Dictionary) -> void:
 			if not c41_auto_done and not is_skill_muted(41, 1):
 				c41_auto_done = true
 				_c41_pick_open(pool)
-				_toast("复制：点技能图标复制（共 %d 个），点「跳过」全部取消" % pool.size())
+				_toast("复制:点技能图标复制(共 %d 个),点「跳过」全部取消" % pool.size())
 			else:
 				_c41_hint(true)
 
@@ -10955,29 +10959,29 @@ func _c41_do_copy2(card: int, skill: int) -> void:
 	var r := srv_request({"op": "c41_copy", "seat": my_seat,
 		"card": int(card), "skill": int(skill)})
 	if r.is_empty():
-		_toast(_srv_err("复制：服务端没有回应"))
+		_toast(_srv_err("复制:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "复制：失败")))
+		_toast(String(r.get("error", "复制:失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("c41", {})
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("复制：拿到了【%s】—— 在【复制】图标上方点它就能用" % String(d.get("name", "")))
+	_toast("复制:拿到了[%s]—— 在[复制]图标上方点它就能用" % String(d.get("name", "")))
 
 
 func _c41_do_copy() -> void:
 	var r := srv_request({"op": "c41_copy", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("复制：服务端没有回应"))
+		_toast(_srv_err("复制:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "复制：失败")))
+		_toast(String(r.get("error", "复制:失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("c41", {})
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("复制：拿到了【%s】—— 在【复制】图标上方点它就能用" % String(d.get("name", "")))
+	_toast("复制:拿到了[%s]—— 在[复制]图标上方点它就能用" % String(d.get("name", "")))
 
 
 # ── 复制「待选」界面：不弹黑色文字列表 ────────────────────────────────
@@ -11023,7 +11027,7 @@ func _c41_pick_open(pool: Array, names: Array = []) -> void:
 	layer.add_child(box)
 
 	var tip := Label.new()
-	tip.text = "复制（点图标 = 复制，%d 个可选）" % n
+	tip.text = "复制(点图标 = 复制,%d 个可选)" % n
 	tip.add_theme_font_size_override("font_size", 24)
 	tip.add_theme_color_override("font_color", Color(1.0, 0.96, 0.85))
 	tip.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -11049,7 +11053,7 @@ func _c41_pick_open(pool: Array, names: Array = []) -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.size = C41_ICON
 		b.position = Vector2(i * (C41_ICON.x + C41_GAP), 34.0)
-		b.tooltip_text = "复制：%s（%s 发动）" % [String(d.get("name", "")),
+		b.tooltip_text = "复制:%s(%s 发动)" % [String(d.get("name", "")),
 			srv_name_of(int(d.get("target", -1)))]
 		b.pressed.connect(_c41_do_copy2.bind(cd, sk))
 		b.pressed.connect(_c41_pick_close)
@@ -11064,7 +11068,7 @@ func _c41_pick_open(pool: Array, names: Array = []) -> void:
 	sbtn.focus_mode = Control.FOCUS_NONE
 	sbtn.size = Vector2(skip_w, skip_h)
 	sbtn.position = Vector2(row_w, 34.0)
-	sbtn.tooltip_text = "都跳过（清空这一叠）"
+	sbtn.tooltip_text = "都跳过(清空这一叠)"
 	sbtn.pressed.connect(_c41_do_skip)
 	sbtn.pressed.connect(_c41_pick_close)
 	box.add_child(sbtn)
@@ -11092,9 +11096,9 @@ func _c40s1_open() -> void:
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【透视】只能在自己的切牌前发动")
+		_toast("[透视]只能在自己的切牌前发动")
 		return
-	_seat_pick_begin("c40s1", "透视：选一家看手牌（立直中免费）")
+	_seat_pick_begin("c40s1", "透视:选一家看手牌(立直中免费)")
 
 
 func _c40s1_pick(t: int) -> void:
@@ -11102,19 +11106,19 @@ func _c40s1_pick(t: int) -> void:
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("透视：服务端没有回应"))
+		_toast(_srv_err("透视:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "透视：发动失败")))
+		_toast(String(r.get("error", "透视:发动失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("c40", {})
 	srv_apply_state(r.get("state"), r.get("events"))
 	if bool(d.get("shown", false)):
-		_toast("透视：看到 %s 的手牌%s" % [srv_name_of(int(t)),
-			"（立直中，不消耗次数）" if bool(d.get("free", false)) else ""])
+		_toast("透视:看到 %s 的手牌%s" % [srv_name_of(int(t)),
+			"(立直中,不消耗次数)" if bool(d.get("free", false)) else ""])
 	else:
-		_toast("透视：%s" % String(d.get("why", "看不到")))
+		_toast("透视:%s" % String(d.get("why", "看不到")))
 
 
 # ── Card38 S1【重整】───────────────────────────────────────────────
@@ -11137,18 +11141,18 @@ func _c38s1_open() -> void:
 	if game_over:
 		return
 	if c38_active and c38_sent:
-		_toast("重整：已经发动了，等结果")
+		_toast("重整:已经发动了,等结果")
 		return
 	if _skill_used_once(38, 1):
 		_toast("「重整」本小局已经发动过了")
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【重整】只能在自己的切牌前发动")
+		_toast("[重整]只能在自己的切牌前发动")
 		return
 	var r := srv_request({"op": "c38s1_view", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("重整：服务端没有回应"))
+		_toast(_srv_err("重整:服务端没有回应"))
 		return
 	var v: Dictionary = r.get("c38", {})
 	c38_dora = v.get("dora", [])
@@ -11161,7 +11165,7 @@ func _c38s1_open() -> void:
 			return _comes_first(String((a as Dictionary).get("tile", "")),
 				String((b as Dictionary).get("tile", ""))))
 	if (c38_dora as Array).size() != 3:
-		_toast("重整：现在没有 3 张可翻的宝牌指示牌")
+		_toast("重整:现在没有 3 张可翻的宝牌指示牌")
 		return
 	c38_picks.clear()
 	c38_sent = false
@@ -11215,7 +11219,7 @@ func _c38s1_make_ui() -> void:
 	c38_ui.add_child(bg)
 	var head := Label.new()
 	head.name = "Head"
-	head.text = "重整：选 3 张（指示牌或我的手牌），点击顺序 = 放入顺序"
+	head.text = "重整:选 3 张(指示牌或我的手牌),点击顺序 = 放入顺序"
 	head.add_theme_font_size_override("font_size", 22)
 	head.add_theme_color_override("font_color", Color(1, 1, 0.85))
 	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -11255,7 +11259,7 @@ func _c38s1_make_ui() -> void:
 	var total2 := float(hn) * hw + float(maxi(hn - 1, 0)) * hgap
 	var x1 := (vp.x - total2) * 0.5
 	var cap1 := Label.new()
-	cap1.text = "我的手牌（不含副露）"
+	cap1.text = "我的手牌(不含副露)"
 	cap1.add_theme_font_size_override("font_size", 18)
 	cap1.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
 	cap1.position = Vector2(x1, 300)
@@ -11292,7 +11296,7 @@ func _c38s1_refresh() -> void:
 		var b: TextureButton = c38_nodes[key]
 		if b == null or not is_instance_valid(b):
 			continue
-		var f = b.get_meta("frame", null)
+		var f = b.get_meta("frame") if b.has_meta("frame") else null
 		var num := b.get_node_or_null("Num") as Label
 		if order.has(key):
 			if f != null:
@@ -11321,7 +11325,7 @@ func _c38_toggle(pick: Dictionary) -> void:
 			_c38s1_refresh()
 			return
 	if c38_picks.size() >= 3:
-		_toast("重整：已经选满 3 张（再点一次那张可以取消）")
+		_toast("重整:已经选满 3 张(再点一次那张可以取消)")
 		return
 	c38_picks.append(pick)
 	_c38s1_refresh()
@@ -11340,7 +11344,7 @@ func _c38s1_confirm() -> void:
 	if c38_sent:
 		return
 	if c38_picks.size() != 3:
-		_toast("重整：要选 3 张")
+		_toast("重整:要选 3 张")
 		return
 	# ★ 一按确认就锁住（不可取消/不可重发）：被看破挂起时也不能自己撤
 	c38_sent = true
@@ -11356,19 +11360,19 @@ func _c38s1_confirm() -> void:
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("重整：服务端没有回应"))
+		_toast(_srv_err("重整:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
 		# 服务端明确拒绝（没执行）→ 允许改选重发
 		c38_sent = false
 		_c38s1_refresh()
-		_toast(String(r.get("error", "重整：发动失败")))
+		_toast(String(r.get("error", "重整:发动失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("c38", {})
 	_c38s1_close()
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("重整：指示牌 → %s" % "、".join(d.get("dora", [])))
+	_toast("重整:指示牌 → %s" % ",".join(d.get("dora", [])))
 
 
 func _c38s1_close() -> void:
@@ -11406,7 +11410,7 @@ func _c37s2_open() -> void:
 	if String(srv_state.get("phase", "")) != "draw" \
 			or int(srv_state.get("turn", -1)) != my_seat \
 			or (_dr37 != null and String(_dr37) != ""):
-		_toast("【强运】只能在自己摸牌之前发动")
+		_toast("[强运]只能在自己摸牌之前发动")
 		return
 	ql_picks.clear()
 	c37_kind = ""
@@ -11417,15 +11421,15 @@ func _c37s2_open() -> void:
 		_cg_refresh_grid()
 		var head := cg_ui.get_node_or_null("Head") as Label if cg_ui != null else null
 		if head != null:
-			head.text = "强运：已选中【%s】—— 点「开始」确认" % k
+			head.text = "强运:已选中[%s]—— 点「开始」确认" % k
 	var on_ok: Callable = func(): _c37s2_confirm()
-	_cg_show_kind_grid("强运：选一种牌（所有种类都能选）", on_pick, on_ok, [],
+	_cg_show_kind_grid("强运:选一种牌(所有种类都能选)", on_pick, on_ok, [],
 		func(): _pda_skip_once("c37s2"))
 
 
 func _c37s2_confirm() -> void:
 	if c37_kind == "":
-		_toast("强运：先选一张牌")
+		_toast("强运:先选一张牌")
 		return
 	var k := c37_kind
 	var r := srv_request({"op": "c37s2_apply", "seat": my_seat, "kind": k})
@@ -11436,17 +11440,17 @@ func _c37s2_confirm() -> void:
 		_cg_kind_close()
 		return
 	if r.is_empty():
-		_toast(_srv_err("强运：服务端没有回应"))
+		_toast(_srv_err("强运:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "强运：发动失败")))
+		_toast(String(r.get("error", "强运:发动失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("c37s2", {})
 	_cg_close()
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("强运：要了【%s】→ 下一张摸到【%s】"
-		% [k, "、".join(d.get("tiles", []))])
+	_toast("强运:要了[%s]→ 下一张摸到[%s]"
+		% [k, ",".join(d.get("tiles", []))])
 
 
 # 摸牌前询问：网格开着 → 先别摸牌；否则问一次（用户口径 2026-11-11：主动弹面板）
@@ -11483,17 +11487,17 @@ func _c37s1_arm() -> void:
 		return
 	var ph := String(srv_state.get("phase", ""))
 	if ph != "claim" and not (ph == "discard" and int(srv_state.get("turn", -1)) == my_seat):
-		_toast("【岭上开花】要「听牌 + 能开杠 / 加杠」时才能发动（摸打阶段，或出现杠按钮时）")
+		_toast("[岭上开花]要「听牌 + 能开杠 / 加杠」时才能发动(摸打阶段,或出现杠按钮时)")
 		return
 	var r := srv_request({"op": "c37s1_arm", "seat": my_seat})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("岭上开花：服务端没有回应"))
+		_toast(_srv_err("岭上开花:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "岭上开花：发动失败")))
+		_toast(String(r.get("error", "岭上开花:发动失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("c37", {})
@@ -11501,15 +11505,15 @@ func _c37s1_arm() -> void:
 		_c37s1_was_ready = true      # 这一发的提示由下面那条带牌名的话负责
 	srv_apply_state(r.get("state"), r.get("events"))
 	if bool(d.get("armed", false)):
-		_toast("岭上开花：已记下这一杠 —— 等这张牌的鸣牌窗口结算")
+		_toast("岭上开花:已记下这一杠 —— 等这张牌的鸣牌窗口结算")
 		return
 	if bool(d.get("ready", false)):
 		var got := String(d.get("swapped", ""))
 		if got == "":
 			got = String(d.get("tile", ""))
-		_toast("岭上开花：杠开成功，换进「%s」—— 点【自摸】结算（得点 ×2）" % got)
+		_toast("岭上开花:杠开成功,换进「%s」—— 点[自摸]结算(得点 ×2)" % got)
 	else:
-		_toast("岭上开花：%s" % String(d.get("why", "这次没成（杠已开、技能已消耗，正常打牌）")))
+		_toast("岭上开花:%s" % String(d.get("why", "这次没成(杠已开,技能已消耗,正常打牌)")))
 
 
 var _c37s1_was_ready := false
@@ -11522,7 +11526,7 @@ func _c37s1_sync(st: Dictionary) -> void:
 	var c = st.get("c37")
 	var now := typeof(c) == TYPE_DICTIONARY and bool((c as Dictionary).get("ready", false))
 	if now and not _c37s1_was_ready:
-		_toast("岭上开花：岭上牌已换好 —— 点【自摸】结算（得点 ×2）")
+		_toast("岭上开花:岭上牌已换好 —— 点[自摸]结算(得点 ×2)")
 	_c37s1_was_ready = now
 
 
@@ -11541,24 +11545,24 @@ func _c44s2_arm() -> void:
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【电报】只能在自己摸牌后、打牌前发动")
+		_toast("[电报]只能在自己摸牌后,打牌前发动")
 		return
 	if bool(srv_state.get("c44s2_on", false)):
-		_toast("【电报】已经开着：本局和牌按 30 符 1 番")
+		_toast("[电报]已经开着:本局和牌按 30 符 1 番")
 		return
 	var r := srv_request({"op": "c44s2_arm", "seat": my_seat})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("电报：服务端没有回应"))
+		_toast(_srv_err("电报:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "电报：发动失败")))
+		_toast(String(r.get("error", "电报:发动失败")))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("电报：手牌已明置 —— 本局和牌按 30 符 1 番结算")
+	_toast("电报:手牌已明置 —— 本局和牌按 30 符 1 番结算")
 
 
 func _c36s2_arm() -> void:
@@ -11569,24 +11573,24 @@ func _c36s2_arm() -> void:
 		return
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("【故意】只能在自己的切牌阶段发动")
+		_toast("[故意]只能在自己的切牌阶段发动")
 		return
 	if bool(((srv_state.get("c36", {}) as Dictionary) if typeof(srv_state.get("c36")) == TYPE_DICTIONARY else {}).get("s2", false)):
-		_toast("【故意】已经开着：打出一张牌就会判定")
+		_toast("[故意]已经开着:打出一张牌就会判定")
 		return
 	var r := srv_request({"op": "c36s2_arm", "seat": my_seat})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("故意：服务端没有回应"))
+		_toast(_srv_err("故意:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "故意：发动失败")))
+		_toast(String(r.get("error", "故意:发动失败")))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("故意：已开启 —— 打出这一张，谁的手牌能和就立刻结算（我付 1000 点）")
+	_toast("故意:已开启 —— 打出这一张,谁的手牌能和就立刻结算(我付 1000 点)")
 
 
 # 【海底】（34S2）：点图标 = 问服务端要一句「现在为什么没发动」
@@ -11597,22 +11601,22 @@ func _c34s2_probe() -> void:
 		return
 	var r := srv_request({"op": "c34s2_probe", "seat": my_seat})
 	if r.is_empty():
-		_toast("【海底】服务端没有回应")
+		_toast("[海底]服务端没有回应")
 		return
 	var d = r.get("c34s2")
 	if typeof(d) != TYPE_DICTIONARY:
-		_toast("【海底】服务端没有回应")
+		_toast("[海底]服务端没有回应")
 		return
 	var dd := d as Dictionary
 	var ll := int(dd.get("live_left", 0))
 	if bool(dd.get("would_fire", false)):
-		_toast("【海底】条件是满足的：打出这张牌就自动发动【厄运】，海底锁定「%s」（剩 %d 张）"
+		_toast("[海底]条件是满足的:打出这张牌就自动发动[厄运],海底锁定「%s」(剩 %d 张)"
 				% [String(dd.get("in_wall", "")), ll])
 		return
 	var why := String(dd.get("why", ""))
 	if why == "":
 		why = "条件还不满足"
-	_toast("【海底】现在不能发动：%s（还剩 %d 张可摸，要正好 12 张）" % [why, ll])
+	_toast("[海底]现在不能发动:%s(还剩 %d 张可摸,要正好 12 张)" % [why, ll])
 
 
 # 【海底】（34S2）：剩 12 张没触发时，服务端会给一句原因 —— 只提示一次
@@ -11643,7 +11647,7 @@ func _c36_sync(st: Dictionary) -> void:
 	var names: Array = []
 	for s in fresh:
 		names.append(srv_name_of(int(s)))
-	_toast("思路：看到 %s 的手牌（打出一张牌后失效）" % "、".join(names))
+	_toast("思路:看到 %s 的手牌(打出一张牌后失效)" % ",".join(names))
 
 
 func _c35_retry_tick() -> void:
@@ -11701,11 +11705,11 @@ func _c35_manual() -> void:
 	var can := (typeof(d) == TYPE_DICTIONARY
 		and bool((d as Dictionary).get("can", false)))
 	if not can:
-		_toast("流势：吃/碰/杠之后自动弹「排接下来 4 张」；现在没有要排的牌山")
+		_toast("流势:吃/碰/杠之后自动弹「排接下来 4 张」;现在没有要排的牌山")
 		return
 	var tiles: Array = (d as Dictionary).get("tiles", [])
 	if (tiles as Array).is_empty():
-		_toast("流势：读不到牌山")
+		_toast("流势:读不到牌山")
 		return
 	c35_mark = int((d as Dictionary).get("mark", c35_mark))
 	c26_op = "c35s1_set"
@@ -11728,7 +11732,7 @@ func _c34_why_sync(st: Dictionary) -> void:
 	if key == c34_why_key:
 		return
 	c34_why_key = key
-	_toast("【海底】没触发：" + why)
+	_toast("[海底]没触发:" + why)
 
 
 func _make_flow_ui() -> void:
@@ -11789,7 +11793,7 @@ func _refresh_flow_tiles() -> void:
 	row.name = "TargetTiles"
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var head := Label.new()
-	head.text = ("对面的风牌（换给你）" if flow_kind == "fengshen" else "对面的宝牌")
+	head.text = ("对面的风牌(换给你)" if flow_kind == "fengshen" else "对面的宝牌")
 	head.add_theme_font_size_override("font_size", 24)
 	head.add_theme_color_override("font_color", Color(1.0, 0.96, 0.8))
 	head.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -11819,7 +11823,7 @@ func _toggle_flow_hand(index: int) -> void:
 	if flow_kind == "dora_luck":
 		var all := display_tiles()
 		if index >= 0 and index < all.size() and srv_is_dora(String(all[index])):
-			_toast("宝牌运：宝牌不能拿去交换")
+			_toast("宝牌运:宝牌不能拿去交换")
 			return
 	hand_pick.toggle(index)
 
@@ -11858,10 +11862,10 @@ func _flow_sync(st: Dictionary) -> void:
 	_update_flow_view()
 	_refresh_flow_button()
 	if fk == "dora_luck":
-		_toast("宝牌运：%s有 %d 张宝牌 —— 请选 %d 张非宝牌手牌去换"
+		_toast("宝牌运:%s有 %d 张宝牌 —— 请选 %d 张非宝牌手牌去换"
 			% [_rel_seat_name(flow_target), flow_n, flow_n])
 	else:
-		_toast("风神：与%s交换 %d 张风牌 —— 请选 %d 张手牌"
+		_toast("风神:与%s交换 %d 张风牌 —— 请选 %d 张手牌"
 			% [_rel_seat_name(flow_target), flow_n, flow_n])
 
 
@@ -11878,18 +11882,18 @@ func _flow_confirm() -> void:
 	var r := srv_request({"op": "deal_swap", "seat": my_seat,
 		"stage": flow_stage, "tiles": picked})
 	if r.is_empty():
-		_toast(_srv_err("风神换牌失败：服务端没有回应"))
+		_toast(_srv_err("风神换牌失败:服务端没有回应"))
 		_flow_close()
 		return
 	var ds: Dictionary = r.get("deal_swap", {})
-	var got_csv := "、".join(picked)
+	var got_csv := ",".join(picked)
 	var cnt := int(ds.get("count", 0))
 	var was_dl := flow_kind == "dora_luck"
 	srv_apply_state(r.get("state"), r.get("events"))
 	if was_dl:
-		_toast("宝牌运：用 %s 换到 %d 张宝牌" % [got_csv, cnt])
+		_toast("宝牌运:用 %s 换到 %d 张宝牌" % [got_csv, cnt])
 	else:
-		_toast("风神：用 %s 换到 %d 张风牌" % [got_csv, cnt])
+		_toast("风神:用 %s 换到 %d 张风牌" % [got_csv, cnt])
 
 
 func _flow_close() -> void:
@@ -11957,10 +11961,10 @@ func _deal_skip() -> void:
 		return
 	var r := srv_request({"op": "deal_skill", "seat": my_seat, "action": "skip"})
 	if r.is_empty():
-		_toast(_srv_err("跳过失败：服务端没有回应"))
+		_toast(_srv_err("跳过失败:服务端没有回应"))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("跳过配牌技能，进入切牌阶段")
+	_toast("跳过配牌技能,进入切牌阶段")
 
 
 func _deal_hide() -> void:
@@ -12011,12 +12015,12 @@ func _update_deal_window(st: Dictionary) -> void:
 				has_hs = true
 		var nm := "技能"
 		if not names.is_empty():
-			nm = "、".join(names)
+			nm = ",".join(names)
 		if has_hs:
-			_toast("配牌阶段：可发动「%s」。海神要**现在点一下技能图标**开启，"
-				% nm + "不开这一小局就没有（每小局都要重新开）")
+			_toast("配牌阶段:可发动「%s」。海神要**现在点一下技能图标**开启,"
+				% nm + "不开这一小局就没有(每小局都要重新开)")
 		else:
-			_toast("配牌阶段：可发动「%s」，或点「开始」跳过" % nm)
+			_toast("配牌阶段:可发动「%s」,或点「开始」跳过" % nm)
 
 
 # ── 技能播报（画面中上部，行楷，黑字）────────────────────────────────
@@ -12154,7 +12158,7 @@ func _play_skill_fx(card: int) -> void:
 		return
 	var fx := host.get_node_or_null("特效/进场特效")
 	if fx == null or not fx.has_method("play_card"):
-		push_warning("[FX] 找不到 特效/进场特效：进场特效用不了")
+		push_warning("[FX] 找不到 特效/进场特效:进场特效用不了")
 		return
 	fx.call("play_card", card)
 
@@ -12209,7 +12213,7 @@ func _apply_broadcast(st: Dictionary) -> void:
 	var wind_cn := {"dong": "东", "nan": "南", "xi": "西", "bei": "北"}
 	var wind := String(wind_cn.get(String((b as Dictionary).get("wind", "")), ""))
 	var nm := String((b as Dictionary).get("name", "技能"))
-	_show_broadcast("【%s】玩家发动了【%s】！" % [wind, nm])
+	_show_broadcast("[%s]玩家发动了[%s]！" % [wind, nm])
 
 
 func _support_mute_apply(st: Dictionary) -> void:
@@ -12258,7 +12262,7 @@ func _press_start() -> void:
 			or game_over:
 		return                                  # 三个面板共用同一个 hand_pick，不能同时开
 	if not bool(srv_state.get("press_can", false)):
-		_toast("压制：要持这张卡、刚摸完牌，而且这次摸牌还没交换过")
+		_toast("压制:要持这张卡,刚摸完牌,而且这次摸牌还没交换过")
 		return
 	press_panel.begin({
 		"name": "压制",
@@ -12269,7 +12273,7 @@ func _press_start() -> void:
 		"river_ok": _press_river_ok_seq,
 		"on_confirm": _press_confirm,
 	})
-	_toast("压制：选一张手牌，再选一张牌河牌")
+	_toast("压制:选一张手牌,再选一张牌河牌")
 
 
 # 牌河可点规则（面板的 river_ok 是 func(seq, seat, down)）
@@ -12295,7 +12299,7 @@ func _press_confirm(picks: Array, rivers: Array) -> void:
 	if srv_kangpo_blocked(r):
 		return                            # 面板已在 confirm 时关掉
 	if r.is_empty():
-		_toast(_srv_err("压制换牌失败：服务端没有回应"))
+		_toast(_srv_err("压制换牌失败:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
 		_toast(String(r.get("error", "压制换牌失败")))
@@ -12303,7 +12307,7 @@ func _press_confirm(picks: Array, rivers: Array) -> void:
 	var pr: Dictionary = r.get("press", {})
 	srv_apply_state(r.get("state"), r.get("events"))
 	var how := "暗置牌" if String(pr.get("mode", "")) == "down" else "自己牌河"
-	_toast("压制（%s）：%s ⇄ %s" % [how, hand, String(pr.get("river", ""))])
+	_toast("压制(%s):%s ⇄ %s" % [how, hand, String(pr.get("river", ""))])
 
 
 func _press_close() -> void:
@@ -12344,12 +12348,12 @@ var c24_panel := SkillPanel.new()
 func _c24_on_clicked() -> void:
 	if c24_panel.active:
 		c24_panel.close()
-		_toast("一发：取消")
+		_toast("一发:取消")
 		return
 	if game_over:
 		return
 	if not bool(srv_state.get("c24_can", false)):
-		_toast("一发：要刚摸完牌、而且现在是能立直的状态")
+		_toast("一发:要刚摸完牌,而且现在是能立直的状态")
 		return
 	if swap_panel.active or press_panel.active or ym_panel.active:
 		_toast("先把现在的选牌面板处理掉")
@@ -12360,7 +12364,7 @@ func _c24_on_clicked() -> void:
 		"cancel": true,
 		"on_confirm": _c24_confirm,
 	})
-	_toast("一发：选一张打出去能立直的牌 → 开始")
+	_toast("一发:选一张打出去能立直的牌 → 开始")
 
 
 # ── Card27 S1「瞄准」/ S2「命中」──────────────────────────────────────
@@ -12425,12 +12429,12 @@ func _c27s1_gate_before_draw() -> bool:
 func _c27s1_open() -> void:
 	if c27_panel.active:
 		_c27_close()                      # 关面板 = 这次不发动（会顺带通知服务端放开摸牌）
-		_toast("瞄准：取消")
+		_toast("瞄准:取消")
 		return
 	if game_over:
 		return
 	if not srv_c27s1_can():
-		_toast("瞄准：要自己摸牌前、而且本小局还没用过")
+		_toast("瞄准:要自己摸牌前,而且本小局还没用过")
 		return
 	if _skill_panel_open():
 		_toast("先把现在的选牌面板处理掉")
@@ -12444,7 +12448,7 @@ func _c27s1_open() -> void:
 		"river_ok": _c27_river_ok,
 		"on_confirm": _c27s1_confirm,
 	})
-	_toast("瞄准：选一张手牌，再点别人牌河里的一张明牌 → 开始")
+	_toast("瞄准:选一张手牌,再点别人牌河里的一张明牌 → 开始")
 
 
 # 牌河可点：只认服务端列的「别人牌河的明牌」（立直宣言牌可以，暗置牌不行）
@@ -12466,7 +12470,7 @@ func _c27s1_confirm(picks: Array, rivers: Array) -> void:
 	if srv_kangpo_blocked(r):
 		return                            # 面板已在 confirm 时关掉
 	if r.is_empty():
-		_toast(_srv_err("瞄准失败：服务端没有回应"))
+		_toast(_srv_err("瞄准失败:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
 		_toast(String(r.get("error", "瞄准失败")))
@@ -12476,19 +12480,19 @@ func _c27s1_confirm(picks: Array, rivers: Array) -> void:
 		sw = r.get("c27s1")
 	srv_apply_state(r.get("state"), r.get("events"))
 	if not sw.is_empty():
-		_toast("瞄准：%s ⇄ %s（标记 %s）"
+		_toast("瞄准:%s ⇄ %s(标记 %s)"
 			% [hand, String(sw.get("got", "")), srv_nick_of(int(sw.get("mark", -1)))])
 
 
 func _c27s2_open() -> void:
 	if c27_panel.active:
 		c27_panel.close()
-		_toast("命中：取消")
+		_toast("命中:取消")
 		return
 	if game_over:
 		return
 	if not srv_c27s2_can():
-		_toast("命中：要刚摸完牌、切出后仍听牌（门清一定行），而且本小局还没用过")
+		_toast("命中:要刚摸完牌,切出后仍听牌(门清一定行),而且本小局还没用过")
 		return
 	if _skill_panel_open():
 		_toast("先把现在的选牌面板处理掉")
@@ -12500,7 +12504,7 @@ func _c27s2_open() -> void:
 		"cancel": true,
 		"on_confirm": _c27s2_confirm,
 	})
-	_toast("命中：选一张「打出去仍然听牌」的牌 → 开始（暗置打出，门清连立直）")
+	_toast("命中:选一张「打出去仍然听牌」的牌 → 开始(暗置打出,门清连立直)")
 
 
 func _c27s2_confirm(picks: Array, _rivers: Array) -> void:
@@ -12509,13 +12513,13 @@ func _c27s2_confirm(picks: Array, _rivers: Array) -> void:
 		return
 	var t := String(tiles[int(picks[0])])
 	if not srv_c27s2_ok(t):
-		_toast("命中：这张打出去就不听牌了")
+		_toast("命中:这张打出去就不听牌了")
 		return
 	var r := srv_request({"op": "c27s2_declare", "seat": my_seat, "tile": t})
 	if srv_kangpo_blocked(r):
 		return
 	if r.is_empty():
-		_toast(_srv_err("命中失败：服务端没有回应"))
+		_toast(_srv_err("命中失败:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
 		_toast(String(r.get("error", "命中发动失败")))
@@ -12525,12 +12529,12 @@ func _c27s2_confirm(picks: Array, _rivers: Array) -> void:
 		d = r.get("c27s2")
 	srv_apply_state(r.get("state"), r.get("events"))
 	var mk := int(d.get("mark", -1))
-	var riichi_txt := "、同时立直" if bool(d.get("riichi", false)) else ""
+	var riichi_txt := ",同时立直" if bool(d.get("riichi", false)) else ""
 	if mk >= 0:
-		_toast("命中：%s 暗置打出%s；标记 %s（他手切 3 张就出铳）"
+		_toast("命中:%s 暗置打出%s;标记 %s(他手切 3 张就出铳)"
 			% [t, riichi_txt, srv_nick_of(mk)])
 	else:
-		_toast("命中：%s 暗置打出%s（字牌不标记）" % [t, riichi_txt])
+		_toast("命中:%s 暗置打出%s(字牌不标记)" % [t, riichi_txt])
 
 
 func _c27_close() -> void:
@@ -12579,11 +12583,11 @@ func _c25s2_auto_arm() -> void:
 	if r.is_empty():
 		return
 	if srv_kangpo_blocked(r):
-		_toast("宝牌的集合：等对方决定是否看破…")
+		_toast("宝牌的集合:等对方决定是否看破…")
 		return
 	var dr: Dictionary = r.get("c25s2", {})
 	if bool(dr.get("c25s2_on", false)):
-		_toast("宝牌的集合：本小局开启 —— 杠翻出来的表宝牌无效，别人摸到宝牌我会去换")
+		_toast("宝牌的集合:本小局开启 —— 杠翻出来的表宝牌无效,别人摸到宝牌我会去换")
 	srv_apply_state(r.get("state"), r.get("events"))
 
 
@@ -12607,7 +12611,7 @@ func _c25b_open(tile: String, from_seat: int) -> void:
 		"close_on_confirm": true,
 		"on_confirm": _c25b_confirm,
 	})
-	_toast("宝牌的集合：%s摸到宝牌 %s —— 选一张非宝牌跟他换（不能跳过）"
+	_toast("宝牌的集合:%s摸到宝牌 %s —— 选一张非宝牌跟他换(不能跳过)"
 		% [_rel_seat_name(from_seat), tile_cn_of(tile)])
 
 
@@ -12619,15 +12623,15 @@ func _c25b_confirm(picks: Array, _rivers: Array) -> void:
 		if idx >= 0 and idx < tiles.size():
 			hand = String(tiles[idx])
 	if hand == "":
-		_toast("宝牌的集合：必须选一张手牌（不能跳过）")
+		_toast("宝牌的集合:必须选一张手牌(不能跳过)")
 		return
 	var r := srv_request({"op": "c25s2_swap", "seat": my_seat, "hand": hand})
 	if r.is_empty():
-		_toast(_srv_err("宝牌的集合：服务端没有回应"))
+		_toast(_srv_err("宝牌的集合:服务端没有回应"))
 		return
 	var sw: Dictionary = r.get("c25s2_swap", {})
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("宝牌的集合：用 %s 换到宝牌 %s" % [tile_cn_of(hand), tile_cn_of(String(sw.get("got", "")))])
+	_toast("宝牌的集合:用 %s 换到宝牌 %s" % [tile_cn_of(hand), tile_cn_of(String(sw.get("got", "")))])
 
 
 # ── Card24 S2「未来」：摸牌前把接下来 5 张牌山重新排序 ────────────────
@@ -12696,7 +12700,7 @@ func _future_ask_show() -> void:
 	future_ask_btn.size = rc.size
 	future_ask_btn.pressed.connect(_future_ask_skip)
 	future_ask_ui.add_child(future_ask_btn)
-	_toast("未来：想发动就点技能图标（会被看破）；点「开始」跳过")
+	_toast("未来:想发动就点技能图标(会被看破);点「开始」跳过")
 
 
 func _future_ask_skip() -> void:
@@ -12704,7 +12708,7 @@ func _future_ask_skip() -> void:
 		future_ask_ui.queue_free()
 	future_ask_ui = null
 	future_ask_btn = null
-	_toast("未来：跳过")
+	_toast("未来:跳过")
 	draw_tile()
 
 
@@ -12718,30 +12722,30 @@ func _future_ask_hide() -> void:
 # 点技能图标 = **直接发动**（这一刻算发动点，服务端先问看破）→ 成功后才有选牌界面
 func _future_on_clicked() -> void:
 	if future_active:
-		_toast("未来：已经发动了，把 5 张排好再点「确认」（这一手不能跳过）")
+		_toast("未来:已经发动了,把 5 张排好再点「确认」(这一手不能跳过)")
 		return
 	if not bool(srv_state.get("future_can", false)):
 		if bool(srv_state.get("future_armed", false)):
-			_toast("未来：已经发动了，把 5 张排好再点「确认」")
+			_toast("未来:已经发动了,把 5 张排好再点「确认」")
 		else:
-			_toast("未来：只能在轮到你摸牌之前发动（本小局一次）")
+			_toast("未来:只能在轮到你摸牌之前发动(本小局一次)")
 		return
 	if game_over or srv_busy or _srv_kangpo_wait():
 		return
 	var r := srv_request({"op": "future_arm", "seat": my_seat})
 	if srv_kangpo_blocked(r):
-		_toast("未来：已发动，等对方决定是否看破…")
+		_toast("未来:已发动,等对方决定是否看破…")
 		return
 	if r.is_empty():
-		_toast(_srv_err("未来：服务端没有回应"))
+		_toast(_srv_err("未来:服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "未来：发动失败")))
+		_toast(String(r.get("error", "未来:发动失败")))
 		return
 	_future_ask_hide()
 	srv_apply_state(r.get("state"), r.get("events"))
 	_future_open()
-	_toast("未来：已发动 —— 按你想要的顺序点这 5 张（1~5），排好后点「确认」")
+	_toast("未来:已发动 —— 按你想要的顺序点这 5 张(1~5),排好后点「确认」")
 
 
 # 发动之后（state.future_armed）→ 亮牌给玩家排序
@@ -12765,7 +12769,7 @@ func _future_open() -> void:
 	future_active = true
 	_future_make_ui()
 	_future_refresh()
-	_toast("未来：按你想要的顺序点这 5 张（1~5）；点「开始」= 跳过")
+	_toast("未来:按你想要的顺序点这 5 张(1~5);点「开始」= 跳过")
 
 
 func _future_make_ui() -> void:
@@ -12873,22 +12877,22 @@ func _future_confirm() -> void:
 	var r := srv_request({"op": "future_set", "seat": my_seat, "order": order})
 	if srv_kangpo_blocked(r):
 		_future_close()
-		_toast("未来：等对方决定是否看破…")
+		_toast("未来:等对方决定是否看破…")
 		return
 	if r.is_empty():
 		_future_close()
-		_toast(_srv_err("未来：服务端没有回应"))
+		_toast(_srv_err("未来:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
 		_future_close()
-		_toast(String(r.get("error", "未来：发动失败")))
+		_toast(String(r.get("error", "未来:发动失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("future", {})
 	_future_close()
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("未来：牌山顺序 → %s" % "、".join(d.get("tiles", [])))
+	_toast("未来:牌山顺序 → %s" % ",".join(d.get("tiles", [])))
 	draw_tile()                           # 技能完了 → 接着摸牌（摸新顺序的第一张）
 
 
@@ -12914,7 +12918,7 @@ func _c26s1_activate() -> void:
 	if bool(srv_state.get("c26s1_on", false)):
 		_toast("「云外镜」本局已经开启了")
 		return
-	_c26_use_deal(26, 1, "云外镜", "云外镜：本局我能看见其他三家的角色卡")
+	_c26_use_deal(26, 1, "云外镜", "云外镜:本局我能看见其他三家的角色卡")
 
 
 func _c26s2_activate() -> void:
@@ -12922,9 +12926,9 @@ func _c26s2_activate() -> void:
 		_toast("「天梯」只能在配牌阶段发动")
 		return
 	if bool(srv_state.get("c26s2_on", false)):
-		_toast("「天梯」本局已经开启了（每次自己摸牌前都要排牌山）")
+		_toast("「天梯」本局已经开启了(每次自己摸牌前都要排牌山)")
 		return
-	_c26_use_deal(26, 2, "天梯", "天梯：本局开启 —— 每次自己摸牌前排接下来 1+n 张")
+	_c26_use_deal(26, 2, "天梯", "天梯:本局开启 —— 每次自己摸牌前排接下来 1+n 张")
 
 
 func _c26_use_deal(card: int, skill: int, nm: String, ok_msg: String) -> void:
@@ -12933,13 +12937,13 @@ func _c26_use_deal(card: int, skill: int, nm: String, ok_msg: String) -> void:
 	var r := srv_request({"op": "deal_skill", "seat": my_seat,
 		"action": "use", "card": int(card), "skill": int(skill)})
 	if srv_kangpo_blocked(r):
-		_toast("%s：已发动，等对方决定是否看破…" % nm)
+		_toast("%s:已发动,等对方决定是否看破…" % nm)
 		return
 	if r.is_empty():
-		_toast(_srv_err("%s：服务端没有回应" % nm))
+		_toast(_srv_err("%s:服务端没有回应" % nm))
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "%s：发动失败" % nm)))
+		_toast(String(r.get("error", "%s:发动失败" % nm)))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	var idn := get_node_or_null("Identity")
@@ -13008,7 +13012,7 @@ func _c26_open_tiles(arr: Array) -> void:
 	c26_active = true
 	_c26_make_ui()
 	_c26_refresh()
-	_toast("%s：排好接下来 %d 张" % [c26_title, c26_tiles.size()])
+	_toast("%s:排好接下来 %d 张" % [c26_title, c26_tiles.size()])
 
 
 func _c26_make_ui() -> void:
@@ -13135,15 +13139,15 @@ func _c26_skip() -> void:
 	var r := srv_request({"op": op, "seat": my_seat})
 	_c26_close()
 	if r.is_empty():
-		_toast(_srv_err("%s：服务端没有回应" % title))
+		_toast(_srv_err("%s:服务端没有回应" % title))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "%s：跳过失败" % title)))
+		_toast(String(r.get("error", "%s:跳过失败" % title)))
 		_pull_state()
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("%s：跳过本次（牌山不动）" % title)
+	_toast("%s:跳过本次(牌山不动)" % title)
 
 
 func _c26_confirm() -> void:
@@ -13154,24 +13158,24 @@ func _c26_confirm() -> void:
 		order.append(int(c26_order[i]))
 	var r := srv_request({"op": c26_op, "seat": my_seat, "order": order})
 	if r.is_empty():
-		_toast(_srv_err("%s：服务端没有回应" % c26_title))
+		_toast(_srv_err("%s:服务端没有回应" % c26_title))
 		_c26_close()
 		return
 	# 有人要决定「看破 / 封堵」：先收面板，放行之后服务端会替我把这次排好
 	if bool(r.get("need_kangpo", false)):
 		_c26_close()
-		_toast("%s：有人在决定是否看破，放行后自动生效" % c26_title)
+		_toast("%s:有人在决定是否看破,放行后自动生效" % c26_title)
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "%s：排序失败" % c26_title)))
+		_toast(String(r.get("error", "%s:排序失败" % c26_title)))
 		_c26_close()
 		_pull_state()
 		return
 	var d: Dictionary = r.get(c26_res_key, {})
 	_c26_close()
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("%s：接下来 %d 张 → %s"
-		% [c26_title, int(d.get("k", 0)), "、".join(d.get("tiles", []))])
+	_toast("%s:接下来 %d 张 → %s"
+		% [c26_title, int(d.get("k", 0)), ",".join(d.get("tiles", []))])
 	if c26_after_draw:
 		draw_tile()                       # 天梯：排完了 → 接着摸牌
 	# 流势：排完了直接接着打牌，不用摸
@@ -13213,21 +13217,21 @@ func _c24_confirm(picks: Array, rivers: Array) -> void:
 		_apply_entity_states(srv_state)
 		return
 	if r.is_empty():
-		_toast(_srv_err("一发：服务端没有回应"))
+		_toast(_srv_err("一发:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "一发：发动失败")))
+		_toast(String(r.get("error", "一发:发动失败")))
 		_pull_state()
 		return
 	var d: Dictionary = r.get("c24", {})
 	srv_apply_state(r.get("state"), r.get("events"))
 	refresh_hand()
 	if bool(d.get("ippatsu_on", false)):
-		_toast("一发：牌山里有你的胡张（%s）→ 一发自摸窗口开启"
-			% "、".join(d.get("wins", [])))
+		_toast("一发:牌山里有你的胡张(%s)→ 一发自摸窗口开启"
+			% ",".join(d.get("wins", [])))
 	else:
-		_toast("一发：牌山/王牌里没有你的胡张 —— 立直了，但没有一发")
+		_toast("一发:牌山/王牌里没有你的胡张 —— 立直了,但没有一发")
 
 
 # Card02 S1/S2 的发动窗口：**摸牌前**（2026-11-07 起只有这一个窗口）
@@ -13245,7 +13249,7 @@ func _swap_start() -> void:
 		_toast("「想象」本局已经用过了")
 		return
 	if not bool(srv_state.get("c02s2_can", false)):
-		_toast("「想象」只能在第十三巡摸牌前发动（本局一次）")
+		_toast("「想象」只能在第十三巡摸牌前发动(本局一次)")
 		return
 	swap_panel.begin({
 		"name": "想象",
@@ -13255,12 +13259,12 @@ func _swap_start() -> void:
 		"cancel": true,
 		"on_confirm": _swap_confirm,
 	})
-	_toast("想象：选 1~3 张手牌 + 同样张数的牌河牌 → 点「开始」")
+	_toast("想象:选 1~3 张手牌 + 同样张数的牌河牌 → 点「开始」")
 
 
 func _on_card09_river_clicked(seq: int) -> void:
 	if not _card09_ok(int(river_seat_by_seq.get(int(seq), -1)), false, int(seq)):
-		_toast("这张不能换（这一行换过了 / 被鸣走 / 暗置）")
+		_toast("这张不能换(这一行换过了 / 被鸣走 / 暗置)")
 		return
 	if c09_seq == seq:
 		c09_seq = -1
@@ -13272,7 +13276,7 @@ func _on_card09_river_clicked(seq: int) -> void:
 		# 第一次发动：点自己牌河 = 间合守(1)，点别家牌河 = 间合攻(2)
 		var rs := int(river_seat_by_seq.get(int(seq), -1))
 		c09_skill = 1 if rs == my_seat else 2
-		_toast("间合%s：已选%s牌河那张；再选一张手牌 → 开始"
+		_toast("间合%s:已选%s牌河那张;再选一张手牌 → 开始"
 			% ["守" if int(c09_skill) == 1 else "攻",
 			   "自己" if int(c09_skill) == 1 else "别家"])
 	_refresh_c09_btn()
@@ -13327,7 +13331,7 @@ func _swap_confirm(picks: Array, rivers: Array) -> void:
 		if int(i) >= 0 and int(i) < tiles.size():
 			picked.append(String(tiles[int(i)]))
 	if picked.is_empty() or picked.size() != rivers.size():
-		_toast("手牌和牌河的张数要一样（1~3 张）")
+		_toast("手牌和牌河的张数要一样(1~3 张)")
 		return
 	var r := srv_request({"op": "swap", "seat": my_seat,
 		"hand_tiles": picked, "river": rivers.duplicate()})
@@ -13337,13 +13341,13 @@ func _swap_confirm(picks: Array, rivers: Array) -> void:
 		_toast(String(r.get("error", "想象失败")))
 		return
 	if r.is_empty():
-		_toast(_srv_err("想象失败：服务端没有回应"))
+		_toast(_srv_err("想象失败:服务端没有回应"))
 		return
 	var sw: Dictionary = r.get("swap", {})
 	var got: Array = sw.get("got", [])
 	_swap_close()                     # 摸牌前发动时 phase 还是 draw，不会自动收面板
 	srv_apply_state(r.get("state"), r.get("events"))
-	_toast("想象：%s → %s" % ["、".join(picked), "、".join(got)])
+	_toast("想象:%s → %s" % [",".join(picked), ",".join(got)])
 	_pre_draw_resume()                # 摸牌前发动 → 接着摸牌 / 问下一个技能
 
 
@@ -13424,12 +13428,12 @@ func _btn_tune_load() -> void:
 	f.close()
 	var d = JSON.parse_string(raw)
 	if typeof(d) != TYPE_DICTIONARY:
-		push_warning("main.gd: btn_tune.cfg 不是合法 JSON，忽略")
+		push_warning("main.gd: btn_tune.cfg 不是合法 JSON,忽略")
 		return
 	var dd := d as Dictionary
 	prompt_btn_gap = float(dd.get("gap", prompt_btn_gap))
 	prompt_btn_offset = Vector2(float(dd.get("ox", 0.0)), float(dd.get("oy", 0.0)))
-	print("[PROMPT_BTN] 已载入微调：gap=%.1f offset=%s" % [
+	print("[PROMPT_BTN] 已载入微调:gap=%.1f offset=%s" % [
 		prompt_btn_gap, prompt_btn_offset])
 
 
@@ -13569,14 +13573,14 @@ func _board_open() -> void:
 		_toast("「画板」本局已经用过了")
 		return
 	if not bool(srv_state.get("c02s1_can", false)):
-		_toast("摸牌前才能发动「画板」（本局一次）")
+		_toast("摸牌前才能发动「画板」(本局一次)")
 		return
 	# 画板列的是「所有牌种」（1m..9m / 1p..9p / 1s..9s / 东南西北白发中），
 	# 不局限于自己的手牌：指定的是牌种，别人摸到就送过来
 	var tiles: Array = []
 	for k in TileBank.TILE_KINDS:
 		tiles.append(String(k))
-	print("画板：全部牌种 ", tiles)
+	print("画板:全部牌种 ", tiles)
 	board_picks.clear()
 	board_frames.clear()
 	var vp := get_viewport_rect().size
@@ -13599,7 +13603,7 @@ func _board_open() -> void:
 	board_ui.add_child(bg)
 
 	var title := Label.new()
-	title.text = "画板：选三种牌（任意牌种，再点一下取消）；选满三张后点「开始」"
+	title.text = "画板:选三种牌(任意牌种,再点一下取消);选满三张后点「开始」"
 	title.add_theme_font_size_override("font_size", 30)
 	title.add_theme_color_override("font_color", Color(1.0, 0.96, 0.8))
 	title.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -13692,7 +13696,7 @@ func _board_confirm() -> void:
 	_board_close()
 	srv_apply_state(r.get("state"), r.get("events"))
 	_pre_draw_resume()                # 摸牌前发动 → 接着摸牌 / 问下一个技能
-	_toast("画板：已指定 %s" % "、".join(picked))
+	_toast("画板:已指定 %s" % ",".join(picked))
 
 
 func _board_close() -> void:
@@ -13722,12 +13726,12 @@ func _cc_copy(st) -> Dictionary:
 func _yiding_why_not() -> void:
 	if String(srv_state.get("phase", "")) != "discard" \
 			or int(srv_state.get("turn", -1)) != my_seat:
-		_toast("一定和牌：等轮到你打牌时再点这个图标")
+		_toast("一定和牌:等轮到你打牌时再点这个图标")
 		return
 	if (srv_state.get("riichi", []) as Array).has(my_seat):
-		_toast("一定和牌：立直之后不能宣言")
+		_toast("一定和牌:立直之后不能宣言")
 		return
-	_toast("一定和牌：现在手里没有「切出去还听牌」的牌")
+	_toast("一定和牌:现在手里没有「切出去还听牌」的牌")
 
 
 func _yiding_from(st: Dictionary, card: int, skill: int) -> bool:
@@ -13883,7 +13887,7 @@ func _on_identity_wind(seat: int, card_no: int, wind: int) -> void:
 	skill2_target = target
 	hand_pick.begin(skill2_picks, 2)
 	_update_skill2_dim()
-	_toast("对象：%s（%s风）— 请点两张手牌" % [srv_name_of(target), WIND_CN[clampi(wind, 0, 3)]])
+	_toast("对象:%s(%s风)— 请点两张手牌" % [srv_name_of(target), WIND_CN[clampi(wind, 0, 3)]])
 
 
 # ── 座位选择面板（东南西北）· 统一入口 ──────────────────────────────
@@ -13957,7 +13961,7 @@ func seat_pick_info() -> Dictionary:
 func seat_pick_open_cfg() -> void:
 	var dir := ProjectSettings.globalize_path("user://")
 	OS.shell_open(dir)
-	_toast("配置文件目录：%s" % dir)
+	_toast("配置文件目录:%s" % dir)
 
 
 # 东南西北 → 座位：和决斗 / 避开 / 看破选目标同一条换算（东=庄家，南=下家…）
@@ -13968,7 +13972,7 @@ func _wind_to_seat(wind: int) -> int:
 func _seat_pick_begin(mode: String, title: String) -> void:
 	var n := _seat_pick_node()
 	if n == null:
-		_toast("座位选择面板没加载出来（seat_picker.gd）")
+		_toast("座位选择面板没加载出来(seat_picker.gd)")
 		return
 	seat_pick_mode = String(mode)
 	var dealer := int(srv_state.get("dealer", my_seat))
@@ -14041,7 +14045,7 @@ func _on_seat_picked(seat: int) -> void:
 			skill2_target = int(seat)
 			hand_pick.begin(skill2_picks, 2)
 			_update_skill2_dim()
-			_toast("对象：%s — 请点两张手牌" % srv_name_of(int(seat)))
+			_toast("对象:%s — 请点两张手牌" % srv_name_of(int(seat)))
 
 
 # ── 协战人物卡遮罩（长按人物卡 ≥0.7 秒）──────────────────────────────
@@ -14068,7 +14072,7 @@ func _on_identity_long_press(seat: int, card_no: int) -> void:
 		return
 	# 协战卡寿命到头 → 永久遮罩，长按不能取消（用户口径 2026-11-01）
 	if _my_support_expired():
-		_toast("这张协战卡已经到期：永久遮罩，不能取消")
+		_toast("这张协战卡已经到期:永久遮罩,不能取消")
 		return
 	_support_mute_toggle()          # 长按 = 直接开关「自己协战卡」的遮罩
 
@@ -14076,7 +14080,7 @@ func _on_identity_long_press(seat: int, card_no: int) -> void:
 # 开关自己协战卡的遮罩：遮罩期间这张卡的技能不自动发动、也不自动来问我
 func _support_mute_toggle() -> void:
 	if _my_support_expired():
-		_toast("这张协战卡已经到期：永久遮罩，不能取消")
+		_toast("这张协战卡已经到期:永久遮罩,不能取消")
 		return
 	var sm = srv_state.get("support_mute")
 	var was_on := (typeof(sm) == TYPE_DICTIONARY
@@ -14084,13 +14088,13 @@ func _support_mute_toggle() -> void:
 	var r := srv_request({"op": "support_mute", "seat": my_seat,
 		"target": my_seat, "on": (not was_on)})
 	if r.is_empty():
-		_toast(_srv_err("协战卡遮罩：服务端没有回应"))
+		_toast(_srv_err("协战卡遮罩:服务端没有回应"))
 		return
 	srv_apply_state(r.get("state"), r.get("events"))
 	if was_on:
-		_toast("协战卡遮罩：已关闭（协战卡的技能恢复判定）")
+		_toast("协战卡遮罩:已关闭(协战卡的技能恢复判定)")
 	else:
-		_toast("协战卡遮罩：已打开（这张卡的技能不再自动发动、也不再问我）")
+		_toast("协战卡遮罩:已打开(这张卡的技能不再自动发动,也不再问我)")
 
 
 # 这张卡现在是不是被遮罩的协战卡（点它的技能图标 → 直接拦下）
@@ -14122,7 +14126,7 @@ func _skill2_on_clicked() -> void:
 		skill2_card = 1
 		skill2_target = -1
 		skill2_picks.clear()
-		_seat_pick_begin("skill2", "避开：选一名玩家")
+		_seat_pick_begin("skill2", "避开:选一名玩家")
 		return
 	# ★ 2026-11-09：第二次点图标 = **取消**（由 `_skill_cancel_if_busy()` 先一步处理）。
 	#   以前这里有一条「第三次点 = 确认」的分支，是死代码。
@@ -14288,7 +14292,7 @@ func _toast(text: String) -> void:
 		toast_label.custom_minimum_size = Vector2(880, 40)
 		toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		add_child(toast_label)
-	toast_label.text = text
+	toast_label.text = Txt.half(text)
 	toast_label.visible = true
 	await get_tree().create_timer(2.6).timeout
 	if is_instance_valid(toast_label):
@@ -14382,7 +14386,7 @@ func _c29s1_op(op: String, extra: Dictionary = {}) -> void:
 	hide_chow_panel()
 	var r := srv_request(req)
 	if r.is_empty():
-		_toast(_srv_err("加速：服务端没有回应"))
+		_toast(_srv_err("加速:服务端没有回应"))
 		_pull_state()
 		return
 	if srv_kangpo_blocked(r):
@@ -14926,7 +14930,7 @@ func srv_apply_state(st, events = null) -> void:
 	# （正常路径下 state.seat 一定等于 my_seat，这只是个保险丝）
 	var got_seat := int(st2.get("seat", my_seat))
 	if got_seat != my_seat:
-		push_warning("main.gd: 收到 %d 号位的状态，本窗口是 %d 号位 —— 丢掉这次同步"
+		push_warning("main.gd: 收到 %d 号位的状态,本窗口是 %d 号位 —— 丢掉这次同步"
 			% [got_seat, my_seat])
 		return
 	# ★ 性能（掉帧主因）：0.35s 轮询 + 长连接推送经常把**一模一样**的 state 送过来，
@@ -15097,17 +15101,17 @@ func srv_apply_state(st, events = null) -> void:
 			if typeof(ev) != TYPE_DICTIONARY:
 				continue
 			if bool((ev as Dictionary).get("c25", false)):
-				_toast("宝牌运：切出宝牌，支付三家各 3000 点，本局不能胡牌")
+				_toast("宝牌运:切出宝牌,支付三家各 3000 点,本局不能胡牌")
 			elif String((ev as Dictionary).get("event", "")) == "c34_last":
 				_haidi_play_in()                # 【海底】技能发动 → 0..671 帧，播完进循环
-				_toast("海底：把「%s」换进手里了 —— 点【自摸】结算"
+				_toast("海底:把「%s」换进手里了 —— 点[自摸]结算"
 					% String((ev as Dictionary).get("tile", "")))
 			elif String((ev as Dictionary).get("event", "")) == "qianlu_done":
 				if int((ev as Dictionary).get("seat", my_seat)) == my_seat:
-					_toast("前路：三张全中！已获得【一定和牌】（听牌后点同一张 20-1 技能按钮宣言）")
+					_toast("前路:三张全中！已获得[一定和牌](听牌后点同一张 20-1 技能按钮宣言)")
 			elif String((ev as Dictionary).get("event", "")) == "qianlu_fail":
 				if int((ev as Dictionary).get("seat", my_seat)) == my_seat:
-					_toast("前路：预言没对上（顺序或牌种不符），本次落空")
+					_toast("前路:预言没对上(顺序或牌种不符),本次落空")
 	# 其他家摸到的牌：显示成一个牌背，打完就收起
 	if typeof(events) == TYPE_ARRAY:
 		for ev in (events as Array):
@@ -15251,7 +15255,7 @@ func _nick_is_placeholder(n: String) -> bool:
 
 
 func srv_nick_of(seat: int) -> String:
-	"""座位 → 本局昵称（服务端 state.scores 里带的）；拿不到 / 是占位名就回 ID「P1~P4」。"""
+	"""座位 → 本局昵称(服务端 state.scores 里带的);拿不到 / 是占位名就回 ID「P1~P4」。"""
 	var s := int(seat)
 	if s < 0 or s > 3:
 		return ""
@@ -15442,14 +15446,14 @@ func _show_match_final(rank, confirmed) -> void:
 	a.visible = true
 	if not a.confirmed.is_connected(_match_confirm_press):
 		a.confirmed.connect(_match_confirm_press)
-	print("[终局] 半庄结束，名次：", rank)
+	print("[终局] 半庄结束,名次:", rank)
 
 
 func _match_confirm_press() -> void:
 	_match_waiting = true
 	var r := srv_request({"op": "match_confirm", "seat": my_seat})
 	if r.is_empty():
-		_toast(_srv_err("终局确认：服务端没有回应"))
+		_toast(_srv_err("终局确认:服务端没有回应"))
 		return
 	_match_apply(r)
 
@@ -15563,7 +15567,7 @@ func _result_confirm_apply(raw) -> void:
 	if sig != result_confirm_sig:
 		result_confirm_sig = sig
 		if result_confirmed and not bool(d.get("ready", false)):
-			_toast("已確認，等待其他玩家（%d/%d）" % [count, maxi(required.size(), 1)])
+			_toast("已確認,等待其他玩家(%d/%d)" % [count, maxi(required.size(), 1)])
 
 
 func _result_confirm_poll() -> void:
@@ -15693,7 +15697,7 @@ func discard_tile(index: int) -> void:
 		var all27 := display_tiles()
 		if c27_mode == "s2" and index >= 0 and index < all27.size() \
 				and not srv_c27s2_ok(String(all27[index])):
-			_toast("命中：这张打出去就不听牌了")
+			_toast("命中:这张打出去就不听牌了")
 			return
 		c27_panel.handle_hand(index)            # 瞄准 / 命中：点手牌 = 选中/取消
 		return
@@ -15701,7 +15705,7 @@ func discard_tile(index: int) -> void:
 		var c24_tiles := display_tiles()
 		if index >= 0 and index < c24_tiles.size() \
 				and not srv_can_c24_with(String(c24_tiles[index])):
-			_toast("一发：这张打出去就不听牌了")
+			_toast("一发:这张打出去就不听牌了")
 			return
 		c24_panel.handle_hand(index)            # 一发：点手牌 = 选中/取消
 		return
@@ -15711,7 +15715,7 @@ func discard_tile(index: int) -> void:
 	if c25b_panel.active:
 		var all25 := display_tiles()
 		if index >= 0 and index < all25.size() and srv_is_dora(String(all25[index])):
-			_toast("宝牌的集合：不能拿宝牌去换")
+			_toast("宝牌的集合:不能拿宝牌去换")
 			return
 		c25b_panel.handle_hand(index)          # 宝牌的集合：点手牌 = 选中/取消
 		return
@@ -15750,11 +15754,11 @@ func discard_tile(index: int) -> void:
 	if game_phase == PHASE_DEAL:
 		return
 	if String(srv_state.get("phase", "")) == "deal_skill":
-		_toast("配牌阶段：等其他玩家发动技能或跳过")
+		_toast("配牌阶段:等其他玩家发动技能或跳过")
 		return
 	if bool(srv_state.get("must_tsumogiri", false)) and drawn_tile != "" \
 			and index != drawn_slot():
-		_toast("换牌之后只能摸切（打刚摸到的那张）")
+		_toast("换牌之后只能摸切(打刚摸到的那张)")
 		return
 	var _all := display_tiles()
 	if index >= 0 and index < _all.size() and not srv_can_discard_with(String(_all[index])):
@@ -15775,7 +15779,7 @@ func discard_tile(index: int) -> void:
 		if c25_confirm_tile != c25_t:
 			c25_confirm_tile = c25_t
 			_c25_confirm_show(true)
-			_toast("确认要切出宝牌吗？（再点一次这张牌才打出；点「开始」取消）")
+			_toast("确认要切出宝牌吗？(再点一次这张牌才打出;点「开始」取消)")
 			return
 	elif c25_confirm_tile != "" and c25_confirm_tile != c25_t:
 		_c25_confirm_show(false)             # 点了别的牌 → 取消上次的确认
@@ -15798,7 +15802,7 @@ func discard_tile(index: int) -> void:
 
 	# ② 立直后：不允许再从手牌打出，只能摸切
 	if riichi_declared and index != drawn_slot():
-		_toast("立直后只能打刚摸到的那张（摸切）")
+		_toast("立直后只能打刚摸到的那张(摸切)")
 		return
 
 	_discard_at(index, false)
@@ -15814,16 +15818,16 @@ func _declare_yiding(kind: String) -> void:
 		_apply_entity_states(srv_state)
 		return
 	if r.is_empty():
-		_toast(_srv_err("一定和牌：服务端没有回应"))
+		_toast(_srv_err("一定和牌:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "一定和牌：发动失败")))
+		_toast(String(r.get("error", "一定和牌:发动失败")))
 		_pull_state()
 		return
 	# 宣言只是「武装」：之后别家手里有这张必须打，都没有就摸牌前换给你；
 	# 和牌由正常判定给出番种（不会凭空造一个「一定和牌」的役）。
-	_toast("一定和牌：已宣言听牌【%s】——别人手里有就必须打，没有就摸牌前换给你" % kind)
+	_toast("一定和牌:已宣言听牌[%s]——别人手里有就必须打,没有就摸牌前换给你" % kind)
 	srv_apply_state(r.get("state"), r.get("events"))
 	_ensure_result()
 
@@ -17049,12 +17053,12 @@ func _gb_kind_head() -> void:
 		return
 	var head := cg_ui.get_node_or_null("Head") as Label
 	if head != null and gb_kind_pick != "":
-		head.text = "国标：已选【%s】—— 点「开始」确认" % gb_kind_pick
+		head.text = "国标:已选[%s]—— 点「开始」确认" % gb_kind_pick
 
 
 func _gb_declare_kind() -> void:
 	if gb_kind_pick == "":
-		_toast("国标：先选一张听牌张")
+		_toast("国标:先选一张听牌张")
 		return
 	var k := gb_kind_pick
 	_cg_close()
@@ -17067,12 +17071,12 @@ func _yd_kind_head() -> void:
 		return
 	var head := cg_ui.get_node_or_null("Head") as Label
 	if head != null and yd_kind_pick != "":
-		head.text = "一定和牌：已选【%s】—— 点「开始」确认" % yd_kind_pick
+		head.text = "一定和牌:已选[%s]—— 点「开始」确认" % yd_kind_pick
 
 
 func _yd_declare_kind() -> void:
 	if yd_kind_pick == "":
-		_toast("一定和牌：先选一张听牌张")
+		_toast("一定和牌:先选一张听牌张")
 		return
 	var k := yd_kind_pick
 	_cg_close()
@@ -17084,10 +17088,10 @@ func _cg_guobiao() -> void:
 	if guobiao_selecting:
 		_cg_close()
 		guobiao_selecting = false
-		_toast("国标：取消")
+		_toast("国标:取消")
 		return
 	if not bool(srv_state.get("guobiao_can", false)):
-		_toast("国标：切出去也凑不出五门齐 / 花龙 / 三色三步高（或本小局已用过）")
+		_toast("国标:切出去也凑不出五门齐 / 花龙 / 三色三步高(或本小局已用过)")
 		return
 	if yiding_selecting:
 		_yd_close()
@@ -17096,11 +17100,11 @@ func _cg_guobiao() -> void:
 	riichi_selecting = false
 	gb_kind_pick = ""
 	_apply_entity_states(srv_state)
-	_cg_show_kind_grid("国标：选一张要听的牌（必须能和成五门齐/花龙/三色三步高）",
+	_cg_show_kind_grid("国标:选一张要听的牌(必须能和成五门齐/花龙/三色三步高)",
 		func(k): gb_kind_pick = String(k); _gb_kind_head(),
 		func(): _gb_declare_kind(),
 		srv_state.get("guobiao_kinds", []))
-	_toast("国标：选一张听牌张 → 点「开始」")
+	_toast("国标:选一张听牌张 → 点「开始」")
 
 
 func _make_gb_ui() -> void:
@@ -17143,7 +17147,7 @@ func _gb_pick(index: int) -> void:
 	if index < 0 or index >= tiles.size():
 		return
 	if not srv_can_guobiao_with(String(tiles[index])):
-		_toast("国标：这张打出去就不听牌了")
+		_toast("国标:这张打出去就不听牌了")
 		return
 	hand_pick.toggle(index)
 	_apply_entity_states(srv_state)         # 选中的恢复亮度
@@ -17157,7 +17161,7 @@ func _gb_confirm() -> void:
 	if not gb_picks.is_empty():
 		idx = int(gb_picks[0])
 	if idx < 0 or idx >= tiles.size():
-		_toast("国标：先选一张能听牌的牌")
+		_toast("国标:先选一张能听牌的牌")
 		return
 	var tile := String(tiles[idx])
 	_gb_close()
@@ -17195,14 +17199,14 @@ func _declare_guobiao(kind: String) -> void:
 		_apply_entity_states(srv_state)
 		return
 	if r.is_empty():
-		_toast(_srv_err("国标：服务端没有回应"))
+		_toast(_srv_err("国标:服务端没有回应"))
 		_pull_state()
 		return
 	if not bool(r.get("ok", false)):
-		_toast(String(r.get("error", "国标：发动失败")))
+		_toast(String(r.get("error", "国标:发动失败")))
 		_pull_state()
 		return
-	_toast("国标：宣言！听牌【%s】" % kind)
+	_toast("国标:宣言！听牌[%s]" % kind)
 	srv_apply_state(r.get("state"), r.get("events"))
 	_ensure_result()
 
@@ -17227,7 +17231,7 @@ func _legal_guard(st: Dictionary) -> void:
 	if now - _legal_fix_ms < 2000:
 		return
 	_legal_fix_ms = now
-	_dev_log("[LEGAL] 本地 legal 不可用（%d 张都不许打）→ 强制重拉 state" % (tiles as Array).size())
+	_dev_log("[LEGAL] 本地 legal 不可用(%d 张都不许打)→ 强制重拉 state" % (tiles as Array).size())
 	_pull_state()
 
 
@@ -17253,10 +17257,10 @@ func _yiding_on_clicked() -> void:
 	if yiding_selecting:
 		_cg_close()
 		yiding_selecting = false
-		_toast("一定和牌：取消")
+		_toast("一定和牌:取消")
 		return
 	if not bool(srv_state.get("yiding_can", false)):
-		_toast("一定和牌：要刚摸完牌、且切出一张还能听牌")
+		_toast("一定和牌:要刚摸完牌,且切出一张还能听牌")
 		return
 	if guobiao_selecting:
 		_gb_close()
@@ -17266,11 +17270,11 @@ func _yiding_on_clicked() -> void:
 	yd_kind_pick = ""
 	_apply_entity_states(srv_state)
 	# 和国标同一套 UI：不能听的牌种置灰半透明、点不动（服务端 state.yiding_waits）
-	_cg_show_kind_grid("一定和牌：选一张要听的牌（亮着的才听）",
+	_cg_show_kind_grid("一定和牌:选一张要听的牌(亮着的才听)",
 		func(k): yd_kind_pick = String(k); _yd_kind_head(),
 		func(): _yd_declare_kind(),
 		srv_state.get("yiding_waits", []))
-	_toast("一定和牌：选一张听牌张 → 点「开始」")
+	_toast("一定和牌:选一张听牌张 → 点「开始」")
 
 
 func _make_yd_ui() -> void:
@@ -17312,7 +17316,7 @@ func _yd_pick(index: int) -> void:
 	if index < 0 or index >= tiles.size():
 		return
 	if not srv_can_yiding_with(String(tiles[index])):
-		_toast("一定和牌：这张打出去就不听牌")
+		_toast("一定和牌:这张打出去就不听牌")
 		return
 	hand_pick.toggle(index)
 	_apply_entity_states(srv_state)
@@ -17326,7 +17330,7 @@ func _yd_confirm() -> void:
 	if not yd_picks.is_empty():
 		idx = int(yd_picks[0])
 	if idx < 0 or idx >= tiles.size():
-		_toast("一定和牌：先选一张能听牌的牌")
+		_toast("一定和牌:先选一张能听牌的牌")
 		return
 	var tile := String(tiles[idx])
 	_yd_close()
@@ -17409,7 +17413,7 @@ func srv_dora_detail(yaku_list: Array) -> String:
 				parts.append("%s %d" % [key, n])
 	if parts.is_empty():
 		return ""
-	return "（%s）" % "、".join(parts)
+	return "(%s)" % ",".join(parts)
 
 
 const WIN_SCENE_PATH := "res://和牌播报.tscn"
@@ -17632,7 +17636,7 @@ func _draw_tenpai_hand_rack(win: Dictionary) -> Node2D:
 			row_node.scale = Vector2.ONE * k
 		# 玩家 ID 标签：压在牌正上方、跟这一行同宽居中
 		var lbl := Label.new()
-		lbl.text = "%s　听牌" % srv_nick_of(int(sd))
+		lbl.text = "%s 听牌" % srv_nick_of(int(sd))
 		lbl.add_theme_color_override("font_color", Color(0.443, 0.871, 0.796, 1.0))
 		lbl.add_theme_font_size_override("font_size", 26)
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -17875,9 +17879,9 @@ func _debug_announce() -> void:
 		"deltas": {str(ws): 12000, str((ws + 1) % 4): -4000, str((ws + 2) % 4): -4000, str((ws + 3) % 4): -4000},
 	}
 	var content := {
-		"title": "和　了", "method": "%s　自摸" % srv_nick_of(ws),
+		"title": "和 了", "method": "%s 自摸" % srv_nick_of(ws),
 		"yaku": "立直・门前清自摸和・平和・断幺九・一气通贯・宝牌2",
-		"score": "12000 點", "sub": "6 番　30 符", "is_draw": false,
+		"score": "12000 點", "sub": "6 番 30 符", "is_draw": false,
 		"yaku_rows": _result_yaku_rows(win),
 		"seats": _result_seats(win),
 	}
@@ -17963,7 +17967,7 @@ func show_hupai(win: Dictionary = {}) -> void:
 
 	var is_draw := String(win.get("result", "")) == "ryuukyoku" \
 		or (win.has("reason") and not win.has("winner"))
-	var title := "流　局" if is_draw else "和　了"
+	var title := "流 局" if is_draw else "和 了"
 	var method := "DRAW" if is_draw else "WIN"
 	var yaku_text := ""
 	var score_text := ""
@@ -17982,8 +17986,8 @@ func show_hupai(win: Dictionary = {}) -> void:
 				var who := []
 				for sid in tp:
 					who.append(srv_nick_of(int(sid)))
-				detail += "\n听牌：%s" % "、".join(who)
-				sub_text = "聽牌　%s" % "・".join(who)
+				detail += "\n听牌:%s" % ",".join(who)
+				sub_text = "聽牌 %s" % "・".join(who)
 		else:
 			var names := []
 			for y in win.get("yaku", []):
@@ -18004,21 +18008,21 @@ func show_hupai(win: Dictionary = {}) -> void:
 			var _ls := _int_of(win, "loser", -1)   # 自摸时服务端给 null
 			if bool(win.get("tsumo", false)) \
 					or String(win.get("result", "")) == "tsumo":
-				method = "%s　自摸" % srv_nick_of(_wn)
+				method = "%s 自摸" % srv_nick_of(_wn)
 			elif _ls >= 0:
-				method = "%s ← %s　荣和" % [srv_nick_of(_wn), srv_nick_of(_ls)]
+				method = "%s ← %s 荣和" % [srv_nick_of(_wn), srv_nick_of(_ls)]
 			yaku_text = "・".join(names) + dora_txt
-			detail = "%s　%s%s" % [head, "、".join(names), dora_txt]
+			detail = "%s %s%s" % [head, ",".join(names), dora_txt]
 			var _ym := _int_of(win, "yakuman", 0)
 			if _ym > 0:
 				var ym := _ym
 				score_text = "%d 點" % pts
 				sub_text = "役滿" + (" ×%d" % ym if ym > 1 else "")
-				detail += "\n役满 ×%d　%d 点" % [ym, pts]
+				detail += "\n役满 ×%d %d 点" % [ym, pts]
 			else:
 				score_text = "%d 點" % pts
-				sub_text = "%d 番　%d 符" % [han, fu]
-				detail += "\n%d 番 %d 符　%d 点" % [han, fu, pts]
+				sub_text = "%d 番 %d 符" % [han, fu]
+				detail += "\n%d 番 %d 符 %d 点" % [han, fu, pts]
 
 	var _content := {
 		"title": title, "method": method, "yaku": yaku_text,
@@ -18321,14 +18325,14 @@ func _tm_fire(mode: String, cur: Dictionary) -> void:
 	_tm_visible(false)
 	if mode == "claim":
 		_dev_log("[TIMER] 鸣牌询问超时 → 自动过")
-		_toast("35 秒到：自动过")
+		_toast("35 秒到:自动过")
 		_on_action_button("pass")
 		return
 	if mode == "ask":
 		var b = cur.get("btn")
 		if b is TextureButton and is_instance_valid(b) and (b as TextureButton).visible:
 			_dev_log("[TIMER] 技能询问超时 → 按 %s" % String((b as TextureButton).name))
-			_toast("35 秒到：自动跳过这次询问")
+			_toast("35 秒到:自动跳过这次询问")
 			(b as TextureButton).emit_signal("pressed")
 		return
 	_tm_auto_discard()
@@ -18349,7 +18353,7 @@ func _tm_auto_discard() -> void:
 	if t == "":
 		return
 	_dev_log("[TIMER] 出牌超时 → 摸切 %s" % t)
-	_toast("35 秒到：自动摸切")
+	_toast("35 秒到:自动摸切")
 	UiSfx.play("discard", -10.0)
 	_act_fire("discard", {"tile": t})
 
@@ -18469,14 +18473,14 @@ func _process(delta: float) -> void:
 			and Time.get_ticks_msec() - int(_act_pending.get("t", 0)) > 12000:
 		_act_pending = {}
 		_busy_clear()
-		_toast(_srv_err("动作没回应，正在重新同步…"))
+		_toast(_srv_err("动作没回应,正在重新同步…"))
 		_pull_state()
 	# ★ 诊断：srv_busy 超过 5 秒还没清 → 打印是谁置上的。
 	#   只报日志，**不自动复位**（自动复位是兜底，会把真 bug 藏起来）。
 	if srv_busy and not _busy_warned and Time.get_ticks_msec() - _busy_ms > 5000:
 		_busy_warned = true
-		push_error("[BUSY] srv_busy 超过 5 秒没清：%s" % _busy_site)
-		_toast("内部状态卡在：%s（请把这条报给开发者）" % _busy_site)
+		push_error("[BUSY] srv_busy 超过 5 秒没清:%s" % _busy_site)
+		_toast("内部状态卡在:%s(请把这条报给开发者)" % _busy_site)
 	# ★ 通道被定时轮询占着时，动作排在这里补发（否则每次切牌都可能撞上一整个 RTT）
 	if not _act_wait.is_empty() and _act_pending.is_empty() and not _srv_bg_busy():
 		var aw := _act_wait
@@ -18695,7 +18699,7 @@ func _input(event: InputEvent) -> void:
 				return
 			if _btn_tune_dev() and k0.keycode == KEY_F10:
 				_btn_tune_mode = not _btn_tune_mode
-				_toast("按钮微调模式：%s（方向键挪，F9 看数值）"
+				_toast("按钮微调模式:%s(方向键挪,F9 看数值)"
 					% ("开" if _btn_tune_mode else "关"))
 				get_viewport().get_viewport().set_input_as_handled()
 				return
@@ -18757,7 +18761,7 @@ func quick_discard_drawn() -> void:
 func _setup_opponents() -> void:
 	tapai = get_node_or_null(TAPAI_NODE)
 	if tapai == null:
-		push_warning("main.gd: 找不到 " + TAPAI_NODE + "（三家手牌）")
+		push_warning("main.gd: 找不到 " + TAPAI_NODE + "(三家手牌)")
 		return
 	hand_show.setup(self, tapai)
 	var pile_parent: Node = fengpan.get_parent() if fengpan != null else self
@@ -19210,7 +19214,7 @@ func _chow_choose() -> void:
 	chi_selecting = true
 	show_chow_choices()
 	_sync_chow_choices()
-	_toast("吃：选一组搭子")
+	_toast("吃:选一组搭子")
 
 
 # 服务端下发的吃法：state.claim.options 里 action="chi" 的 choices
@@ -20202,7 +20206,7 @@ func _dev_autoplay_maybe() -> void:
 	# ① 环境变量最省事：TIANMA_AUTOPLAY=2 就自动打 2 小局
 	var env := OS.get_environment("TIANMA_AUTOPLAY").strip_edges()
 	if env != "":
-		_dev_log("[AUTOPLAY] 启动（env）：目标 %s 小局" % env)
+		_dev_log("[AUTOPLAY] 启动(env):目标 %s 小局" % env)
 		_dev_autoplay(maxi(1, int(env)))
 		return
 	var f := FileAccess.open(AUTOPLAY_CFG, FileAccess.READ)
@@ -20239,7 +20243,7 @@ func _dev_autoplay_maybe() -> void:
 		return
 	if haidi:
 		_dev_haidi_mode = true
-	_dev_log("[AUTOPLAY] 启动：目标 %d 小局" % hands)
+	_dev_log("[AUTOPLAY] 启动:目标 %d 小局" % hands)
 	_dev_autoplay(hands)
 
 
@@ -20252,8 +20256,8 @@ func _dev_haidi_setup_once() -> void:
 	if r.is_empty():
 		_dev_log("[AUTOPLAY·海底] 服务端没回应")
 		return
-	_dev_log("[AUTOPLAY·海底] 已摆好：%s" % str(r.get("dev_haidi", {})))
-	_toast("海底调试：已摆成「剩 12 张 + 听牌 + 海底牌在牌山」，打一张就发动")
+	_dev_log("[AUTOPLAY·海底] 已摆好:%s" % str(r.get("dev_haidi", {})))
+	_toast("海底调试:已摆成「剩 12 张 + 听牌 + 海底牌在牌山」,打一张就发动")
 	srv_apply_state(r.get("state"), r.get("events"))
 
 
@@ -20267,7 +20271,7 @@ func _dev_autoplay(hands: int) -> void:
 		if not is_inside_tree():
 			return
 		_dev_auto_tick()
-	_dev_log("[AUTOPLAY] 结束：一共打了 %d 小局" % _dev_auto_done)
+	_dev_log("[AUTOPLAY] 结束:一共打了 %d 小局" % _dev_auto_done)
 
 
 func _dev_auto_tick() -> void:
@@ -20290,7 +20294,7 @@ func _dev_auto_tick() -> void:
 		if not _dev_auto_was_over:
 			_dev_auto_was_over = true
 			_dev_auto_done += 1
-			_dev_log("[AUTOPLAY] 第 %d 小局结束（目标 %d）" % [_dev_auto_done, _dev_auto_target])
+			_dev_log("[AUTOPLAY] 第 %d 小局结束(目标 %d)" % [_dev_auto_done, _dev_auto_target])
 			if _dev_auto_done >= _dev_auto_target:
 				_dev_auto_on = false
 		return
@@ -20301,7 +20305,7 @@ func _dev_auto_tick() -> void:
 	if blocking != "":
 		_dev_auto_idle += 1
 		if _dev_auto_idle <= 3:
-			_dev_log("[AUTOPLAY] 停在技能界面：%s（phase=%s）" % [blocking,
+			_dev_log("[AUTOPLAY] 停在技能界面:%s(phase=%s)" % [blocking,
 				String(srv_state.get("phase", ""))])
 		return
 	_dev_auto_idle = 0
@@ -20323,7 +20327,7 @@ func _dev_auto_tick() -> void:
 			_dev_log("[AUTOPLAY] %s 自摸和牌" % rname)
 			_act_fire("tsumo")
 		else:
-			_dev_log("[AUTOPLAY] %s 过（鸣牌窗口：%s）" % [rname, str(opts)])
+			_dev_log("[AUTOPLAY] %s 过(鸣牌窗口:%s)" % [rname, str(opts)])
 			_on_pass_pressed()
 		return
 	if turn != my_seat:
@@ -20332,7 +20336,7 @@ func _dev_auto_tick() -> void:
 		return
 	match ph:
 		"draw":
-			_dev_log("[AUTOPLAY] %s 我摸牌（现 %d 张，预期 +1）" % [rname, display_tiles().size()])
+			_dev_log("[AUTOPLAY] %s 我摸牌(现 %d 张,预期 +1)" % [rname, display_tiles().size()])
 			draw_tile()
 		"discard":
 			if "tsumo" in opts:
@@ -20343,7 +20347,7 @@ func _dev_auto_tick() -> void:
 			var idx := n - 1
 			if drawn_tile != "":
 				idx = drawn_slot()
-			_dev_log("[AUTOPLAY] %s 我打第 %d 张（%d → 预期 %d）" % [rname, idx, n, n - 1])
+			_dev_log("[AUTOPLAY] %s 我打第 %d 张(%d → 预期 %d)" % [rname, idx, n, n - 1])
 			discard_tile(idx)
 			if srv_note != "":
 				_dev_log("[AUTOPLAY·拒绝] %s" % srv_note)
@@ -20375,11 +20379,11 @@ func _dev_autostart() -> bool:
 		if picked.size() < 5 and not hand.is_empty():
 			for i in range(mini(5, hand.size())):
 				menu.call("_on_card_clicked", int(hand[i]))
-			_dev_log("[AUTOPLAY] 大厅：选好 5 张卡")
+			_dev_log("[AUTOPLAY] 大厅:选好 5 张卡")
 			return true
 		if picked.size() >= 5:
 			menu.call("_on_start_pressed")
-			_dev_log("[AUTOPLAY] 大厅：点了开始（等进牌桌）")
+			_dev_log("[AUTOPLAY] 大厅:点了开始(等进牌桌)")
 			return true
 		return true
 	# ② 编号确认阶段
@@ -20389,7 +20393,7 @@ func _dev_autostart() -> bool:
 		if ord.size() < 5:
 			cp.set("order", [14, 17, 18, 19, 12])
 		cp.call("_on_start_pressed")
-		_dev_log("[AUTOPLAY] 编号确认：已点开始")
+		_dev_log("[AUTOPLAY] 编号确认:已点开始")
 		return true
 	return false
 
@@ -20433,9 +20437,9 @@ func _dev_auto_blocking_ui() -> String:
 	if c25b_panel.active:
 		return "25S2 宝牌的集合换牌"
 	if c30_panel.active:
-		return "30S1 向听（%s）" % String(c30_panel.mode)
+		return "30S1 向听(%s)" % String(c30_panel.mode)
 	if c32_panel.active:
-		return "32S1 新手运（%s）" % String(c32_panel.mode)
+		return "32S1 新手运(%s)" % String(c32_panel.mode)
 	if c27_panel.active:
 		return "27 瞄准/命中选牌"
 	if future_active:

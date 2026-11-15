@@ -132,7 +132,7 @@ func _draw() -> void:
 	# 四行名次
 	var rows := rank_rows
 	if rows.is_empty():
-		_text(f, c.x, rect.position.y + ph * 0.40, "（没有终局数据）", ph * 0.06, C_MUTED, pw * 0.8)
+		_text(f, c.x, rect.position.y + ph * 0.40, "(没有终局数据)", ph * 0.06, C_MUTED, pw * 0.8)
 	else:
 		var y0 := rect.position.y + ph * 0.20
 		var rh := ph * 0.135
@@ -158,7 +158,7 @@ func _draw() -> void:
 			# 座位
 			var name := "%d 号位" % seat
 			if mine:
-				name += "（我）"
+				name += "(我)"
 			_text_at(f, row_rect.position.x + pw * 0.20, cy, name, rh * 0.46,
 				C_MINT if mine else C_WHITE)
 			# 分数

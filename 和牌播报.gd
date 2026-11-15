@@ -1051,7 +1051,7 @@ func _input(event: InputEvent) -> void:
 			_dragging = _tune_sel != ""
 			_tune_last = mb.position
 			if _dragging:
-				print("[announce tune] 抓取：", _tune_sel)
+				print("[announce tune] 抓取:", _tune_sel)
 				get_viewport().set_input_as_handled()
 		else:
 			if _dragging:
@@ -1077,7 +1077,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _reset_tune() -> void:
-	"""F6：所有调参字段回到「刚进游戏」的初始值，并删掉存档。"""
+	"""F6:所有调参字段回到「刚进游戏」的初始值,并删掉存档。"""
 	for _k in TUNE_KEYS:
 		if _tune_default.has(_k):
 			set(_k, _tune_default[_k])
@@ -1093,7 +1093,7 @@ func _reset_tune() -> void:
 			plate_clip.position = _plate_rect
 			if _plate_inner != null:
 				_plate_inner.position = Vector2.ZERO
-	print("[announce tune] F6 已恢复初始参数（存档已删）")
+	print("[announce tune] F6 已恢复初始参数(存档已删)")
 	_report_tune()
 
 

@@ -31,6 +31,7 @@ const MENU_FLAG := "user://from_initial_menu.flag"
 
 const SEAT_NAMES := ["我", "下家", "对家", "上家"]
 
+const Txt := preload("res://txt.gd")     # 显示层：全角标点 → 半角
 var srv: ServerBridge
 var start_btn: BaseButton
 var row: Node2D
@@ -122,7 +123,7 @@ func _test_seats_orders() -> Array:
 		return []
 	for s2 in range(4):
 		if (out[s2] as Array).is_empty():
-			print("[TEST_SEATS] 缺少 seat%d，放弃跳过", s2)
+			print("[TEST_SEATS] 缺少 seat%d,放弃跳过", s2)
 			return []
 	return out
 
@@ -131,12 +132,12 @@ func _test_seats_maybe() -> void:
 	var orders := _test_seats_orders()
 	if orders.is_empty():
 		return
-	print("[TEST_SEATS] 跳过选角色：", JSON.stringify(orders))
+	print("[TEST_SEATS] 跳过选角色:", JSON.stringify(orders))
 	# ① 先把四家的 5 张卡告诉服务端（技能归属以服务端为准）
 	var r: Dictionary = srv.request({"op": "test_seats", "orders": orders,
 		"seat": int(my_seat) if int(my_seat) >= 0 else 0})
 	if not bool(r.get("ok", false)):
-		print("[TEST_SEATS] 服务端拒绝：", String(r.get("error", "")))
+		print("[TEST_SEATS] 服务端拒绝:", String(r.get("error", "")))
 		return
 	# ② 本地记录也写好（身份卡的兜底数据 + 之后 reload_orders 用）
 	var pick: Array = orders[0]
@@ -389,7 +390,7 @@ func _refresh_my_wind() -> void:
 		return
 	var idx := (int(my_seat) - int(d) + 4) % 4
 	var nm: String = ["东", "南", "西", "北"][idx]
-	wind_label.text = "本局自风：%s（%d 号位%s）" % [
+	wind_label.text = "本局自风:%s(%d 号位%s)" % [
 		nm, int(my_seat) + 1, "·坐庄" if idx == 0 else ""]
 var voice_opt: OptionButton = null
 var _voice_prev: AudioStreamPlayer = null
@@ -460,7 +461,7 @@ func _on_voice_picked(i: int) -> void:
 		f.store_string(pid)
 		f.close()
 	_voice_preview(pid)
-	_set_hint("语音包：%s（自己吃碰杠立直和牌时播）" % VOICE_DB.display_name(pid))
+	_set_hint("语音包:%s(自己吃碰杠立直和牌时播)" % VOICE_DB.display_name(pid))
 
 
 # 试听：放一句「自摸」
@@ -631,7 +632,7 @@ func _net_why(r: Dictionary) -> String:
 	var addr := ""
 	if srv != null and srv.net != null:
 		if not bool(srv.net.enabled):
-			return "当前是单机模式（没有服务器地址）—— 请换最新版 exe"
+			return "当前是单机模式(没有服务器地址)—— 请换最新版 exe"
 		mode = "联机"
 		addr = String(srv.net.status_text())
 	var why := String(r.get("error", "")).strip_edges()
@@ -639,7 +640,7 @@ func _net_why(r: Dictionary) -> String:
 		why = String(srv.net.last_error).strip_edges()
 	if why == "":
 		why = "服务端没有回应"
-	return "%s 连不上：%s（%s）" % [mode, why, addr]
+	return "%s 连不上:%s(%s)" % [mode, why, addr]
 
 
 # ── F3 调试 HUD（菜单版）：卡的时候截图，一眼看出是渲染还是网络 ──
@@ -671,7 +672,7 @@ func _hud_tick(delta: float) -> void:
 	_hud_acc = 0.0
 	var fps := Engine.get_frames_per_second()
 	var win := get_viewport().get_visible_rect().size
-	_hud.text = "【菜单】FPS %d | 帧 %.1fms | 最近请求 %dms | 窗口 %dx%d | 缩放 %.2f" % [
+	_hud.text = "[菜单]FPS %d | 帧 %.1fms | 最近请求 %dms | 窗口 %dx%d | 缩放 %.2f" % [
 		fps, 1000.0 / maxf(float(fps), 1.0), last_req_ms,
 		int(win.x), int(win.y), DisplayServer.screen_get_scale()]
 
@@ -696,7 +697,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _show_enter_hint() -> void:
-	_set_hint("請輸入房間號，按「進入」加入房間")
+	_set_hint("請輸入房間號,按「進入」加入房間")
 
 
 func _join_lobby() -> void:
@@ -706,14 +707,14 @@ func _join_lobby() -> void:
 	if not bool(r.get("ok", false)):
 		var why := String(r.get("error", "未知错误"))
 		if why.find("已满") >= 0:
-			_set_hint("房间已满（4/4）—— 有人退出后会自动加入")
+			_set_hint("房间已满(4/4)—— 有人退出后会自动加入")
 		else:
 			var why2 := _net_why(r)
 			_set_hint(why2)
 			_net_badge_show(why2)
 		if why != _last_join_err:
 			_last_join_err = why
-			print("initial_menu: 加入大厅失败，稍后自动重试：", why)
+			print("initial_menu: 加入大厅失败,稍后自动重试:", why)
 		return
 	_last_join_err = ""
 	_set_hint("")
@@ -807,7 +808,7 @@ func _apply_lobby(l) -> void:
 
 	if phase == "play" and not entered:
 		if _need_manual_enter:
-			_set_hint("該房間已有一局進行中，按「開始」進入牌桌")
+			_set_hint("該房間已有一局進行中,按「開始」進入牌桌")
 			return
 		entered = true
 		_enter_game()
@@ -860,7 +861,7 @@ func _enter_game() -> void:
 	if flag != null:
 		flag.store_string("1")
 		flag.close()
-	_set_hint("四家都准备好了，进入牌桌…")
+	_set_hint("四家都准备好了,进入牌桌…")
 	await get_tree().create_timer(0.35).timeout
 	get_tree().change_scene_to_file("res://node_2d.tscn")
 
@@ -909,9 +910,9 @@ func _on_start_pressed() -> void:
 				return
 			if selected_no < 0:
 				if _am_pending():
-					_set_hint("这一轮你已经留好牌了，等其他人")
+					_set_hint("这一轮你已经留好牌了,等其他人")
 				else:
-					_set_hint("先点一张要留下的卡牌，再点「开始」")
+					_set_hint("先点一张要留下的卡牌,再点「开始」")
 				return
 			var r2: Dictionary = srv.request({"op": "lobby_pick", "seat": my_seat, "card": selected_no})
 			if not bool(r2.get("ok", false)):
@@ -923,7 +924,7 @@ func _on_start_pressed() -> void:
 			_play_pick_out(r2.get("lobby", {}))
 		"order":
 			if order.size() < 5:
-				_set_hint("先把 5 张卡按顺序点好（1..5）")
+				_set_hint("先把 5 张卡按顺序点好(1..5)")
 				return
 			var r3: Dictionary = srv.request({"op": "lobby_order", "seat": my_seat, "order": order})
 			if not bool(r3.get("ok", false)):
@@ -948,7 +949,7 @@ func _on_card_clicked(card_no: int) -> void:
 			order.erase(card_no)
 		else:
 			if order.size() >= 5:
-				_set_hint("已经排满 5 张了，先点一张取消编号")
+				_set_hint("已经排满 5 张了,先点一张取消编号")
 				return
 			order.append(card_no)
 		_refresh_cards()
@@ -1038,24 +1039,24 @@ func _refresh_hint() -> void:
 			for s in seats:
 				if typeof(s) == TYPE_DICTIONARY and bool((s as Dictionary).get("ready", false)):
 					n += 1
-			_set_hint("点击「开始」准备（%d/4 已准备）；四家都准备好后开始选卡" % n)
+			_set_hint("点击「开始」准备(%d/4 已准备);四家都准备好后开始选卡" % n)
 		"draft":
 			var r := int(lobby.get("round", 0)) + 1
 			if _am_pending():
-				_set_hint("第 %d 轮已留牌，等待其他玩家…（每人 5 轮）" % r)
+				_set_hint("第 %d 轮已留牌,等待其他玩家…(每人 5 轮)" % r)
 			elif selected_no >= 0:
-				_set_hint("第 %d 轮：已选中 Card%02d —— 点「开始」留下它" % [r, selected_no])
+				_set_hint("第 %d 轮:已选中 Card%02d —— 点「开始」留下它" % [r, selected_no])
 			else:
-				_set_hint("第 %d 轮：从手里选一张留下，剩下 4 张传给下家" % r)
+				_set_hint("第 %d 轮:从手里选一张留下,剩下 4 张传给下家" % r)
 		"order":
 			if my_ready:
-				_set_hint("顺序已提交，等待其他玩家…")
+				_set_hint("顺序已提交,等待其他玩家…")
 			elif order.size() < 5:
-				_set_hint("按顺序点卡牌编号（1-4 主战、5 协战），点满 5 张后点「开始」提交（%d/5）" % order.size())
+				_set_hint("按顺序点卡牌编号(1-4 主战,5 协战),点满 5 张后点「开始」提交(%d/5)" % order.size())
 			else:
 				_set_hint("顺序已排好 —— 点「开始」提交")
 		"play":
-			_set_hint("四家都准备好了，进入牌桌…")
+			_set_hint("四家都准备好了,进入牌桌…")
 
 
 func _refresh_seats() -> void:
@@ -1325,9 +1326,9 @@ func _seat_display_name(seat: int) -> String:
 	if seat < 0 or my_seat < 0:
 		return "?"
 	var g := (seat - my_seat + 4) % 4
-	return "%s（%d 号位）" % [SEAT_NAMES[g], seat]
+	return "%s(%d 号位)" % [SEAT_NAMES[g], seat]
 
 
 func _set_hint(t: String) -> void:
 	if hint != null:
-		hint.text = t
+		hint.text = Txt.half(t)

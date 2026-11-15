@@ -57,7 +57,7 @@ static func setup() -> void:
 			_ov[res_path] = t
 			print("[skin] %s ← %s" % [out_name, src])
 	if not _ov.is_empty():
-		print("[skin] 外部皮肤生效：%d 张（同目录 skin\\ 或 user://skin）" % _ov.size())
+		print("[skin] 外部皮肤生效:%d 张(同目录 skin\\ 或 user://skin)" % _ov.size())
 
 
 static func has_override() -> bool:
@@ -75,11 +75,11 @@ static func _find(dirs: Array, name: String) -> String:
 static func _load_tex(path: String, res_path: String, cover: bool) -> Texture2D:
 	var img := Image.load_from_file(path)
 	if img == null or img.is_empty():
-		push_warning("[skin] 读不了这张图：" + path)
+		push_warning("[skin] 读不了这张图:" + path)
 		return null
 	var orig := load(res_path) as Texture2D
 	if orig == null:
-		push_warning("[skin] 找不到原图：" + res_path)
+		push_warning("[skin] 找不到原图:" + res_path)
 		return null
 	var want := Vector2i(orig.get_width(), orig.get_height())
 	if want.x <= 0 or want.y <= 0:

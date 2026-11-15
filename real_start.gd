@@ -15,6 +15,7 @@ const TRANS_MASK_PATH := "只差遮罩/Masks/鉴赏蒙版"
 const TRANS_SEQ_PATH := "只差遮罩/转场_[00000-00025]"
 const Wipe := preload("res://transition_wipe.gd")
 const UiSfx := preload("res://ui_sfx.gd")     # UI 音效（静态，不用 autoload）
+const Txt := preload("res://txt.gd")          # 显示层：全角标点 → 半角
 # 2026-11-11：效果根节点在编辑器里被改名（背景 2 → 背景和人物，合成 1 → 搜索框），
 # 这里用候选名单 + 特征兜底找，避免再改名就整套播放/交互失效。
 const STAGE_CANDIDATES := ["背景和人物", "背景 2"]     # 一级动画场景实例
@@ -133,7 +134,7 @@ func _ready() -> void:
 	_setup_lobby()
 	# 鉴赏：46 张卡，提前预加载，点【人物4】时几乎瞬间可切（转场动画不卡）
 	_gallery_req = (ResourceLoader.load_threaded_request(GALLERY_SCENE, "PackedScene") == OK)
-	print("[真初始场景] 一级人物 %d / 标题 %d　二级=%s　设置=%s　预加载=%s" % [
+	print("[真初始场景] 一级人物 %d / 标题 %d 二级=%s 设置=%s 预加载=%s" % [
 		_chars.size(), _titles.size(), str(_ap2 != null), str(_ap_s != null), str(_lobby != null)])
 
 
@@ -155,7 +156,7 @@ func _find_stage(candidates: Array, must_have: String) -> Node:
 func _setup_level1() -> void:
 	var stage := _find_stage(STAGE_CANDIDATES, "人物12")
 	if stage == null:
-		push_warning("真初始场景：找不到一级动画根节点 %s" % str(STAGE_CANDIDATES))
+		push_warning("真初始场景:找不到一级动画根节点 %s" % str(STAGE_CANDIDATES))
 		stage = self
 	for nm in HOVER.keys():
 		var sp := stage.find_child(String(nm), true, false) as Sprite2D
@@ -174,7 +175,7 @@ func _setup_level1() -> void:
 func _setup_level2() -> void:
 	_stage2 = _find_stage(STAGE2_CANDIDATES, "进入")
 	if _stage2 == null:
-		push_warning("真初始场景：找不到二级动画根节点 %s" % str(STAGE2_CANDIDATES))
+		push_warning("真初始场景:找不到二级动画根节点 %s" % str(STAGE2_CANDIDATES))
 		return
 	# CanvasLayer 不受父 Node2D 的 visible 影响 → 逐个隐藏
 	for c in _stage2.get_children():
@@ -252,7 +253,7 @@ func _on_search_typed(t: String) -> void:
 func _setup_settings() -> void:
 	var st := _find_stage(SETTINGS_CANDIDATES, "登入")
 	if st == null:
-		push_warning("真初始场景：找不到设置面板 %s" % str(SETTINGS_CANDIDATES))
+		push_warning("真初始场景:找不到设置面板 %s" % str(SETTINGS_CANDIDATES))
 		return
 	_settings = st
 	# CanvasLayer 不受父 Node2D 的 visible 影响 → 逐个隐藏
@@ -407,7 +408,7 @@ func _play_settings_login() -> void:
 	_set_settings_search(false)
 	# 登入段 = AE 67→250 帧（3.05s）：3D 窗口转走 / 黑幕退掉 / 登入成功 从顶部滑进来
 	if not _ap_s.has_animation("login"):
-		push_warning("设置：AnimationPlayer 里没有 login，直接回一级")
+		push_warning("设置:AnimationPlayer 里没有 login,直接回一级")
 		_finish_settings()
 		return
 	_ap_s.speed_scale = 1.0
@@ -814,7 +815,7 @@ func _setup_lobby() -> void:
 	_lobby_layer = get_node_or_null("LobbyLayer") as CanvasLayer
 	_lobby = get_node_or_null("LobbyLayer/Lobby")
 	if _lobby == null:
-		push_warning("真初始场景：找不到 LobbyLayer/Lobby（选卡界面不会出现）")
+		push_warning("真初始场景:找不到 LobbyLayer/Lobby(选卡界面不会出现)")
 		return
 	if _lobby_layer != null:
 		_lobby_layer.visible = true       # 预热需要一个「可见」的父层才能真画（见 _prewarm_lobby）
@@ -970,7 +971,7 @@ func _load_auth() -> void:
 		_auth_name = String(cf.get_value("auth", "name", "")).strip_edges()
 	_set_client_account(_auth_name)
 	if _auth_name != "":
-		print("[账号] 已登录：%s" % _auth_name)
+		print("[账号] 已登录:%s" % _auth_name)
 
 
 func _save_auth() -> void:
@@ -1055,12 +1056,12 @@ func _cc_confirm() -> void:
 	var r: Dictionary = _srv().request({"op": "account_create", "name": nm})
 	if r.is_empty() or not bool(r.get("ok", false)):
 		UiSfx.play("press", -8.0)      # 失败也给一下点击反馈（成功用「创建成功」）
-		_hint("创建失败：%s" % (String(r.get("error", "连不上服务端")) if not r.is_empty()
+		_hint("创建失败:%s" % (String(r.get("error", "连不上服务端")) if not r.is_empty()
 				else "连不上服务端"))
 	else:
 		# 真的创建成功这一刻才响（失败不播，免得报错却说「成功」）
 		UiSfx.play("create")
-		_hint("已创建账号「%s」——再点一次【登入】" % nm)
+		_hint("已创建账号「%s」——再点一次[登入]" % nm)
 	# 回到设置面板定格（输入框里名字还在，D1：不自动登入）
 	if _state == 4:
 		_set_settings_search(true)
@@ -1088,7 +1089,7 @@ func _try_login() -> void:
 		_auth_name = nm
 		_save_auth()
 		_set_client_account(nm)
-		print("[账号] 登入：%s" % nm)
+		print("[账号] 登入:%s" % nm)
 		_play_settings_login()              # 原有 AE 67→250 登入段 → 回一级
 		return
 	# 库里没有 → 弹「确认取消」（面板直接出现，无动画）
@@ -1099,7 +1100,7 @@ func _try_login() -> void:
 # ── 「以登入账号」= 设置面板动画的副本（只换贴图，关键帧零改动）───────
 func _setup_account() -> void:
 	if _settings == null:
-		push_warning("真初始场景：没有设置面板，账号面板做不出来")
+		push_warning("真初始场景:没有设置面板,账号面板做不出来")
 		return
 	_acct = _settings.duplicate()           # 整棵子树（含 AnimationPlayer + 动画库）
 	_acct.name = "以登入账号"
@@ -1125,7 +1126,7 @@ func _setup_account() -> void:
 	if frame != null:
 		frame.texture = load(ACCT_TEX)
 	else:
-		push_warning("以登入账号：找不到「边框」Sprite3D")
+		push_warning("以登入账号:找不到「边框」Sprite3D")
 	var box := _acct.find_child("搜索框", true, false) as Sprite3D
 	if box != null:
 		box.visible = false

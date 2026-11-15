@@ -128,7 +128,7 @@ func _mk_player(nm: String) -> VideoStreamPlayer:
 
 func _load(path: String) -> VideoStream:
 	if not ResourceLoader.exists(path):
-		push_warning("海底特效：缺少 " + path)
+		push_warning("海底特效:缺少 " + path)
 		return null
 	return load(path) as VideoStream
 

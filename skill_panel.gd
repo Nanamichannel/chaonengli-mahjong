@@ -97,10 +97,10 @@ func handle_river(seq: int) -> void:
 		rivers.append(seq)
 	else:
 		if total > 0:
-			_note("%s：手牌 + 牌河一共选 %d 张（还能选 %d 张牌河）"
+			_note("%s:手牌 + 牌河一共选 %d 张(还能选 %d 张牌河)"
 				% [label, total, maxi(cap - rivers.size(), 0)])
 		else:
-			_note("%s：先选手牌（最多 %d 张）" % [label, maxi(1, picks.size())])
+			_note("%s:先选手牌(最多 %d 张)" % [label, maxi(1, picks.size())])
 		return
 	refresh()
 
@@ -152,7 +152,7 @@ func _river_allowed(tp) -> bool:
 
 func confirm() -> void:
 	if not can_confirm():
-		_note("%s：还没选好" % label)
+		_note("%s:还没选好" % label)
 		return
 	var p := picks.duplicate()
 	var r := rivers.duplicate()

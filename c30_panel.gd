@@ -74,7 +74,7 @@ func arm_begin() -> void:
 	_build_seat_btns()
 	_hide_deal_skip(true)
 	_refresh()
-	_note(flow_name + "：点两个对手的风牌，再点「确认」")
+	_note(flow_name + ":点两个对手的风牌,再点「确认」")
 
 
 # ── ② 对方交牌 ────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ func give_begin(from: int, mn: int, mx: int) -> void:
 	_hide_deal_skip(true)
 	picker.begin(picks, max_pick, {"min": min_pick, "on_change": _refresh})
 	_refresh()
-	_note(flow_name + "：%s 的牌 —— 选 %d~%d 张手牌交给他"
+	_note(flow_name + ":%s 的牌 —— 选 %d~%d 张手牌交给他"
 		% [_rel(from), min_pick, max_pick])
 
 
@@ -109,7 +109,7 @@ func swap_begin(from: int, picked_value) -> void:
 	_build_tile_row()
 	picker.begin(picks, 1, {"min": 1, "on_change": _refresh})
 	_refresh()
-	_note(flow_name + "：%s 给了 %d 张 —— 点彩框选 1 张，再选自己 1 张手牌"
+	_note(flow_name + ":%s 给了 %d 张 —— 点彩框选 1 张,再选自己 1 张手牌"
 		% [_rel(from), given.size()])
 
 
@@ -120,7 +120,7 @@ func handle_hand(index: int) -> void:
 	if mode == "give" and only_orphan:
 		var all := _my_tiles()
 		if index >= 0 and index < all.size() and not _is_orphan(String(all[index])):
-			_note("只能交一张幺九牌（一/九或字牌）")
+			_note("只能交一张幺九牌(一/九或字牌)")
 			return
 	picker.toggle(index)
 
@@ -182,7 +182,7 @@ func _confirm() -> void:
 		host.call("srv_apply_state", r.get("state"), r.get("events"))
 		_kick()
 		if not names.is_empty():
-			_note(flow_name + "：开始询问 %s" % "、".join(names))
+			_note(flow_name + ":开始询问 %s" % ",".join(names))
 		return
 	if mode == "give":
 		var tiles := _my_tiles()
@@ -199,7 +199,7 @@ func _confirm() -> void:
 		close()
 		host.call("srv_apply_state", r2.get("state"), r2.get("events"))
 		_kick()
-		_note(flow_name + "：交出了 %s" % "、".join(out))
+		_note(flow_name + ":交出了 %s" % ",".join(out))
 		return
 	# swap
 	if not can_confirm():
@@ -221,21 +221,21 @@ func _confirm() -> void:
 	close()
 	host.call("srv_apply_state", r3.get("state"), r3.get("events"))
 	_kick()
-	_note(flow_name + "：用 %s 换到 %s" % [mine, got])
+	_note(flow_name + ":用 %s 换到 %s" % [mine, got])
 
 
 # 发请求 + 统一错误处理（看破拦截 / 服务端拒绝 / 没回应）
 func _req(req: Dictionary) -> Dictionary:
 	var r: Dictionary = host.call("srv_request", req)
 	if r.is_empty():
-		_note(_srv_err(flow_name + "：服务端没有回应"))
+		_note(_srv_err(flow_name + ":服务端没有回应"))
 		_pull()
 		return {}
 	if bool(host.call("srv_kangpo_blocked", r)):
 		close()
 		return {}
 	if not bool(r.get("ok", false)):
-		_note(_srv_err(flow_name + "：%s" % String(r.get("error", "发动失败"))))
+		_note(_srv_err(flow_name + ":%s" % String(r.get("error", "发动失败"))))
 		_pull()
 		return {}
 	return r
@@ -245,7 +245,7 @@ func _srv_err(base: String) -> String:
 	var note := String(host.get("srv_note"))
 	if note == "":
 		return base
-	return "%s（%s）" % [base, note]
+	return "%s(%s)" % [base, note]
 
 
 # 位置不在这里算：确认按钮就是项目统一的「开始按钮」，
@@ -424,7 +424,7 @@ func _build_seat_btns() -> void:
 		ui.add_child(f)
 		var lb := Label.new()
 		lb.name = "SeatLabel%d" % seat
-		lb.text = "%s（%s）" % [String(host.call("_rel_seat_name", seat)),
+		lb.text = "%s(%s)" % [String(host.call("_rel_seat_name", seat)),
 			String(WIND_CN[wind])]
 		lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lb.add_theme_font_size_override("font_size", 26)
@@ -475,7 +475,7 @@ func _seat_clicked(seat: int) -> void:
 	elif targets.size() < 2:
 		targets.append(s)
 	else:
-		_note(flow_name + "：最多选两家（先点掉一个再选）")
+		_note(flow_name + ":最多选两家(先点掉一个再选)")
 		return
 	_refresh()
 

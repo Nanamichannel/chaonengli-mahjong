@@ -110,7 +110,7 @@ func _zoom_ceiling() -> float:
 			return clampf(c, 1.0, 12.0)
 		if not _warned_ceiling:
 			_warned_ceiling = true
-			push_warning("[鉴赏] 背景板宽 %.0f ≥ 屏幕宽，自动缩放上限无意义，退回 zoom_max=%.2f" % [backdrop_width, zoom_max])
+			push_warning("[鉴赏] 背景板宽 %.0f ≥ 屏幕宽,自动缩放上限无意义,退回 zoom_max=%.2f" % [backdrop_width, zoom_max])
 	return zoom_max
 
 

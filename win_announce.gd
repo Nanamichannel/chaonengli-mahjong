@@ -91,7 +91,7 @@ func start_seats_anim() -> void:
 
 
 func _count_dur(delta: int) -> float:
-	"""计数器走完这一段要多久（秒）：按点数动态，对数增长 + 上下限。"""
+	"""计数器走完这一段要多久(秒):按点数动态,对数增长 + 上下限。"""
 	var d := absf(float(delta))
 	var t := COUNT_A + COUNT_B * log(1.0 + d / COUNT_REF) / log(2.0)
 	return clampf(t, COUNT_MIN, COUNT_MAX)

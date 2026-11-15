@@ -16217,8 +16217,7 @@ func _build_hand_legacy() -> void:
 #   立直选宣言牌也走同一条链（第一下上浮、第二下宣言切牌）。
 #   桌面：单击即出牌，不变。
 #   其它选牌态（技能面板 / 国标 / 一定和牌 / 换牌…）：仍然是单击即选。
-var _tap_hover_idx := -1            # 触屏：上一次「上浮」的是哪张
-var _tap_hover_fresh := false       # 这张的上浮是不是「刚刚这一次点按」造成的
+const TAP_HOVER_FRESH_MS := 120     # 同一次点按里「mouse_entered → click」的间隔上限
 
 
 # 这一下点击会不会真的把牌打出去？（有一堆选牌面板时不要求双击）
@@ -16232,26 +16231,36 @@ func _could_be_real_discard() -> bool:
 	return true
 
 
+## 这张手牌「这次上浮」是什么时候开始的（-1 = 拿不到）
+##   ★ 必须问牌本体：手牌格子按钮是 mouse_filter=IGNORE，收不到 mouse_entered，
+##     拿它当判据的话第一下就直接出牌了（2026-11-15 实测「单击既响悬浮音又打出」）。
+func _hand_piece_hover_ms(index: int) -> int:
+	if tile_bank == null:
+		return -1
+	var tiles := display_tiles()
+	if index < 0 or index >= tiles.size():
+		return -1
+	var p = tile_bank.piece(String(tiles[index]))
+	if p == null or not is_instance_valid(p) or not p.has_method("hover_ms"):
+		return -1
+	return int(p.call("hover_ms"))
+
+
 func _on_hand_clicked(index: int) -> void:
 	if OS.has_feature("mobile") and _could_be_real_discard():
-		# 这一下点按是不是「刚把指针挪上来」？（mouse_entered 和 click 属于同一次点按）
-		if _tap_hover_idx == int(index) and _tap_hover_fresh:
-			_tap_hover_fresh = false      # 只算悬浮：上浮 + hover 音由悬停逻辑自己发
+		var ms := _hand_piece_hover_ms(int(index))
+		if ms >= 0 and Time.get_ticks_msec() - ms <= TAP_HOVER_FRESH_MS:
+			# 这一下点按就是「刚把指针挪上来」→ 只算悬浮：上浮 + hover 音已经由牌本体做了
 			return
-		_tap_hover_idx = -1               # 已经上浮着的牌再点 → 打出去
 	discard_tile(index)
 
 
 func _on_tile_entered(index: int) -> void:
-	_tap_hover_idx = int(index)
-	_tap_hover_fresh = true             # 触屏：这次上浮是「刚点上来」造成的
 	hovered_index = index
 	update_tile_positions()
 
 
 func _on_tile_exited(index: int) -> void:
-	if _tap_hover_idx == int(index):
-		_tap_hover_fresh = false        # 指针走开了 → 再点回来又算一次「上浮」
 	if hovered_index == index:
 		hovered_index = -1
 	update_tile_positions()

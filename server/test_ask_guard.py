@@ -146,8 +146,11 @@ def main() -> int:
     ks = io.open(KANSHOU, encoding="utf-8").read()
     check("鉴赏右上角跳过按钮", "SKIP_TEX" in ks and "func _make_skip_ui() -> void:" in ks)
     check("鉴赏放大态点空白缩回", "_big.get_global_rect().has_point(mp)" in ks)
-    check("触屏手牌：单击=悬浮（等上浮再过牌）",
-          "_tap_hover_fresh" in src and "if _tap_hover_idx == int(index) and _tap_hover_fresh:" in src)
+    check("触屏手牌：单击=悬浮（判据问牌本体，不看格子按钮）",
+          "const TAP_HOVER_FRESH_MS := 120" in src
+          and "func _hand_piece_hover_ms(index: int) -> int:" in src
+          and "_tap_hover_fresh" not in src)
+    check("TilePiece 暴露 hover_ms()", "func hover_ms() -> int:" in io.open(TILEPIECE, encoding="utf-8").read())
     tp = io.open(TILEPIECE, encoding="utf-8").read()
     check("手牌悬浮音在移动端强行播", 'UiSfx.play("hover", UiSfx.DEFAULT_DB, true)' in tp)
     us = io.open(UISFX, encoding="utf-8").read()

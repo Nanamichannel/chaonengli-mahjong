@@ -85,6 +85,7 @@ var _sprites := {}
 var _base_size := Vector2.ZERO
 var _base_pos := Vector2.ZERO
 var _hovered := false
+var _hover_ms := 0                # 这次上浮开始的时刻（触屏用来区分「这一下算悬浮」）
 var _hover_enabled := false
 var _hit: Control
 var discard_seq := -1          # 牌河里这张牌的全场 seq（换牌技能用）
@@ -290,9 +291,15 @@ func _on_hover_enter() -> void:
 	if is_flying():
 		return                                # 正在飞 → 先别抢位置，落地再说
 	_hovered = true
+	_hover_ms = Time.get_ticks_msec()
 	z_index = 1
 	position = _base_pos + Vector2(0.0, -HOVER_RAISE)
 	_update_hit(_hover_enabled and not is_flying(), scale)   # 判定框补回来，别再抖
+
+## 这次上浮是什么时候开始的（主脚本用它判断「同一次点按」）
+func hover_ms() -> int:
+	return _hover_ms
+
 
 func _on_hover_exit() -> void:
 	if not _hovered:

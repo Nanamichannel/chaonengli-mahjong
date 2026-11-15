@@ -9,7 +9,7 @@ extends Node
 ##   "discard" 一张牌打到牌桌上的那一下                   ← main.gd:_discard_at / 出牌事件
 ##   "stamp" 结算播报盖大红印章的那一下                   ← 和牌播报.gd:_play_level
 ##   "press" 真初始场景里点任意按钮的那一下                 ← hook_buttons / 手写 hit-test
-##   "strips" 番种条从上往下扫开的那一下（素材 1.mp3）                  ← 和牌播报.gd:_reveal_strips
+##   "strips" 番种条从上往下扫开的那一下（素材 番种条扫开.wav）        ← 和牌播报.gd:_reveal_strips
 ##
 ## 用法（**不用 autoload、不用 class_name**，preload 后直接调静态方法）：
 ##     const UiSfx := preload("res://ui_sfx.gd")
@@ -22,7 +22,10 @@ const FILES := {
 	"hover": "鼠标悬浮在牌上.wav",      # 0.07s
 	"button": "出现按钮.wav",           # 0.20s
 	"plate": "底座底座拉开.wav",        # 0.75s
-	"strips": "1.mp3",                  # 番种条扫开（用户 2026-11-15 换素材）
+	#  番种条扫开：由 1.mp3 预处理而来（见 _tmp/make_strips_wav.py）——1.mp3 自身前 50ms
+	#  全静音、之后是 170ms 的渐强（25% 音量在 120ms、峰值 210ms），只裁静音仍然「慢半拍」，
+	#  所以直接切到 85ms、并把起手 180ms 的渐强压平（2.4→1.0 增益），存成 WAV 免掉 mp3 延迟。
+	"strips": "番种条扫开.wav",         # 番种条扫开（2026-11-15 二次修）
 	"press": "按按钮.mp3",             # 真初始场景里所有按钮的点击音
 	"create": "创建成功.mp3",          # 账号创建成功（用户 2026-11-15）
 	"discard": "出牌.mp3",             # 牌打出去那一刻（我方点击 / 别家出牌事件）
@@ -30,11 +33,11 @@ const FILES := {
 }
 const DEFAULT_DB := -6.0
 
-# ★ 2026-11-15：每首素材「首音」前的静音（实测）。不裁的话 play() 之后先静 75ms
+# ★ 2026-11-15：每首素材「首音」前的静音（实测）。不裁的话 play() 之后先静几十 ms
 #   才出声 —— 用户听感就是「慢半拍」。play() 用 from_position 跳过这段。
 #   印章不裁：它的对齐是按未裁的时间轴调的（见 和牌播报.gd:STAMP_SYNC_MS）。
+#   番种条（strips）不在这里裁：它换成了预处理好的 番种条扫开.wav，从 0 播就是响的。
 const TRIM := {
-	"strips": 0.070,      # 1.mp3：首音 75ms，留 5ms 余量
 	"press": 0.032,       # 按按钮.mp3：首音 40ms
 	"discard": 0.025,     # 出牌.mp3：首音 30ms
 }

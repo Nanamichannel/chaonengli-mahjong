@@ -54,3 +54,11 @@ net_token.txt
 
 # 海底捞月帧序列（约 2.0 GB / 4730 个文件，Godot 里也有 .gdignore，只留在本地与打包里，不进仓库）
 Cailiao/UI/海底捞月/
+
+# 非运行素材（52MB，已挪到 N:\apps\tianma_附件，不进仓库也不进包）
+Cailiao/skill/技能卡-20221015.docx
+Cailiao/UI/立直棒.mp4
+Cailiao/UI/图片唯美漫画风格修改.jpeg
+Cailiao/mahjong_graphic/Vectors 矢量图/*.ai
+Cailiao/UI/开始界面/Frames/粒子/*.mp4
+Cailiao/UI/jimeng-*.mp4

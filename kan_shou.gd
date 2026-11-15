@@ -16,6 +16,7 @@ const EASE_OUT := [0.0, 0.488, 0.784, 0.936, 0.992, 1.0]
 @onready var _ap: AnimationPlayer = $动画
 
 var _open := false
+var _guard_until := 0                  # 刚进场景：这一小段内的点击是转场残留，别理它
 var _skip_ui: CanvasLayer = null       # 固定层（不跟相机走）
 var _skip_btn: TextureButton = null
 var _card: TextureButton = null
@@ -33,6 +34,9 @@ func _ready() -> void:
 	_ap.animation_finished.connect(_on_anim_finished)
 	_inject_camera_limit()
 	_make_skip_ui()
+	# ★ 从一级「人物4」点进来的那一下，转场后可能又被派发到本场景 →
+	#   表现成「一进鉴赏就自动点了右上角的卡放大」。这里吃掉进场后 400ms 内的点击。
+	_guard_until = Time.get_ticks_msec() + 400
 	# 倒放转场要实例化一级菜单，提前预加载，按 ESC 时不卡
 	_start_req = (ResourceLoader.load_threaded_request(START_SCENE, "PackedScene") == OK)
 
@@ -124,6 +128,8 @@ func _tap_blocked() -> bool:
 
 
 func _on_card_pressed(card: TextureButton) -> void:
+	if Time.get_ticks_msec() < _guard_until:
+		return                          # 进场残留点击：不算
 	if _open or card.texture_normal == null:
 		return
 	if _tap_blocked():
@@ -160,6 +166,11 @@ func _on_card_pressed(card: TextureButton) -> void:
 
 
 func _input(e: InputEvent) -> void:
+	# 刚进场：把按下的那一下吃掉（转场残留），别让它点开一张卡 / 直接退出
+	if Time.get_ticks_msec() < _guard_until:
+		if e is InputEventMouseButton or e is InputEventScreenTouch:
+			get_viewport().set_input_as_handled()
+		return
 	if e is InputEventKey and (e as InputEventKey).pressed and (e as InputEventKey).keycode == KEY_ESCAPE:
 		if not _open:                      # 没在放大 → ESC 倒放转场回一级
 			_go_back()

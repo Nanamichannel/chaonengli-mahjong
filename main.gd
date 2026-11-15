@@ -1890,6 +1890,7 @@ func _ready() -> void:
 	tile_bank.build(tile_size)
 	# 手牌点击由单张牌的脚本发出，这里只把它接到「打哪张」
 	tile_bank.hand_clicked.connect(_on_hand_clicked)      # 触屏要判双击，先过一道闸
+	_input_guard_until = Time.get_ticks_msec() + 250      # 转场残留点击别理
 	hand_pick.setup(self, tile_bank)                 # 统一的「选手牌」界面
 	swap_panel.setup(self, tile_bank, hand_pick)     # 通用的「技能选牌面板」
 	c33_panel.setup(self, tile_bank, hand_pick)      # 染手（33S1）
@@ -16218,6 +16219,7 @@ func _build_hand_legacy() -> void:
 #   桌面：单击即出牌，不变。
 #   其它选牌态（技能面板 / 国标 / 一定和牌 / 换牌…）：仍然是单击即选。
 var _last_touch_ms := 0             # 最近一次触摸事件（判断「这是触屏输入」用）
+var _input_guard_until := 0          # 刚进牌桌的残留点击窗口
 
 
 # 这一次点击算不算触屏（Android / PC 触摸屏都算；纯鼠标不算）
@@ -18615,6 +18617,11 @@ func _process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		_last_touch_ms = Time.get_ticks_msec()
+	# 刚进牌桌：转场残留的那一下按下别理（免得一进来就误打一张 / 误点按钮）
+	if Time.get_ticks_msec() < _input_guard_until and event is InputEventMouseButton \
+			and (event as InputEventMouseButton).pressed:
+		get_viewport().set_input_as_handled()
+		return
 	# 输入框（例如猜番数）有焦点时，所有调试热键都不响应 ——
 	# 否则 _input 比输入框先跑，1~4 会被「切座位」吃掉，数字根本打不进去。
 	var _focus := get_viewport().gui_get_focus_owner() if get_viewport() != null else null

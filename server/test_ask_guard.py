@@ -151,6 +151,8 @@ def main() -> int:
     ks = io.open(KANSHOU, encoding="utf-8").read()
     check("鉴赏右上角跳过按钮", "SKIP_TEX" in ks and "func _make_skip_ui() -> void:" in ks)
     check("鉴赏放大态点空白缩回", "_big.get_global_rect().has_point(mp)" in ks)
+    check("鉴赏：进场 400ms 内吃掉残留点击", "_guard_until" in ks and "Time.get_ticks_msec() < _guard_until" in ks)
+    check("牌桌：进场 250ms 内吃掉残留点击", "_input_guard_until" in src)
     check("触屏手牌：单击=悬浮（牌本体在 clicked 里带 fresh 标记）",
           "func _on_hand_clicked(index: int, fresh_hover: bool = false) -> void:" in src
           and "func _is_touch_input() -> bool:" in src

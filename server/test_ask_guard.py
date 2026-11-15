@@ -127,6 +127,12 @@ def main() -> int:
     check("ESC = 全局取消", "if _k.keycode == KEY_ESCAPE:" in src)
     check("强制态闸门 _force_busy", "func _force_busy() -> bool:" in src)
     check("取消按钮在确认右侧", "func cancel_btn_rect(aspect: float) -> Rect2:" in src)
+    check("确认+取消并排时一起缩小",
+          "const PAIR_SCALE := 0.62" in src and "func place_prompt_pair(" in src
+          and "func prompt_pair_rects(" in src)
+    check("重整发动后不可取消",
+          "var c38_sent := false" in src and "c38_cancel.disabled = c38_sent" in src
+          and "if c38_active and c38_sent:" in src)
     check("强制态灰按钮", "if not enabled:\n\t\tb.disabled = true" in src)
     sp = io.open(SKILLPANEL, encoding="utf-8").read()
     check("SkillPanel 内置取消按钮", "var cbtn: TextureButton" in sp and "mk_cancel_btn" in sp)

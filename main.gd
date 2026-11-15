@@ -905,6 +905,8 @@ var _pass_armed := false             # 右键点过「跳过」，但当时 busy
 #   优先级：拦截询问（看破/封堵/阻止/免疫，**一次放一条**）→ 技能面板
 #           → 鸣牌/加速/破发/未来 → 强制态
 const CANCEL_GAP := 10.0
+# 「确认 + 取消」并排时两个一起缩到 62%（原来各占一整张牌高 ≈89×97，太占地方、挡手牌）
+const PAIR_SCALE := 0.62
 
 
 func _cancel_top_ask() -> String:
@@ -1031,25 +1033,73 @@ func _c33_cancel() -> void:
 	c33_panel.close()
 
 
-# 取消按钮的 rect = 确认按钮**右侧**（右侧放不下就叠到左边，绝不出屏）
-#   ★ 两张贴图都是 894×974（≈89×97 显示尺寸），但换成宽贴图时按原始比例会撑到
-#     300px 宽、正好压到「贴屏幕右边」的副露上 → 宽度封顶 = 确认按钮宽 × 2.2。
+# 并排两个按钮的 rect：[确认, 取消]
+#   · 两个都缩到 PAIR_SCALE（原来各占一整张牌高，挡手牌）
+#   · 取消永远在确认**右侧**（右边放不下就叠到左边，绝不出屏）
+#   · 竖直方向**底部对齐**原来确认按钮的底边（往上缩，不往下压手牌）
+func prompt_pair_rects(aspect_conf: float, aspect_cancel: float) -> Array:
+	var base := prompt_btn_rect(aspect_conf)
+	var h := base.size.y * PAIR_SCALE
+	var w := base.size.x * PAIR_SCALE
+	var pos := base.position + prompt_btn_offset + Vector2(0.0, base.size.y - h)
+	var conf := Rect2(pos, Vector2(w, h))
+	var cw := h / maxf(aspect_cancel, 0.05)
+	var cancel := Rect2(Vector2(conf.position.x + conf.size.x + CANCEL_GAP, conf.position.y),
+		Vector2(cw, h))
+	var vp := get_viewport_rect().size
+	if cancel.position.x + cancel.size.x > vp.x - 8.0:
+		cancel.position.x = maxf(8.0, conf.position.x - cancel.size.x - CANCEL_GAP)
+	return [conf, cancel]
+
+
+# 摆「确认 + 取消」这一对
+#   ★ 只有「取消」真的显示时才并排缩小；否则确认按钮按原样摆（状态切换那套完全不变）
+func place_prompt_pair(btn: TextureButton, cbtn: TextureButton) -> void:
+	var has_cb := cbtn != null and is_instance_valid(cbtn) and cbtn.visible
+	var aspect_conf := 70.0 / 220.0
+	if btn != null and is_instance_valid(btn) and btn.texture_normal != null \
+			and btn.texture_normal.get_width() > 0:
+		aspect_conf = float(btn.texture_normal.get_height()) / float(btn.texture_normal.get_width())
+	var aspect_c := aspect_conf
+	if has_cb and cbtn.texture_normal != null and cbtn.texture_normal.get_width() > 0:
+		aspect_c = float(cbtn.texture_normal.get_height()) / float(cbtn.texture_normal.get_width())
+	var rs: Array = prompt_pair_rects(aspect_conf, aspect_c)
+	var r0: Rect2 = rs[0]
+	var r1: Rect2 = rs[1]
+	if btn != null and is_instance_valid(btn) and btn.visible:
+		if not has_cb:
+			r0 = prompt_btn_rect(aspect_conf)
+			r0.position += prompt_btn_offset
+		_fit_btn(btn, r0)
+	if has_cb:
+		if btn == null or not is_instance_valid(btn) or not btn.visible:
+			# 确认还没出现（没选够牌）→ 取消占「确认那一格」，单独缩到同一尺寸
+			var solo := prompt_btn_rect(aspect_c)
+			var h2 := solo.size.y * PAIR_SCALE
+			_fit_btn(cbtn, Rect2(
+				solo.position + prompt_btn_offset + Vector2(0.0, solo.size.y - h2),
+				Vector2(h2 / maxf(aspect_c, 0.05), h2)))
+		else:
+			_fit_btn(cbtn, r1)
+
+
+func _fit_btn(btn: TextureButton, r: Rect2) -> void:
+	if btn == null or not is_instance_valid(btn):
+		return
+	if btn.size.distance_to(r.size) > 0.5:
+		btn.size = r.size
+	if btn.global_position.distance_to(r.position) > 0.5:
+		btn.global_position = r.position
+
+
+# 只要取消按钮那一格（并排口径）
 func cancel_btn_rect(aspect: float) -> Rect2:
 	var otex := btn_tex("ok")
 	var caspect := 974.0 / 894.0
 	if otex != null and otex.get_width() > 0:
 		caspect = float(otex.get_height()) / float(otex.get_width())
-	var conf := prompt_btn_rect(caspect)
-	conf.position += prompt_btn_offset
-	var sz := prompt_btn_rect(aspect).size
-	var max_w := conf.size.x * 2.2
-	if sz.x > max_w:
-		sz = Vector2(max_w, max_w * aspect)
-	var r := Rect2(conf.position + Vector2(conf.size.x + CANCEL_GAP, 0.0), sz)
-	var vp := get_viewport_rect().size
-	if r.position.x + r.size.x > vp.x - 8.0:
-		r.position.x = maxf(8.0, conf.position.x - r.size.x - CANCEL_GAP)
-	return r
+	var arr: Array = prompt_pair_rects(caspect, aspect)
+	return arr[1]
 
 
 # 造一枚「取消」按钮（enabled=false = 强制发动：灰掉、点不动）
@@ -1075,11 +1125,7 @@ func place_cancel_btn(b: TextureButton) -> void:
 	var aspect := 70.0 / 220.0
 	if b.texture_normal != null and b.texture_normal.get_width() > 0:
 		aspect = float(b.texture_normal.get_height()) / float(b.texture_normal.get_width())
-	var r := cancel_btn_rect(aspect)
-	if b.size.distance_to(r.size) > 0.5:
-		b.size = r.size
-	if b.global_position.distance_to(r.position) > 0.5:
-		b.global_position = r.position
+	_fit_btn(b, cancel_btn_rect(aspect))
 
 
 # 右键 = 跳过「技能询问 / 副露询问」（用户口径 2026-11-04）
@@ -11117,10 +11163,15 @@ var c38_hand: Array = []
 var c38_picks: Array = []            # [{"kind":"dora","i":0} / {"kind":"hand","seq":n}]
 var c38_nodes := {}                  # key -> TextureButton
 var c38_ok: TextureButton = null
+var c38_cancel: TextureButton = null   # 「取消」
+var c38_sent := false                 # 已经点过「确认」→ 这次发动不可撤销（用户口径 2026-11-15）
 
 
 func _c38s1_open() -> void:
 	if game_over:
+		return
+	if c38_active and c38_sent:
+		_toast("重整：已经发动了，等结果")
 		return
 	if _skill_used_once(38, 1):
 		_toast("「重整」本小局已经发动过了")
@@ -11147,6 +11198,7 @@ func _c38s1_open() -> void:
 		_toast("重整：现在没有 3 张可翻的宝牌指示牌")
 		return
 	c38_picks.clear()
+	c38_sent = false
 	c38_active = true
 	_c38s1_make_ui()
 	_c38s1_refresh()
@@ -11256,6 +11308,7 @@ func _c38s1_make_ui() -> void:
 	var cancel := ui_btn("pass", 150.0)
 	cancel.pressed.connect(_c38s1_close)
 	c38_ui.add_child(cancel)
+	c38_cancel = cancel
 	_place_btn_pair(c38_ok, cancel, vp.x * 0.5, 470.0)
 
 
@@ -11283,7 +11336,10 @@ func _c38s1_refresh() -> void:
 			if num != null:
 				num.text = ""
 	if c38_ok != null and is_instance_valid(c38_ok):
-		c38_ok.disabled = c38_picks.size() != 3
+		c38_ok.disabled = c38_sent or c38_picks.size() != 3
+	if c38_cancel != null and is_instance_valid(c38_cancel):
+		c38_cancel.disabled = c38_sent       # 发动后不能取消
+		c38_cancel.modulate = Color(1, 1, 1, 0.35) if c38_sent else Color(1, 1, 1, 1)
 
 
 func _c38_toggle(pick: Dictionary) -> void:
@@ -11312,9 +11368,14 @@ func _c38_pick_hand(j: int) -> void:
 
 
 func _c38s1_confirm() -> void:
+	if c38_sent:
+		return
 	if c38_picks.size() != 3:
 		_toast("重整：要选 3 张")
 		return
+	# ★ 一按确认就锁住（不可取消/不可重发）：被看破挂起时也不能自己撤
+	c38_sent = true
+	_c38s1_refresh()
 	var arr: Array = []
 	for i in range(c38_picks.size()):
 		var p: Dictionary = c38_picks[i]
@@ -11329,6 +11390,9 @@ func _c38s1_confirm() -> void:
 		_toast(_srv_err("重整：服务端没有回应"))
 		return
 	if not bool(r.get("ok", false)):
+		# 服务端明确拒绝（没执行）→ 允许改选重发
+		c38_sent = false
+		_c38s1_refresh()
 		_toast(String(r.get("error", "重整：发动失败")))
 		_pull_state()
 		return
@@ -11343,6 +11407,8 @@ func _c38s1_close() -> void:
 	c38_picks.clear()
 	c38_nodes.clear()
 	c38_ok = null
+	c38_cancel = null
+	c38_sent = false
 	if c38_ui != null and is_instance_valid(c38_ui):
 		c38_ui.queue_free()
 	c38_ui = null
@@ -15935,6 +16001,8 @@ func _sync_prompt_btns() -> void:
 		var btn := b as Control
 		if btn == null or not is_instance_valid(btn) or not btn.visible:
 			continue
+		if btn == c30_panel.start_btn or btn == c32_panel.start_btn:
+			continue                     # 这两个要和「取消」并排摆（见函数末尾）
 		var tb := btn as TextureButton
 		var aspect := 70.0 / 220.0                       # 贴图默认比例（220×70）
 		if tb != null and tb.texture_normal != null and tb.texture_normal.get_width() > 0:
@@ -15947,8 +16015,8 @@ func _sync_prompt_btns() -> void:
 			btn.size = r.size
 		if btn.global_position.distance_to(r.position) > 0.5:
 			btn.global_position = r.position
-	place_cancel_btn(c30_panel.cancel_btn)         # 向听：确认右边的「取消」
-	place_cancel_btn(c32_panel.cancel_btn)         # 新手运
+	place_prompt_pair(c30_panel.start_btn, c30_panel.cancel_btn)    # 向听：确认+取消并排
+	place_prompt_pair(c32_panel.start_btn, c32_panel.cancel_btn)    # 新手运
 
 
 # 复制一张模板牌的形象（Node2D + Sprite2D）
@@ -18106,6 +18174,8 @@ func _lease_tick(delta: float) -> void:
 # 面板还开着、但服务端已经不允许发动了（刚换完 / 已经摸牌 / 被别的窗口推进）
 # → 自动收起来，别留一个点不动的空面板。
 func _skill_panel_stale_close() -> void:
+	if c38_active and _skill_used_once(38, 1):
+		_c38s1_close()                  # 重整：服务端已经执行 → 面板收起
 	if zl_active and not bool(srv_state.get("zhalie_can", false)):
 		_zl_close()
 	if hs_active:

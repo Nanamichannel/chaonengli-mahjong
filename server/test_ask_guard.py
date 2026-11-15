@@ -132,6 +132,7 @@ def main() -> int:
           and "place_prompt_pair(c30_panel.start_btn" in src
           and "place_prompt_pair(c32_panel.start_btn" in src)
     sp2 = io.open(SKILLPANEL, encoding="utf-8").read()
+    check("流势(35-1) 的确认+跳过也缩小", "var pair_mode := c26_skip_op" in src)
     check("SkillPanel 仍是原尺寸（不缩小）",
           'host.call("place_cancel_btn", cbtn)' in sp2
           and "place_prompt_pair" not in sp2)

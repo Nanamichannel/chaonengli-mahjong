@@ -8017,8 +8017,14 @@ func _on_identity_skill(seat: int, card_no: int, index: int,
 		_sf_nongwu()                       # Card19 S2「浓雾」
 		return
 	if int(card_no) == 20 and int(index) == 0:
-		if bool(srv_state.get("yiding_can", false)):
-			_yiding_on_clicked()           # 前路成功 → 一定和牌
+		# ★ 2026-11-15：判据是「**有没有权限**」，不是「现在能不能宣言」。
+		#   三张全中那一刻已经是下家回合，yiding_can 必为 false；
+		#   以前就会掉进 _sf_qianlu()，把前路重新武装成选牌界面。
+		if _yiding_from(srv_state, 20, 1):
+			if bool(srv_state.get("yiding_can", false)):
+				_yiding_on_clicked()       # 前路成功 → 一定和牌
+			else:
+				_yiding_why_not()          # 权限在手上，但此刻不能宣言 → 说清原因
 			return
 		_sf_qianlu()                       # Card20 S1「前路」
 		return
@@ -13485,6 +13491,18 @@ func _cc_copy(st) -> Dictionary:
 
 
 # 这个技能的「一定和牌」权限还在手上吗？（服务端 state.yiding_src = [卡号, 技能号]）
+# 有「一定和牌」权限、但现在不能宣言 → 说清楚是哪一条（别让玩家以为坏了）
+func _yiding_why_not() -> void:
+	if String(srv_state.get("phase", "")) != "discard" \
+			or int(srv_state.get("turn", -1)) != my_seat:
+		_toast("一定和牌：等轮到你打牌时再点这个图标")
+		return
+	if (srv_state.get("riichi", []) as Array).has(my_seat):
+		_toast("一定和牌：立直之后不能宣言")
+		return
+	_toast("一定和牌：现在手里没有「切出去还听牌」的牌")
+
+
 func _yiding_from(st: Dictionary, card: int, skill: int) -> bool:
 	if not bool(st.get("yiding", false)):
 		return false
@@ -14858,9 +14876,11 @@ func srv_apply_state(st, events = null) -> void:
 				_toast("海底：把「%s」换进手里了 —— 点【自摸】结算"
 					% String((ev as Dictionary).get("tile", "")))
 			elif String((ev as Dictionary).get("event", "")) == "qianlu_done":
-				_toast("前路：三张全中！已获得【一定和牌】（听牌后点同一张 20-1 技能按钮宣言）")
+				if int((ev as Dictionary).get("seat", my_seat)) == my_seat:
+					_toast("前路：三张全中！已获得【一定和牌】（听牌后点同一张 20-1 技能按钮宣言）")
 			elif String((ev as Dictionary).get("event", "")) == "qianlu_fail":
-				_toast("前路：预言没对上（顺序或牌种不符），本次落空")
+				if int((ev as Dictionary).get("seat", my_seat)) == my_seat:
+					_toast("前路：预言没对上（顺序或牌种不符），本次落空")
 	# 其他家摸到的牌：显示成一个牌背，打完就收起
 	if typeof(events) == TYPE_ARRAY:
 		for ev in (events as Array):

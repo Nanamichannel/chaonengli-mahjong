@@ -2188,7 +2188,7 @@ class Game:
         # 【厄运】：延迟生效的四喜若正好在这三巡里引爆 → 直接作废，不补偿
         if self.c34_muted(int(seat)) and self._c10s2_ready(int(seat)):
             self._c10s2_clear(int(seat))
-            self._event("c10s2_wasted", {"seat": int(seat)})
+            self._emit("c10s2_wasted", {"seat": int(seat)})
         _ev_after = self._draw_after(int(seat), got, moved, info)
         if _ev_after is not None:
             return _ev_after
@@ -2301,10 +2301,10 @@ class Game:
                 if ql["idx"] >= 3:
                     self.yiding_grant(int(seat), 20, 1)      # 前路成功
                     self.qianlu = None
-                    self._event("qianlu_done", {"seat": int(seat)})
+                    self._emit("qianlu_done", {"seat": int(seat)})
             else:
                 self.qianlu = None
-                self._event("qianlu_fail", {"seat": int(seat)})
+                self._emit("qianlu_fail", {"seat": int(seat)})
         # 浓雾：数自己打出的牌
         nw = self.nongwu or {}
         if int(nw.get("by", -1)) == int(seat):
@@ -2445,7 +2445,7 @@ class Game:
         # 四喜：就绪了却没和（被无效 / 自己点了别的）→ 技能作废
         if self._c10s2_ready(seat):
             self._c10s2_clear(seat)
-            self._event("c10s2_wasted", {"seat": int(seat)})
+            self._emit("c10s2_wasted", {"seat": int(seat)})
         # 四喜：发动期间不能打出手牌里的东/北
         if int(seat) in self.c10s2:
             if tile in ("dong", "bei"):
@@ -9735,6 +9735,10 @@ class Game:
         s = int(seat)
         if not self.owns_cn(s, 20) or self.qianlu:
             return False
+        # ★ 2026-11-15：本小局用过了 / 已经拿到一定和牌权限 → 不许再武装一次。
+        #   以前这里不看这两条 → 成功或失败后都能拿同一个图标重新进选牌界面。
+        if s in self.yiding or self.skill_used(s, 20, 1):
+            return False
         if self.phase != "discard" or self.turn is None or int(self.turn) != s:
             return False
         return self.my_discard_count(s) >= 3
@@ -13946,3 +13950,16 @@ class Game:
 
     def _event(self, name: str, data: dict) -> dict:
         return {"event": name, **data}
+
+    # ★ 2026-11-15：`_event()` 只是**构造**一个事件；写在函数里的语句式调用
+    #   （`self._event(...)`）返回值会被丢掉 → 客户端永远收不到。
+    #   内部（不是 op 的返回值）产生的事件必须走 _emit()，由 op 层 take 走。
+    def _emit(self, name: str, data: dict) -> None:
+        if not hasattr(self, "_evq"):
+            self._evq = []
+        self._evq.append(self._event(name, data))
+
+    def take_pending_events(self) -> list:
+        q = list(getattr(self, "_evq", []) or [])
+        self._evq = []
+        return q

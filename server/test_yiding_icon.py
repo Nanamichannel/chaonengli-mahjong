@@ -102,8 +102,15 @@ def main() -> int:
     i_use = src.find("if _yiding_from(st, int(parts[0]), int(parts[1])):")
     check("跳过置灰那句确实在 _apply_used_skills 里",
           i_apply >= 0 and i_use > i_apply, True)
-    check("前路图标仍走「宣言一定和牌」那条链路",
-          "yiding_can" in src and "_yiding_on_clicked()           # 前路成功 → 一定和牌" in src)
+    # ★ 2026-11-15：判据从 state.yiding_can（"现在能宣言"）改成
+    #   「有权限（yiding_src=[20,1]）就进一定和牌面板」——否则三张全中后
+    #   点图标会掉进 _sf_qianlu()，把前路重新武装成选牌界面。
+    check("前路图标按「有没有权限」进一定和牌面板",
+          'if _yiding_from(srv_state, 20, 1):' in src
+          and "_yiding_on_clicked()       # 前路成功 → 一定和牌" in src
+          and "_yiding_why_not()" in src)
+    check("前路 done/fail 只对自己座位 toast",
+          'get("seat", my_seat)) == my_seat' in src)
 
     print("\n" + "=" * 70)
     print(" 断言 %d 条 / 失败 %d 条" % (PASS, FAIL))

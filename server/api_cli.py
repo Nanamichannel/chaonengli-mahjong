@@ -1206,6 +1206,9 @@ def op_act(db: DB, req: dict) -> dict:
         events.append(g.act(seat, action, **kw))
     # ★ 只推 1 步：让「我出牌」这条请求马上返回；其余三家由客户端下一次 poll 推进
     events += _drive_others(db, g, seat, 1)
+    # ★ 打牌过程中「内部」产生的事件（前路三张全中 / 落空、鬼门浪费…）：
+    #   _after_discard_hooks 里没法 return，以前就整条丢掉了。
+    events += g.take_pending_events()
     return {"ok": True, "state": g.state_for(seat), "events": events,
             "result": g.result, "round_id": rid}
 
@@ -2430,7 +2433,8 @@ def op_pofa_discard(db: DB, req: dict) -> dict:
     g = _game(db, rid)
     seat = int(req.get("seat", 0))
     r = g.pofa_discard(seat, str(req.get("tile", "")))
-    return {"ok": True, "pofa_discard": r, "state": g.state_for(seat), "events": [],
+    return {"ok": True, "pofa_discard": r, "state": g.state_for(seat),
+            "events": g.take_pending_events(),
             "result": g.result, "round_id": rid}
 
 

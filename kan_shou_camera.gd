@@ -23,6 +23,14 @@ var _zoom_target := 1.0
 var _zoom_focus := Vector2.ZERO       ## 缩放锚点（滚轮时的世界坐标）
 var _zoom_anchor := Vector2.ZERO      ## 该锚点对应的屏幕坐标
 
+# ── 触屏拖动 = 鼠标中键拖动（用户口径 2026-11-15）──────────────────
+const TOUCH_DRAG_TOL := 8.0           ## 手指移动超过这么多才算拖动（否则是点按）
+const TAP_BLOCK_MS := 250             ## 拖动结束后这么久内的「点按」都不算数
+var _touch_idx := -1
+var _touch_start := Vector2.ZERO
+var _touch_moved := false
+var tap_blocked_until := 0            ## 场景脚本读它：> now 说明刚拖过
+
 
 func _ready() -> void:
 	make_current()
@@ -48,6 +56,39 @@ func _input(e: InputEvent) -> void:
 				if mb.pressed:
 					_set_zoom_target(_zoom_target / zoom_step, mb)
 					get_viewport().set_input_as_handled()
+
+	elif e is InputEventScreenTouch:
+		# 手机：按下 = 开始拖动（等价中键按下），抬起 = 松手（保留甩速给 _process 做惯性）
+		var st := e as InputEventScreenTouch
+		if st.pressed:
+			if _touch_idx == -1:
+				_touch_idx = st.index
+				_touch_start = st.position
+				_touch_moved = false
+				_dragging = true
+				_vel = Vector2.ZERO
+		elif st.index == _touch_idx:
+			_touch_idx = -1
+			_dragging = false
+			if _touch_moved:
+				tap_blocked_until = Time.get_ticks_msec() + TAP_BLOCK_MS
+			_touch_moved = false
+
+	elif e is InputEventScreenDrag:
+		var sd := e as InputEventScreenDrag
+		if sd.index == _touch_idx:
+			if not _touch_moved and sd.position.distance_to(_touch_start) > TOUCH_DRAG_TOL:
+				_touch_moved = true
+				_vel = Vector2.ZERO
+				# 手势一开始就把「别当点按」的窗口打开（鼠标事件/触摸事件先后不保证）
+				tap_blocked_until = Time.get_ticks_msec() + 600
+			if _touch_moved:
+				# 和鼠标中键拖动完全同一条公式
+				var dt2 := sd.relative / zoom * drag_gain
+				position -= dt2
+				var dtt := maxf(get_process_delta_time(), 0.001)
+				_vel = (-dt2 / dtt).limit_length(2600.0)
+				get_viewport().set_input_as_handled()
 
 	elif e is InputEventMouseMotion and _dragging:
 		var mm := e as InputEventMouseMotion

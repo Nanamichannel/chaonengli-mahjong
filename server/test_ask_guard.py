@@ -26,6 +26,7 @@ MAIN = os.path.join(ROOT, "main.gd")
 SKILLPANEL = os.path.join(ROOT, "skill_panel.gd")
 KANSHOU = os.path.join(ROOT, "kan_shou.gd")
 TILEPIECE = os.path.join(ROOT, "tile_piece.gd")
+KANCAM = os.path.join(ROOT, "kan_shou_camera.gd")
 UISFX = os.path.join(ROOT, "ui_sfx.gd")
 PROJECT = os.path.join(ROOT, "project.godot")
 PASS = FAIL = 0
@@ -143,6 +144,11 @@ def main() -> int:
     check("ui_sfx.play 有 force 口子", "volume_db := DEFAULT_DB, force := false" in us
           and "and not force" in us)
     check("立直切牌走同一条链", "if riichi_selecting:\n\t\treturn false" not in src)
+    kc = io.open(KANCAM, encoding="utf-8").read()
+    check("鉴赏：拖动 = 中键拖动（触屏平移）",
+          "InputEventScreenDrag" in kc and "TOUCH_DRAG_TOL" in kc
+          and "tap_blocked_until" in kc)
+    check("鉴赏：拖动后不误触发点按", "func _tap_blocked() -> bool:" in ks)
     check("小鲸鱼开关一次点按只切一次",
           "func _round_info_btn_toggled() -> void:" in src
           and "_round_info_eat_btn" in src

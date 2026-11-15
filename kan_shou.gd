@@ -115,8 +115,18 @@ func _make_skip_ui() -> void:
 	host.add_child(_skip_btn)
 
 
+# 刚拖过（平移镜头）→ 这一下不算点按，别顺手放大一张卡
+func _tap_blocked() -> bool:
+	if _cam == null:
+		return false
+	var t = _cam.get("tap_blocked_until")
+	return t != null and Time.get_ticks_msec() < int(t)
+
+
 func _on_card_pressed(card: TextureButton) -> void:
 	if _open or card.texture_normal == null:
+		return
+	if _tap_blocked():
 		return
 	_open = true
 	if _skip_btn != null and is_instance_valid(_skip_btn):
@@ -162,9 +172,10 @@ func _input(e: InputEvent) -> void:
 		return
 	# 左键 / 触屏 tap（用户口径 2026-11-15）：**放大态点放大卡以外 = 缩回**；
 	# 网格态点空白什么都不做（返回靠右上角「跳过」/ ESC / 安卓返回键）。
-	if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+	# ★ 放大态点空白缩回：改在**抬手**时判定（按下就关的话，想拖动会先被关掉）
+	if e is InputEventMouseButton and not (e as InputEventMouseButton).pressed \
 			and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-		if _open:
+		if _open and not _tap_blocked():
 			var mp := (e as InputEventMouseButton).position
 			if not _big.get_global_rect().has_point(mp):
 				_close()

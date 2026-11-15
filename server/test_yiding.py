@@ -65,6 +65,12 @@ def main():
     waits = g.yiding_waits(0)
     check("9p" in waits, "9p 在听牌张里")
 
+    # ①-b 客户端牌种网格的 allow：state 里要有「听牌张」列表（国标用 guobiao_kinds）
+    _st = g.state_for(0)
+    check("state 暴露 yiding_waits", "9p" in (_st.get("yiding_waits") or []))
+    check("没权限时 yiding_waits 为空",
+          not (Game(db, rid).state_for(0).get("yiding_waits") or []))
+
     # ② 宣言：不结算，只记 armed + 播报
     r = g.yiding_declare(0, "9p")
     check(r.get("kind") == "9p", "宣言返回 kind")

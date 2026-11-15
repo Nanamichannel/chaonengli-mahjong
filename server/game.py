@@ -1466,6 +1466,15 @@ class Game:
             "yiding": int(seat) in self.yiding,
             "yiding_can": self.yiding_can(seat),
             "yiding_tiles": self.yiding_discards(seat),
+            # ★ 2026-11-15：宣言时要选的「听牌张」——客户端拿它当牌种网格的 allow
+            #   （不在列表里的牌种置灰半透明，和国标 guobiao_kinds 一个口径）。
+            #   没有权限就不算（省掉逐张切牌的听牌判定）。
+            "yiding_waits": (sorted(self.yiding_waits(seat))
+                             if (int(seat) in self.yiding
+                                 and str(self.phase) == "discard"
+                                 and self.turn is not None
+                                 and int(self.turn) == int(seat))
+                             else []),
             "yiding_src": self.yiding_src_of(seat),
             "guobiao_can": self.guobiao_can(seat),
             "guobiao_tiles": self.guobiao_discards(seat),

@@ -16993,9 +16993,11 @@ func _yiding_on_clicked() -> void:
 	riichi_selecting = false
 	yd_kind_pick = ""
 	_apply_entity_states(srv_state)
-	_cg_show_kind_grid("一定和牌：选一张要听的牌（必须是听牌张）",
+	# 和国标同一套 UI：不能听的牌种置灰半透明、点不动（服务端 state.yiding_waits）
+	_cg_show_kind_grid("一定和牌：选一张要听的牌（亮着的才听）",
 		func(k): yd_kind_pick = String(k); _yd_kind_head(),
-		func(): _yd_declare_kind())
+		func(): _yd_declare_kind(),
+		srv_state.get("yiding_waits", []))
 	_toast("一定和牌：选一张听牌张 → 点「开始」")
 
 

@@ -133,6 +133,10 @@ static func warm() -> void:
 static func play(sfx: String, volume_db := DEFAULT_DB) -> void:
 	if muted:
 		return
+	# ★ 触屏没有真正的「悬停」：tap 会先触发一次 mouse_entered，导致每点一张牌都响一声。
+	#   移动端直接吞掉 hover 音（2026-11-15 安卓移植）。
+	if sfx == "hover" and OS.has_feature("mobile"):
+		return
 	var s := _stream(sfx)
 	if s == null:
 		return

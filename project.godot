@@ -17,8 +17,8 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-MCPRuntimeProbe="*uid://bsg12huaf1u5i"
 ClientState="*res://client_state.gd"
+MobileInput="*res://mobile_input.gd"
 
 [audio]
 
@@ -54,4 +54,5 @@ get={
 
 [rendering]
 
+textures/vram_compression/import_etc2_astc=true
 rendering_device/driver.windows="d3d12"

@@ -44,6 +44,13 @@ func _init() -> void:
 		available = true
 		python = ""
 		return                               # 联机模式：不找 python、不起子进程
+	# ★ 安卓/iOS 起不了 python 子进程：不要静默「单机」，否则玩家看到的是点了没反应。
+	#   直接标记不可用，由上层弹出「需要联网」的提示（2026-11-15 安卓移植）。
+	if OS.has_feature("mobile"):
+		python = ""
+		available = false
+		last_error = "移动端不支持单机模式，请检查网络后重试"
+		return
 	python = _find_python()
 	available = python != ""
 	# 进程号 = 一个窗口一个号，四个实例也不会撞

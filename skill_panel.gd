@@ -197,14 +197,22 @@ func close() -> void:
 
 # 每帧：把「开始」按钮贴到未副露手牌的右边（和别的面板同一套摆位）
 func tick() -> void:
+	# 「在自己手牌上选牌」这一类：两个按钮都用原尺寸（用户口径 2026-11-15：
+	#   只有「有独立选牌 UI」的技能才并排缩小，见 c30_panel / 新手运）
+	if host != null and cbtn != null and is_instance_valid(cbtn) and cbtn.visible:
+		host.call("place_cancel_btn", cbtn)      # 取消按钮：确认按钮右侧
+	if btn == null or not is_instance_valid(btn) or not btn.visible:
+		return
 	if host == null:
 		return
-	var has_b := btn != null and is_instance_valid(btn)
-	var has_c := cbtn != null and is_instance_valid(cbtn)
-	if not has_b and not has_c:
-		return
-	# 「确认 + 取消」一起摆：两个都缩到 0.62、并排、底部对齐（用户口径 2026-11-15：太大挡手牌）
-	host.call("place_prompt_pair", btn if has_b else null, cbtn if has_c else null)
+	var aspect := 70.0 / 220.0
+	if btn.texture_normal != null and btn.texture_normal.get_width() > 0:
+		aspect = float(btn.texture_normal.get_height()) / float(btn.texture_normal.get_width())
+	var r: Rect2 = host.call("prompt_btn_rect", aspect)
+	if btn.global_position.distance_to(r.position) > 0.5:
+		btn.global_position = r.position
+	if btn.size.distance_to(r.size) > 0.5:
+		btn.size = r.size
 
 
 func _note(msg: String) -> void:

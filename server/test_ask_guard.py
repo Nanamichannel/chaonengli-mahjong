@@ -127,11 +127,16 @@ def main() -> int:
     check("ESC = 全局取消", "if _k.keycode == KEY_ESCAPE:" in src)
     check("强制态闸门 _force_busy", "func _force_busy() -> bool:" in src)
     check("取消按钮在确认右侧", "func cancel_btn_rect(aspect: float) -> Rect2:" in src)
-    check("确认+取消并排时一起缩小",
+    check("并排缩小只给有独立选牌 UI 的技能",
           "const PAIR_SCALE := 0.62" in src and "func place_prompt_pair(" in src
-          and "func prompt_pair_rects(" in src)
-    check("重整发动后不可取消",
-          "var c38_sent := false" in src and "c38_cancel.disabled = c38_sent" in src
+          and "place_prompt_pair(c30_panel.start_btn" in src
+          and "place_prompt_pair(c32_panel.start_btn" in src)
+    sp2 = io.open(SKILLPANEL, encoding="utf-8").read()
+    check("SkillPanel 仍是原尺寸（不缩小）",
+          'host.call("place_cancel_btn", cbtn)' in sp2
+          and "place_prompt_pair" not in sp2)
+    check("重整没有取消按钮 + 发动后不可撤销",
+          "c38_cancel" not in src and "var c38_sent := false" in src
           and "if c38_active and c38_sent:" in src)
     check("强制态灰按钮", "if not enabled:\n\t\tb.disabled = true" in src)
     sp = io.open(SKILLPANEL, encoding="utf-8").read()

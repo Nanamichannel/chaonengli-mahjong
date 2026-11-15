@@ -1119,13 +1119,22 @@ func mk_cancel_btn(nm: String, cb: Callable, enabled := true) -> TextureButton:
 	return b
 
 
+# 「原尺寸」口径：取消按钮放在确认右边，大小 = 确认按钮（整张牌高）
+#   ★ 只有「有独立选牌 UI」的技能（向听 / 新手运）才用 place_prompt_pair() 缩到 0.62
 func place_cancel_btn(b: TextureButton) -> void:
 	if b == null or not is_instance_valid(b) or not b.visible:
 		return
-	var aspect := 70.0 / 220.0
-	if b.texture_normal != null and b.texture_normal.get_width() > 0:
-		aspect = float(b.texture_normal.get_height()) / float(b.texture_normal.get_width())
-	_fit_btn(b, cancel_btn_rect(aspect))
+	var otex := btn_tex("ok")
+	var caspect := 974.0 / 894.0
+	if otex != null and otex.get_width() > 0:
+		caspect = float(otex.get_height()) / float(otex.get_width())
+	var conf := prompt_btn_rect(caspect)
+	conf.position += prompt_btn_offset
+	var r := Rect2(conf.position + Vector2(conf.size.x + CANCEL_GAP, 0.0), conf.size)
+	var vp := get_viewport_rect().size
+	if r.position.x + r.size.x > vp.x - 8.0:
+		r.position.x = maxf(8.0, conf.position.x - r.size.x - CANCEL_GAP)
+	_fit_btn(b, r)
 
 
 # 右键 = 跳过「技能询问 / 副露询问」（用户口径 2026-11-04）
@@ -11163,7 +11172,6 @@ var c38_hand: Array = []
 var c38_picks: Array = []            # [{"kind":"dora","i":0} / {"kind":"hand","seq":n}]
 var c38_nodes := {}                  # key -> TextureButton
 var c38_ok: TextureButton = null
-var c38_cancel: TextureButton = null   # 「取消」
 var c38_sent := false                 # 已经点过「确认」→ 这次发动不可撤销（用户口径 2026-11-15）
 
 
@@ -11305,11 +11313,8 @@ func _c38s1_make_ui() -> void:
 	c38_ok = ui_btn("ok", 150.0)               # 并排：两个同尺寸
 	c38_ok.pressed.connect(_c38s1_confirm)
 	c38_ui.add_child(c38_ok)
-	var cancel := ui_btn("pass", 150.0)
-	cancel.pressed.connect(_c38s1_close)
-	c38_ui.add_child(cancel)
-	c38_cancel = cancel
-	_place_btn_pair(c38_ok, cancel, vp.x * 0.5, 470.0)
+	# ★ 用户口径 2026-11-15：重整**没有取消**（发动后不可取消）→ 只留确认，居中
+	c38_ok.position = Vector2(vp.x * 0.5 - c38_ok.size.x * 0.5, 470.0 - c38_ok.size.y * 0.5)
 
 
 func _c38s1_refresh() -> void:
@@ -11337,9 +11342,6 @@ func _c38s1_refresh() -> void:
 				num.text = ""
 	if c38_ok != null and is_instance_valid(c38_ok):
 		c38_ok.disabled = c38_sent or c38_picks.size() != 3
-	if c38_cancel != null and is_instance_valid(c38_cancel):
-		c38_cancel.disabled = c38_sent       # 发动后不能取消
-		c38_cancel.modulate = Color(1, 1, 1, 0.35) if c38_sent else Color(1, 1, 1, 1)
 
 
 func _c38_toggle(pick: Dictionary) -> void:
@@ -11407,7 +11409,6 @@ func _c38s1_close() -> void:
 	c38_picks.clear()
 	c38_nodes.clear()
 	c38_ok = null
-	c38_cancel = null
 	c38_sent = false
 	if c38_ui != null and is_instance_valid(c38_ui):
 		c38_ui.queue_free()

@@ -143,6 +143,10 @@ def main() -> int:
     check("ui_sfx.play 有 force 口子", "volume_db := DEFAULT_DB, force := false" in us
           and "and not force" in us)
     check("立直切牌走同一条链", "if riichi_selecting:\n\t\treturn false" not in src)
+    check("小鲸鱼开关一次点按只切一次",
+          "func _round_info_btn_toggled() -> void:" in src
+          and "_round_info_eat_btn" in src
+          and "_round_info_btn.pressed.connect(_round_info_btn_toggled)" in src)
 
     print("\n" + "=" * 70)
     print(f" 通过 {PASS} 项，失败 {FAIL} 项")

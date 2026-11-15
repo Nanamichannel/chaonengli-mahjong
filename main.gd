@@ -444,6 +444,9 @@ var _voice_try_ms := 0                  # 上次尝试上报的时间（失败�
 var _ui_ready := false                  # _ready 跑完了没有（没跑完不许 add_child 建层）
 var _round_info_probe := 0.0            # 右上角开关探测计时
 var _round_info_hot: TextureButton = null   # 真正接点击的透明热区按钮（Sprite2D 没有输入）
+# ★ 同一次点按只切一次：按下时 _input 的「兜底命中」先切了，抬手时热区按钮的 pressed
+#   不能再切（手机上就是一按两下：按下打开、松开又关上）。
+var _round_info_eat_btn := false
 @export var round_hud_margin := Vector2(28.0, 62.0)   # 距离屏幕右 / 上边（上边让出按钮的位置）
 const ROUND_HUD_W := 420.0
 
@@ -789,8 +792,8 @@ func _round_info_button_get() -> BaseButton:
 func _bind_info_btn(b: BaseButton) -> void:
 	_round_info_btn = b
 	_round_info_btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	if not _round_info_btn.pressed.is_connected(_round_info_toggle):
-		_round_info_btn.pressed.connect(_round_info_toggle)
+	if not _round_info_btn.pressed.is_connected(_round_info_btn_toggled):
+		_round_info_btn.pressed.connect(_round_info_btn_toggled)
 
 
 # 按钮图标（用户在 Main/UI/按钮 放的是一个 Sprite2D，不是 Button）
@@ -1122,6 +1125,15 @@ func _pass_armed_tick() -> void:
 	# 鸣牌窗口还在才补：已经被人鸣走 / 已经轮到我打牌 → 这一下就不该补了
 	if String(srv_state.get("phase", "")) == "claim" and not srv_opts_of(srv_state).is_empty():
 		_on_pass_pressed()
+
+
+# 热区按钮的 pressed（BaseButton 默认在**抬手**时发）：
+#   按下那一下已经被 `_input` 的兜底命中切过了 → 这一下丢掉，别切第二次。
+func _round_info_btn_toggled() -> void:
+	if _round_info_eat_btn:
+		_round_info_eat_btn = false
+		return
+	_round_info_toggle()
 
 
 func _round_info_toggle() -> void:
@@ -18568,7 +18580,9 @@ func _input(event: InputEvent) -> void:
 	# 右上角「四行信息」开关（图标是 Sprite2D，自己算点击）
 	var _mb := (event as InputEventMouseButton)
 	if _mb != null and _mb.pressed and _mb.button_index == MOUSE_BUTTON_LEFT:
+		_round_info_eat_btn = false          # 新的一次按下：重新允许「按钮那条路」
 		if _round_info_hit(_mb.position) or _round_info_corner_hit(_mb.position):
+			_round_info_eat_btn = true       # 这次按下已经切过 → 抬手别再切
 			_round_info_toggle()
 			get_viewport().set_input_as_handled()
 			return

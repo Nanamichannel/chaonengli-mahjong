@@ -895,6 +895,181 @@ func _round_info_corner_hit(pos: Vector2) -> bool:
 var _pass_armed := false             # 右键点过「跳过」，但当时 busy → 等它一清就补一次
 
 
+# ── 统一取消（2026-11-15 用户口径）───────────────────────────────────
+#   三态： "canceled" = 取消掉了一个询问/面板
+#          "blocked"  = 有强制进行中的东西（右键/ESC 一律吞掉，绝不落到摸切）
+#          "none"     = 没东西可取消 → 桌面右键继续「切出刚摸的牌」
+#   优先级：拦截询问（看破/封堵/阻止/免疫，**一次放一条**）→ 技能面板
+#           → 鸣牌/加速/破发/未来 → 强制态
+const CANCEL_GAP := 10.0
+
+
+func _cancel_top_ask() -> String:
+	if game_over:
+		return "none"
+	var k := _cancel_one_intercept()
+	if k != "none":
+		return k
+	if _cancel_skill_panel():
+		return "canceled"
+	if _right_click_skip():
+		return "canceled"
+	if _force_busy():
+		return "blocked"
+	return "none"
+
+
+# 拦截询问（看破/封堵/阻止/免疫）：一次只放一条 —— 取节点 id 最靠前的那条
+#   （服务端 _act_sync_compat 也是按 id 升序挑「第一条待答」，两边同序）
+#   ★ 必须按 aid 回答：老的 kangpo_answer(use=false) 只答「我的第一条」且不带 aid，
+#     多节点/多层时会「界面关了、询问还挂着」。
+func _cancel_one_intercept() -> String:
+	var arr = srv_state.get("asks")
+	if typeof(arr) != TYPE_ARRAY:
+		return "none"
+	var best := -1
+	for it in (arr as Array):
+		if typeof(it) != TYPE_DICTIONARY:
+			continue
+		var id := int((it as Dictionary).get("id", -1))
+		if id < 0:
+			continue
+		if best < 0 or id < best:
+			best = id
+	if best < 0:
+		return "none"
+	_kp_answer(best, "pass")
+	return "canceled"
+
+
+# 有「进行中但不能取消」的东西 → 右键/ESC 一律吞掉（否则会掉进摸切/误选手牌）
+func _force_busy() -> bool:
+	if _srv_kangpo_wait():
+		return true                    # 我发动了、正在等别人决定要不要拦：只能等
+	if c05_hide_active:
+		return true                    # 盖牌：必须选完
+	if hs_active:
+		return true                    # 海神：屏蔽不掉
+	if c25b_panel.active:
+		return true                    # 免疫（宝牌的集合）：强制发动
+	return false
+
+
+# 技能面板的取消（返回 true = 取消掉了）。摸牌前询问的闸门会在下一份 state 里
+# 看到面板已关 → 自动调 _pda_skip_once()，所以这里只负责「关 + 恢复摸牌」。
+func _cancel_skill_panel() -> bool:
+	if _srv_kangpo_wait() or _force_busy():
+		return false
+	if board_ui != null:
+		_board_close()
+		_pre_draw_resume()
+		return true
+	if swap_panel.active:
+		_swap_close()
+		_pre_draw_resume()
+		return true
+	if press_panel.active and press_panel.allow_cancel:
+		_press_close()
+		return true
+	if c05_active:
+		_c05_close(true)
+		return true
+	if c33_panel.active:
+		_c33_cancel()
+		return true
+	if c43_panel.active:
+		c43_panel.close()
+		return true
+	if c46_panel.active:
+		c46_panel.close()
+		return true
+	if c45_panel.active:
+		_c45s1_start()                 # 自带「跳过这一巡」+ 恢复摸牌
+		return true
+	if c27_panel.active:
+		_c27_close()
+		return true
+	if c24_panel.active:
+		c24_panel.close()
+		return true
+	if ym_panel.active:
+		ym_panel.close()
+		return true
+	if c30_panel.active and c30_panel.mode == "arm":
+		c30_panel.close()
+		c30_key = ""
+		return true
+	if skill2_card != 0:
+		_skill2_close(true)
+		return true
+	if c11_active:
+		_card11_close()
+		return true
+	if c11s2_active:
+		_card11s2_close()
+		return true
+	if guobiao_selecting:
+		_gb_close()
+		return true
+	if yiding_selecting:
+		_yd_close()
+		return true
+	if riichi_selecting:
+		_toggle_riichi_selecting()
+		return true
+	return false
+
+
+# 染色（染手）取消：面板还开着、还没发 op → 关掉就行
+func _c33_cancel() -> void:
+	if not c33_panel.active:
+		return
+	c33_panel.close()
+
+
+# 取消按钮的 rect = 确认按钮**右侧**（右侧放不下就叠到左边，绝不出屏）
+func cancel_btn_rect(aspect: float) -> Rect2:
+	var r := prompt_btn_rect(aspect)
+	r.position += prompt_btn_offset
+	r.position.x += r.size.x + CANCEL_GAP
+	var vp := get_viewport_rect().size
+	if r.position.x + r.size.x > vp.x - 8.0:
+		r = prompt_btn_rect(aspect)
+		r.position += prompt_btn_offset
+		r.position.x = maxf(8.0, r.position.x - r.size.x - CANCEL_GAP)
+	return r
+
+
+# 造一枚「取消」按钮（enabled=false = 强制发动：灰掉、点不动）
+func mk_cancel_btn(nm: String, cb: Callable, enabled := true) -> TextureButton:
+	var b := TextureButton.new()
+	b.name = nm
+	b.texture_normal = btn_tex("pass")
+	b.ignore_texture_size = true
+	b.stretch_mode = TextureButton.STRETCH_SCALE
+	b.focus_mode = Control.FOCUS_NONE
+	b.visible = false
+	if not enabled:
+		b.disabled = true
+		b.modulate = Color(1, 1, 1, 0.35)
+	if cb.is_valid():
+		b.pressed.connect(cb)
+	return b
+
+
+func place_cancel_btn(b: TextureButton) -> void:
+	if b == null or not is_instance_valid(b) or not b.visible:
+		return
+	var aspect := 70.0 / 220.0
+	if b.texture_normal != null and b.texture_normal.get_width() > 0:
+		aspect = float(b.texture_normal.get_height()) / float(b.texture_normal.get_width())
+	var r := cancel_btn_rect(aspect)
+	if b.size.distance_to(r.size) > 0.5:
+		b.size = r.size
+	if b.global_position.distance_to(r.position) > 0.5:
+		b.global_position = r.position
+
+
 # 右键 = 跳过「技能询问 / 副露询问」（用户口径 2026-11-04）
 func _right_click_skip() -> bool:
 	if game_over:
@@ -1682,7 +1857,7 @@ func _ready() -> void:
 	tile_bank.global_position = Vector2.ZERO
 	tile_bank.build(tile_size)
 	# 手牌点击由单张牌的脚本发出，这里只把它接到「打哪张」
-	tile_bank.hand_clicked.connect(discard_tile)
+	tile_bank.hand_clicked.connect(_on_hand_clicked)      # 触屏要判双击，先过一道闸
 	hand_pick.setup(self, tile_bank)                 # 统一的「选手牌」界面
 	swap_panel.setup(self, tile_bank, hand_pick)     # 通用的「技能选牌面板」
 	c33_panel.setup(self, tile_bank, hand_pick)      # 染手（33S1）
@@ -6313,28 +6488,11 @@ func _c31_on_clicked(skill: int) -> void:
 
 
 
+## 放行一条拦截询问（用户口径 2026-11-15：一次放一条、按 aid 回答）
+##   ★ 原来是 kangpo_answer(use=false)：只答「我的第一条」且不带 aid，
+##     多节点/多层时会「界面关了、询问还挂着」→ 对局停住或又弹回来。
 func _kp_skip() -> void:
-	_kp_close()
-	var r := srv_request({"op": "kangpo_answer", "seat": my_seat, "use": false})
-	if r.is_empty():
-		_toast(_srv_err("放行失败：服务端没有回应"))
-		return
-	srv_apply_state(r.get("state"), r.get("events"))
-	if not bool(r.get("ok", true)):
-		_toast(String(r.get("error", "放行之后那次发动没成功")))
-		return
-	# ★ 放行 = 那次发动**继续执行**（服务端会原地重放）：
-	#   一定要说出来，否则玩家以为「什么都没发生」，可一次性技能其实已经用掉了。
-	var got := ""
-	if typeof(r.get("card11")) == TYPE_DICTIONARY:
-		got = String((r.get("card11") as Dictionary).get("got", ""))
-	var pend := false
-	if typeof(r.get("kangpo")) == TYPE_DICTIONARY:
-		pend = typeof((r.get("kangpo") as Dictionary).get("pending")) == TYPE_DICTIONARY
-	if got != "":
-		_toast("已放行：那次发动继续执行（换到 %s）" % got)
-	elif pend:
-		_toast("已放行：那次发动继续执行")
+	_cancel_one_intercept()
 
 
 func _kp_close() -> void:
@@ -9598,6 +9756,9 @@ func _c32_sync(st: Dictionary) -> void:
 func _c33_start() -> void:
 	if game_over:
 		return
+	if c33_panel.active:
+		_c33_cancel()                   # 再点一次图标 = 取消（以前只会把选择重置）
+		return
 	if swap_panel.active or press_panel.active or ym_panel.active or c24_panel.active \
 			or c27_panel.active or c25b_panel.active or c30_panel.active or c32_panel.active:
 		_toast("别的技能面板还开着 —— 先关掉它")
@@ -10461,6 +10622,7 @@ func _c45s1_start() -> void:
 		return
 	c45_panel.begin({
 		"name": "神境",
+		"on_cancel": func(): _c45s1_start(),      # 跳过这一巡 + 恢复摸牌
 		"want": 13, "min": 0,
 		"total": 13,                     # 手牌 + 牌河合计 13 张
 		"river": true, "river_match": false,
@@ -12043,6 +12205,7 @@ func _press_start() -> void:
 		return
 	press_panel.begin({
 		"name": "压制",
+		"on_cancel": func(): _press_close(),
 		"want": 1, "min": 1,
 		"river": true, "river_match": true,
 		"cancel": true,
@@ -12870,7 +13033,9 @@ func _c26_make_ui() -> void:
 	c26_skip_btn.stretch_mode = TextureButton.STRETCH_SCALE
 	c26_skip_btn.focus_mode = Control.FOCUS_NONE
 	c26_skip_btn.size = src2.size
-	c26_skip_btn.position = Vector2(src2.position.x - src2.size.x - 18.0,
+	# ★ 2026-11-15：原来放在确认**左侧**（rc.x - w - 18），而手牌右边缘离确认只有
+	#   prompt_btn_gap=12px → 那枚按钮直接压在手牌最后 1~2 张上。统一挪到右侧。
+	c26_skip_btn.position = Vector2(src2.position.x + src2.size.x + CANCEL_GAP,
 		src2.position.y)
 	c26_skip_btn.visible = false
 	c26_skip_btn.pressed.connect(_c26_skip)
@@ -13027,6 +13192,7 @@ func _swap_start() -> void:
 		return
 	swap_panel.begin({
 		"name": "想象",
+		"on_cancel": func(): _swap_close(); _pre_draw_resume(),
 		"want": 3, "min": 1,                 # 手牌 1~3 张
 		"river": true, "river_match": true,  # 牌河张数必须和手牌一样
 		"cancel": true,
@@ -15759,6 +15925,8 @@ func _sync_prompt_btns() -> void:
 			btn.size = r.size
 		if btn.global_position.distance_to(r.position) > 0.5:
 			btn.global_position = r.position
+	place_cancel_btn(c30_panel.cancel_btn)         # 向听：确认右边的「取消」
+	place_cancel_btn(c32_panel.cancel_btn)         # 新手运
 
 
 # 复制一张模板牌的形象（Node2D + Sprite2D）
@@ -15983,6 +16151,40 @@ func _build_hand_legacy() -> void:
 		tile_wrappers.append(wrapper)
 	update_tile_positions()
 
+
+
+# ── 手牌点击（用户口径 2026-11-15）─────────────────────────────────────
+#   触屏：切牌时**单击 = 鼠标悬浮**（抬起/悬浮音已经在 mouse_entered 里做过），
+#         同一张牌 350ms 内**再点一次 = 出牌**。
+#   桌面：单击即出牌，不变。
+#   选牌态（技能面板 / 国标 / 一定和牌 / 立直选牌 / 换牌…）：仍然是单击即选。
+const TAP_DOUBLE_MS := 350
+var _tap_ms := 0
+var _tap_idx := -1
+
+
+# 这一下点击会不会真的把牌打出去？（有一堆选牌面板时不要求双击）
+func _could_be_real_discard() -> bool:
+	if _skill_panel_open() or _skill_input_busy():
+		return false
+	if c11_active or c05_hide_active or wind_active or flow_active:
+		return false
+	if sw_stage != "":
+		return false
+	return true
+
+
+func _on_hand_clicked(index: int) -> void:
+	if OS.has_feature("mobile") and _could_be_real_discard():
+		var now := Time.get_ticks_msec()
+		if _tap_idx == int(index) and (now - _tap_ms) <= TAP_DOUBLE_MS:
+			_tap_idx = -1
+			_tap_ms = 0                       # 双击成立 → 走下面的真出牌
+		else:
+			_tap_idx = int(index)
+			_tap_ms = now
+			return                            # 第一下：只当悬浮
+	discard_tile(index)
 
 
 func _on_tile_entered(index: int) -> void:
@@ -18364,6 +18566,12 @@ func _input(event: InputEvent) -> void:
 			return
 	var _k := (event as InputEventKey)
 	if _k != null and _k.pressed and not _k.echo:
+		# ESC = 全局取消（和右键同一套调度器；没东西可取消就什么都不做，绝不摸切）
+		if _k.keycode == KEY_ESCAPE:
+			var kc := _cancel_top_ask()
+			if kc != "none":
+				get_viewport().set_input_as_handled()
+				return
 		if _k.keycode == KEY_F3:
 			_hud_show = not _hud_show
 			get_viewport().set_input_as_handled()
@@ -18446,30 +18654,14 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
-			if board_ui != null:
-				_board_close()
-				_pre_draw_resume()                  # 画板开着：右键 = 取消
-			elif sw_stage != "":
-				pass                            # 南风流程中：右键不做任何事
-			elif c05_active:
-				_c05_close(true)                # 策略：右键 = 放弃这次换牌
-			elif c05_hide_active:
-				pass                            # 盖牌必须选完
-			elif wind_active:
-				pass                            # 自风换牌中：右键不做任何事
-			elif String(srv_state.get("phase", "")) == "wind_swap":
-				pass                            # 等别人把自风换走
-			elif flow_active:
-				pass                            # 风神换牌中：右键不做任何事
-			elif press_panel.active:
-				if press_panel.allow_cancel:
-					_press_close()              # 压制进行中：右键 = 取消
-			elif swap_panel.active:
-				if swap_panel.allow_cancel:
-					_swap_close()
-					_pre_draw_resume()               # 换牌进行中：右键 = 取消
-			else:
-				quick_discard_drawn()
+			# ★ 2026-11-15 统一：右键 = 取消最上面那个询问/面板；
+			#   没有可取消的东西才落回「切出刚摸的牌」（桌面摸切保留）。
+			#   强制态（盖牌/海神/免疫/等拦截判定）吞掉，绝不再误切/误选。
+			match _cancel_top_ask():
+				"canceled", "blocked":
+					pass
+				_:
+					quick_discard_drawn()
 			get_viewport().get_viewport().set_input_as_handled()
 
 

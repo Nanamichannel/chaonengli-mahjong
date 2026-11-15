@@ -44,6 +44,8 @@ var picks: Array[int] = []       # 手牌下标（display_tiles 顺序）
 var rivers: Array[int] = []      # 牌河 seq
 var ui: Control = null
 var btn: TextureButton = null
+var cbtn: TextureButton = null        # 「取消」按钮（确认按钮右侧；cancel=false → 灰掉）
+var on_cancel := Callable()           # 取消时干什么（空 = 关面板 + 恢复摸牌）
 
 
 func setup(p_host: Node, p_bank, p_picker) -> void:
@@ -62,6 +64,7 @@ func begin(spec: Dictionary) -> void:
 	total = maxi(0, int(spec.get("total", 0)))
 	close_on_confirm = bool(spec.get("close_on_confirm", true))
 	allow_cancel = bool(spec.get("cancel", true))
+	on_cancel = spec.get("on_cancel", Callable())
 	river_ok = spec.get("river_ok", Callable())
 	on_confirm = spec.get("on_confirm", Callable())
 	picks.clear()
@@ -121,6 +124,8 @@ func can_confirm() -> bool:
 func refresh() -> void:
 	if btn != null and is_instance_valid(btn):
 		btn.visible = can_confirm()
+	if cbtn != null and is_instance_valid(cbtn):
+		cbtn.visible = active
 	refresh_rivers()
 
 
@@ -157,6 +162,20 @@ func confirm() -> void:
 		on_confirm.call(p, r)
 
 
+## 点「取消」：交给面板自己的回调；没给就「关面板 + 恢复摸牌」
+##   （摸牌前询问的闸门看到面板已关 → 下一份 state 里自动 pre_draw_skip）
+func _do_cancel() -> void:
+	if not allow_cancel:
+		return
+	if on_cancel.is_valid():
+		on_cancel.call()
+		return
+	var h := host
+	close()
+	if h != null and h.has_method("_pre_draw_resume"):
+		h.call("_pre_draw_resume")
+
+
 func close() -> void:
 	if not active and ui == null:
 		return
@@ -167,6 +186,8 @@ func close() -> void:
 		picker.end()
 	if btn != null and is_instance_valid(btn):
 		btn.visible = false
+	if cbtn != null and is_instance_valid(cbtn):
+		cbtn.visible = false
 	if ui != null and is_instance_valid(ui):
 		ui.queue_free()
 	ui = null
@@ -175,6 +196,8 @@ func close() -> void:
 
 # 每帧：把「开始」按钮贴到未副露手牌的右边（和别的面板同一套摆位）
 func tick() -> void:
+	if host != null and cbtn != null and is_instance_valid(cbtn) and cbtn.visible:
+		host.call("place_cancel_btn", cbtn)      # 取消按钮：确认按钮右侧
 	if btn == null or not is_instance_valid(btn) or not btn.visible:
 		return
 	if host == null:
@@ -226,3 +249,8 @@ func _make_ui() -> void:
 	btn.visible = false
 	btn.pressed.connect(confirm)
 	ui.add_child(btn)
+	# 「取消」按钮：和确认同一行、放在右边（用户口径 2026-11-15）
+	#   allow_cancel=false（免疫等强制发动）→ 灰掉、点不动，一眼看出不能撤
+	cbtn = host.call("mk_cancel_btn", "Cancel", _do_cancel, allow_cancel)
+	cbtn.visible = false
+	ui.add_child(cbtn)

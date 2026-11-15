@@ -2,6 +2,7 @@ extends Node2D
 ## 鉴赏界面：点卡放大（AnimationPlayer 关键帧，先快后慢）／右键逆动画退回
 ## 中键拖动由 Camera2D（kan_shou_camera.gd）自己处理，这里只给它注边界。
 
+const SKIP_TEX := "res://Cailiao/UI/tiaoguo.png"      # 右上角「跳过」
 const ANIM_ZOOM := "放大"
 const START_SCENE := "res://真初始场景.tscn"
 const Wipe := preload("res://transition_wipe.gd")
@@ -15,6 +16,8 @@ const EASE_OUT := [0.0, 0.488, 0.784, 0.936, 0.992, 1.0]
 @onready var _ap: AnimationPlayer = $动画
 
 var _open := false
+var _skip_ui: CanvasLayer = null       # 固定层（不跟相机走）
+var _skip_btn: TextureButton = null
 var _card: TextureButton = null
 var _leaving := false
 var _start_ps: PackedScene = null
@@ -29,6 +32,7 @@ func _ready() -> void:
 			(c as TextureButton).pressed.connect(_on_card_pressed.bind(c))
 	_ap.animation_finished.connect(_on_anim_finished)
 	_inject_camera_limit()
+	_make_skip_ui()
 	# 倒放转场要实例化一级菜单，提前预加载，按 ESC 时不卡
 	_start_req = (ResourceLoader.load_threaded_request(START_SCENE, "PackedScene") == OK)
 
@@ -84,10 +88,39 @@ func _visual_rect(c: Control) -> Rect2:
 	return r
 
 
+## 右上角「跳过」：固定屏幕位置（放 CanvasLayer，别跟着相机平移/缩放）
+##   网格态显示 → 点击回真初始场景；放大态隐藏（放大态点空白就缩回）
+func _make_skip_ui() -> void:
+	_skip_ui = CanvasLayer.new()
+	_skip_ui.name = "SkipLayer"
+	_skip_ui.layer = 5
+	add_child(_skip_ui)
+	var host := Control.new()
+	host.name = "SkipRoot"
+	host.set_anchors_preset(Control.PRESET_FULL_RECT)
+	host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_skip_ui.add_child(host)
+	var tex := load(SKIP_TEX) as Texture2D
+	_skip_btn = TextureButton.new()
+	_skip_btn.name = "Skip"
+	_skip_btn.texture_normal = tex
+	_skip_btn.ignore_texture_size = true
+	_skip_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	_skip_btn.focus_mode = Control.FOCUS_NONE
+	var sz := Vector2(84, 92)                     # 和房间左上角那枚同尺寸
+	_skip_btn.size = sz
+	var vp := get_viewport_rect().size
+	_skip_btn.position = Vector2(vp.x - sz.x - 22.0, 16.0)
+	_skip_btn.pressed.connect(_go_back)
+	host.add_child(_skip_btn)
+
+
 func _on_card_pressed(card: TextureButton) -> void:
 	if _open or card.texture_normal == null:
 		return
 	_open = true
+	if _skip_btn != null and is_instance_valid(_skip_btn):
+		_skip_btn.visible = false                 # 放大态：藏起来，别挡「点空白退出」
 	_card = card
 
 	# 放大卡：像素尺寸对齐原图，pivot 放中心
@@ -126,6 +159,16 @@ func _input(e: InputEvent) -> void:
 			and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT:
 		_close()
 		get_viewport().set_input_as_handled()
+		return
+	# 左键 / 触屏 tap（用户口径 2026-11-15）：**放大态点放大卡以外 = 缩回**；
+	# 网格态点空白什么都不做（返回靠右上角「跳过」/ ESC / 安卓返回键）。
+	if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+			and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		if _open:
+			var mp := (e as InputEventMouseButton).position
+			if not _big.get_global_rect().has_point(mp):
+				_close()
+				get_viewport().set_input_as_handled()
 
 
 
@@ -175,4 +218,6 @@ func _on_anim_finished(nm: String) -> void:
 		_dim.color.a = 0.0
 		_card = null
 		_open = false
+		if _skip_btn != null and is_instance_valid(_skip_btn):
+			_skip_btn.visible = true          # 缩回网格 → 「跳过」按钮回来
 	# 放大播完 → 保持放大状态（不做任何收尾）

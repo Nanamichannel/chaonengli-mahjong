@@ -41,6 +41,7 @@ var max_pick := 3
 var layer: CanvasLayer = null
 var ui: Control = null
 var start_btn: TextureButton = null   # 唯一的「确认」= 和其他面板一样的开始按钮
+var cancel_btn: TextureButton = null  # 「取消」（只在 arm 段出现，放在确认按钮右侧）
 var seat_btns: Array = []        # arm：三个风牌按钮
 var seat_frames: Array = []
 var seat_labels: Array = []
@@ -142,6 +143,9 @@ func _refresh() -> void:
 	# 「开始按钮」= 项目统一那套（tiaoguo.png，贴在未副露手牌右边，main 每帧贴位）
 	if start_btn != null and is_instance_valid(start_btn):
 		start_btn.visible = active and can_confirm()
+	if cancel_btn != null and is_instance_valid(cancel_btn):
+		# 只有 arm（选两家）这一段可以取消；give / swap 必须走完
+		cancel_btn.visible = active and mode == "arm"
 	for i in range(tile_rows.size()):
 		var row: Dictionary = tile_rows[i]
 		var fr := row.get("frame") as Node2D
@@ -254,6 +258,14 @@ func tick() -> void:
 		_layout_arm()                     # 窗口大小变了 → 风牌重新摆
 
 
+## 点「取消」：交给 main 的统一调度器（会关面板 + 清 c30_key）
+func _on_cancel() -> void:
+	if host != null and host.has_method("_cancel_skill_panel"):
+		host.call("_cancel_skill_panel")
+		return
+	close()
+
+
 func close() -> void:
 	if not active and ui == null:
 		return
@@ -271,11 +283,14 @@ func close() -> void:
 		picker.end()
 	if start_btn != null and is_instance_valid(start_btn):
 		start_btn.visible = false
+	if cancel_btn != null and is_instance_valid(cancel_btn):
+		cancel_btn.visible = false
 	if layer != null and is_instance_valid(layer):
 		layer.queue_free()
 	layer = null
 	ui = null
 	start_btn = null
+	cancel_btn = null
 	_hide_deal_skip(false)
 
 
@@ -367,6 +382,10 @@ func _make_ui() -> void:
 	start_btn.visible = false
 	start_btn.pressed.connect(_confirm)
 	ui.add_child(start_btn)
+	# 「取消」（arm 段）：位置由 main 的 place_cancel_btn 每帧贴到确认按钮右侧
+	cancel_btn = host.call("mk_cancel_btn", "C30Cancel", _on_cancel, true)
+	cancel_btn.visible = false
+	ui.add_child(cancel_btn)
 
 
 # arm：三个风牌按钮（下家 / 对家 / 上家，按各自的自风出图）+ 标签，下面一个「确认」

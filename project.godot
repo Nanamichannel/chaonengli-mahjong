@@ -18,7 +18,6 @@ config/icon="res://icon.svg"
 [autoload]
 
 ClientState="*res://client_state.gd"
-MobileInput="*res://mobile_input.gd"
 
 [audio]
 

@@ -21,7 +21,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding="utf-8")
 
-MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main.gd")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MAIN = os.path.join(ROOT, "main.gd")
+SKILLPANEL = os.path.join(ROOT, "skill_panel.gd")
+KANSHOU = os.path.join(ROOT, "kan_shou.gd")
+PROJECT = os.path.join(ROOT, "project.godot")
 PASS = FAIL = 0
 
 
@@ -105,6 +109,31 @@ def main() -> int:
             check(f"{name}（海神）不判遮罩", "is_skill_muted(" not in body)
             continue
         check(f"{name} 认遮罩", "is_skill_muted(" in body)
+
+    print("\n⑥ 取消统一（用户口径 2026-11-15）")
+    check("有 _cancel_top_ask 三态调度器", "func _cancel_top_ask() -> String:" in src)
+    for t in ('return "canceled"', 'return "blocked"', 'return "none"'):
+        check(f"三态分支 {t}", t in src)
+    check("拦截询问按 aid 逐条放行", '_kp_answer(best, "pass")' in src)
+    check("不再用 kangpo_answer(use=false)", '\"op\": \"kangpo_answer\"' not in src)
+    kps = block(src, "func _kp_skip() -> void:", "func _kp_close")
+    check("_kp_skip 委托统一调度器", "_cancel_one_intercept()" in kps)
+    i_match = src.find("match _cancel_top_ask():")
+    i_disc = src.find("quick_discard_drawn()", i_match) if i_match > 0 else -1
+    check("右键先取消、none 才摸切", 0 <= i_match < i_disc)
+    check("ESC = 全局取消", "if _k.keycode == KEY_ESCAPE:" in src)
+    check("强制态闸门 _force_busy", "func _force_busy() -> bool:" in src)
+    check("取消按钮在确认右侧", "func cancel_btn_rect(aspect: float) -> Rect2:" in src)
+    check("强制态灰按钮", "if not enabled:\n\t\tb.disabled = true" in src)
+    sp = io.open(SKILLPANEL, encoding="utf-8").read()
+    check("SkillPanel 内置取消按钮", "var cbtn: TextureButton" in sp and "mk_cancel_btn" in sp)
+    check("SkillPanel 取消回调", "func _do_cancel() -> void:" in sp)
+    proj = io.open(PROJECT, encoding="utf-8").read()
+    check("长按=右键 已移除", "mobile_input" not in proj)
+    ks = io.open(KANSHOU, encoding="utf-8").read()
+    check("鉴赏右上角跳过按钮", "SKIP_TEX" in ks and "func _make_skip_ui() -> void:" in ks)
+    check("鉴赏放大态点空白缩回", "_big.get_global_rect().has_point(mp)" in ks)
+    check("触屏双击出牌", "func _on_hand_clicked(index: int) -> void:" in src)
 
     print("\n" + "=" * 70)
     print(f" 通过 {PASS} 项，失败 {FAIL} 项")

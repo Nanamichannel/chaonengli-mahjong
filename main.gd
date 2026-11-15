@@ -10431,6 +10431,8 @@ func _c45_gate_before_draw() -> bool:
 		return true                      # 面板开着：先别摸牌
 	if _srv_kangpo_wait():
 		return false
+	if is_skill_muted(45, 1):
+		return false                     # 图标盖了遮罩 → 不再自动询问（用户 2026-11-15）
 	var c45st = srv_state.get("c45")
 	if typeof(c45st) != TYPE_DICTIONARY:
 		return false
@@ -12754,6 +12756,8 @@ func _c26_gate_before_draw() -> bool:
 		return true                      # 面板开着：先别摸牌
 	if _srv_kangpo_wait():
 		return false
+	if is_skill_muted(26, 2):
+		return false                     # 图标盖了遮罩 → 不再自动询问（用户 2026-11-15）
 	if not bool(srv_state.get("c26_can", false)):
 		return false
 	var key := "%d-%d" % [int(srv_state.get("live_left", 0)),

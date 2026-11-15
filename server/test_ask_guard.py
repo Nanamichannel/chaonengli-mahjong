@@ -91,6 +91,21 @@ def main() -> int:
     check("_pre_draw_gate 只判面板", "_pre_draw_panel_open()" in g)
     check("_pre_draw_gate 不再自己调技能闸门", "call(m)" not in g)
 
+    print("\n⑤ 每个摸牌前闸门都认遮罩（否则盖了遮罩还照样弹面板）")
+    import re
+    gates = [m for m in re.finditer(r"^func (_\w*gate_before_draw)\(", src, re.M)]
+    check("摸牌前闸门 >= 10 个", len(gates) >= 10)
+    for m in gates:
+        name = m.group(1)
+        i = m.start()
+        j = src.find("\nfunc ", i + 10)
+        body = src[i:j if j > 0 else len(src)]
+        if name.startswith("_hs_gate"):
+            # 海神 12-1：用户口径「摸牌前必须问、屏蔽不掉」，不判遮罩是对的
+            check(f"{name}（海神）不判遮罩", "is_skill_muted(" not in body)
+            continue
+        check(f"{name} 认遮罩", "is_skill_muted(" in body)
+
     print("\n" + "=" * 70)
     print(f" 通过 {PASS} 项，失败 {FAIL} 项")
     print("=" * 70)

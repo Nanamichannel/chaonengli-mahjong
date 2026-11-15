@@ -30,6 +30,15 @@ const FILES := {
 }
 const DEFAULT_DB := -6.0
 
+# ★ 2026-11-15：每首素材「首音」前的静音（实测）。不裁的话 play() 之后先静 75ms
+#   才出声 —— 用户听感就是「慢半拍」。play() 用 from_position 跳过这段。
+#   印章不裁：它的对齐是按未裁的时间轴调的（见 和牌播报.gd:STAMP_SYNC_MS）。
+const TRIM := {
+	"strips": 0.070,      # 1.mp3：首音 75ms，留 5ms 余量
+	"press": 0.032,       # 按按钮.mp3：首音 40ms
+	"discard": 0.025,     # 出牌.mp3：首音 30ms
+}
+
 static var muted := false
 static var _host: Node = null
 static var _cache := {}
@@ -118,7 +127,8 @@ static func play(sfx: String, volume_db := DEFAULT_DB) -> void:
 		_pi += 1
 	pl.volume_db = volume_db
 	pl.stream = s
+	var _from := float(TRIM.get(sfx, 0.0))     # 跳过素材开头的静音
 	if pl.is_inside_tree():
-		pl.play()
+		pl.play(_from)
 	else:
-		pl.call_deferred("play")           # 宿主还没挂进树 → 下一帧再放（只差 1 帧）
+		pl.call_deferred("play", _from)    # 宿主还没挂进树 → 下一帧再放（只差 1 帧）

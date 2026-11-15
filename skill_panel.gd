@@ -192,6 +192,7 @@ func close() -> void:
 		ui.queue_free()
 	ui = null
 	btn = null
+	cbtn = null
 
 
 # 每帧：把「开始」按钮贴到未副露手牌的右边（和别的面板同一套摆位）

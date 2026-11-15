@@ -916,6 +916,10 @@ func _cancel_top_ask() -> String:
 		return "canceled"
 	if _force_busy():
 		return "blocked"
+	if _skill_panel_open():
+		# 还有面板开着、但它的取消方式是「状态切换按钮」/「界面内按钮」
+		# → 右键吞掉：绝不能落到摸切，也不能把刚摸的牌当成「选中」
+		return "blocked"
 	return "none"
 
 
@@ -992,9 +996,6 @@ func _cancel_skill_panel() -> bool:
 	if c24_panel.active:
 		c24_panel.close()
 		return true
-	if ym_panel.active:
-		ym_panel.close()
-		return true
 	if c30_panel.active and c30_panel.mode == "arm":
 		c30_panel.close()
 		c30_key = ""
@@ -1028,15 +1029,23 @@ func _c33_cancel() -> void:
 
 
 # 取消按钮的 rect = 确认按钮**右侧**（右侧放不下就叠到左边，绝不出屏）
+#   ★ 两张贴图都是 894×974（≈89×97 显示尺寸），但换成宽贴图时按原始比例会撑到
+#     300px 宽、正好压到「贴屏幕右边」的副露上 → 宽度封顶 = 确认按钮宽 × 2.2。
 func cancel_btn_rect(aspect: float) -> Rect2:
-	var r := prompt_btn_rect(aspect)
-	r.position += prompt_btn_offset
-	r.position.x += r.size.x + CANCEL_GAP
+	var otex := btn_tex("ok")
+	var caspect := 974.0 / 894.0
+	if otex != null and otex.get_width() > 0:
+		caspect = float(otex.get_height()) / float(otex.get_width())
+	var conf := prompt_btn_rect(caspect)
+	conf.position += prompt_btn_offset
+	var sz := prompt_btn_rect(aspect).size
+	var max_w := conf.size.x * 2.2
+	if sz.x > max_w:
+		sz = Vector2(max_w, max_w * aspect)
+	var r := Rect2(conf.position + Vector2(conf.size.x + CANCEL_GAP, 0.0), sz)
 	var vp := get_viewport_rect().size
 	if r.position.x + r.size.x > vp.x - 8.0:
-		r = prompt_btn_rect(aspect)
-		r.position += prompt_btn_offset
-		r.position.x = maxf(8.0, r.position.x - r.size.x - CANCEL_GAP)
+		r.position.x = maxf(8.0, conf.position.x - r.size.x - CANCEL_GAP)
 	return r
 
 
@@ -6492,7 +6501,8 @@ func _c31_on_clicked(skill: int) -> void:
 ##   ★ 原来是 kangpo_answer(use=false)：只答「我的第一条」且不带 aid，
 ##     多节点/多层时会「界面关了、询问还挂着」→ 对局停住或又弹回来。
 func _kp_skip() -> void:
-	_cancel_one_intercept()
+	if _cancel_one_intercept() == "none":
+		_kp_close()                     # 没有待答的了：把残留的询问界面收掉
 
 
 func _kp_close() -> void:
@@ -16169,6 +16179,8 @@ func _could_be_real_discard() -> bool:
 		return false
 	if c11_active or c05_hide_active or wind_active or flow_active:
 		return false
+	if riichi_selecting:
+		return false                      # 立直选宣言牌：单击即选
 	if sw_stage != "":
 		return false
 	return true
@@ -18568,10 +18580,12 @@ func _input(event: InputEvent) -> void:
 	if _k != null and _k.pressed and not _k.echo:
 		# ESC = 全局取消（和右键同一套调度器；没东西可取消就什么都不做，绝不摸切）
 		if _k.keycode == KEY_ESCAPE:
-			var kc := _cancel_top_ask()
-			if kc != "none":
-				get_viewport().set_input_as_handled()
-				return
+			# 东南西北选人面板自己吃 ESC（它有「跳过 / 取消」两个语义，别被我抢走）
+			if seat_pick_mode == "":
+				var kc := _cancel_top_ask()
+				if kc != "none":
+					get_viewport().set_input_as_handled()
+					return
 		if _k.keycode == KEY_F3:
 			_hud_show = not _hud_show
 			get_viewport().set_input_as_handled()

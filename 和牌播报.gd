@@ -15,6 +15,10 @@ extends Node2D
 # ─────────────────────────────────────────────────────────────────────────────
 
 const ANNOUNCE_SCRIPT := preload("res://win_announce.gd")
+# 印章音效与画面同步：实测「印章.mp3 砸下去」在 65ms、「印章动画最炸」在 ~125ms
+# （14 帧@60fps，alpha 峰 f07=117ms / 亮度峰 f08=133ms）→ 音效延后 60ms 起播。
+# 想微调只改这一个数：正数 = 音效往后推（ms），0 = 立即播。
+const STAMP_SYNC_MS := 60.0
 const UiSfx := preload("res://ui_sfx.gd")          # UI 音效（底座底座 / 番种条）
 const CARD_DIR := "res://Cailiao/skill/cards/card_%02d.png"
 const MASK_PATH := "res://Cailiao/UI/睡2.png"
@@ -317,7 +321,15 @@ func _play_level(gen: int, data: Dictionary) -> void:
 	if n == null:
 		return
 	# 大红印章（满贯/跳满/倍满/三倍满/役满）盖下来的那一下
-	UiSfx.play("stamp", -4.0)            # 高潮音：比 UI 常规(-6)稍亮
+	# ★ 让「音效砸下去」和「画面最炸」重合：延后 STAMP_SYNC_MS 起播（见文件头注释）
+	if STAMP_SYNC_MS > 0.5:
+		var g := gen
+		get_tree().create_timer(STAMP_SYNC_MS / 1000.0).timeout.connect(func() -> void:
+			if g == _gen:                     # 播报被新的顶掉就别再响了
+				UiSfx.play("stamp", -4.0)    # 高潮音：比 UI 常规(-6)稍亮
+		)
+	else:
+		UiSfx.play("stamp", -4.0)
 	_hide_levels()
 	var n_frames := 13.0
 	var n_fps := 60.0
